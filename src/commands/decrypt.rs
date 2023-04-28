@@ -163,7 +163,7 @@ impl<'a, 'certdb> Helper<'a, 'certdb> {
                       mut keypair: Box<dyn crypto::Decryptor>,
                       decrypt: &mut D)
                       -> Option<Option<Fingerprint>>
-        where D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool
+        where D: FnMut(Option<SymmetricAlgorithm>, &SessionKey) -> bool
     {
         let keyid = keypair.public().fingerprint().into();
         match pkesk.decrypt(&mut *keypair, sym_algo)
@@ -205,18 +205,18 @@ impl<'a, 'certdb> DecryptionHelper for Helper<'a, 'certdb> {
     fn decrypt<D>(&mut self, pkesks: &[PKESK], skesks: &[SKESK],
                   sym_algo: Option<SymmetricAlgorithm>,
                   mut decrypt: D) -> openpgp::Result<Option<Fingerprint>>
-        where D: FnMut(SymmetricAlgorithm, &SessionKey) -> bool
+        where D: FnMut(Option<SymmetricAlgorithm>, &SessionKey) -> bool
     {
         // Before anything else, try the session keys
         for sk in &self.session_keys {
             let decrypted = if let Some(sa) = sk.symmetric_algo {
-                decrypt(sa, &sk.session_key)
+                decrypt(Some(sa), &sk.session_key)
             } else {
                 // We don't know which algorithm to use,
                 // try to find one that decrypts the message.
                 (1u8..=19)
                     .map(SymmetricAlgorithm::from)
-                    .any(|sa| decrypt(sa, &sk.session_key))
+                    .any(|sa| decrypt(Some(sa), &sk.session_key))
             };
             if decrypted {
                 eprintln!("Encrypted with Session Key {}", sk.display_sensitive());
@@ -227,8 +227,8 @@ impl<'a, 'certdb> DecryptionHelper for Helper<'a, 'certdb> {
         // First, we try those keys that we can use without prompting
         // for a password.
         for pkesk in pkesks {
-            let keyid = pkesk.recipient();
-            if let Some(key) = self.secret_keys.get_mut(keyid) {
+            let keyid: KeyID = pkesk.recipient().into();
+            if let Some(key) = self.secret_keys.get_mut(&keyid) {
                 if let Some(fp) = key.get_unlocked()
                     .and_then(|k|
                               self.try_decrypt(pkesk, sym_algo, k, &mut decrypt))
@@ -246,8 +246,8 @@ impl<'a, 'certdb> DecryptionHelper for Helper<'a, 'certdb> {
                 continue;
             }
 
-            let keyid = pkesk.recipient();
-            if let Some(key) = self.secret_keys.get_mut(keyid) {
+            let keyid: KeyID = pkesk.recipient().into();
+            if let Some(key) = self.secret_keys.get_mut(&keyid) {
                 let keypair = loop {
                     if let Some(keypair) = key.get_unlocked() {
                         break keypair;
@@ -255,7 +255,7 @@ impl<'a, 'certdb> DecryptionHelper for Helper<'a, 'certdb> {
 
                     let p = rpassword::prompt_password(&format!(
                         "Enter password to decrypt key {}: ",
-                        self.key_hints.get(keyid).unwrap()
+                        self.key_hints.get(&keyid).unwrap()
                     ))?
                     .into();
 
@@ -277,7 +277,7 @@ impl<'a, 'certdb> DecryptionHelper for Helper<'a, 'certdb> {
         // Third, we try to decrypt PKESK packets with wildcard
         // recipients using those keys that we can use without
         // prompting for a password.
-        for pkesk in pkesks.iter().filter(|p| p.recipient().is_wildcard()) {
+        for pkesk in pkesks.iter().filter(|p| KeyID::from(p.recipient()).is_wildcard()) { // XXXX!!!!
             for key in self.secret_keys.values() {
                 if let Some(fp) = key.get_unlocked()
                     .and_then(|k|
@@ -290,7 +290,7 @@ impl<'a, 'certdb> DecryptionHelper for Helper<'a, 'certdb> {
 
         // Fourth, we try to decrypt PKESK packets with wildcard
         // recipients using those keys that are encrypted.
-        for pkesk in pkesks.iter().filter(|p| p.recipient().is_wildcard()) {
+        for pkesk in pkesks.iter().filter(|p| KeyID::from(p.recipient()).is_wildcard()) { // XXXX!!!!
             // Don't ask the user to decrypt a key if we don't support
             // the algorithm.
             if ! pkesk.pk_algo().is_supported() {
