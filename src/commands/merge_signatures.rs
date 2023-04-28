@@ -45,7 +45,7 @@ pub fn merge_signatures(
 
 fn ops_with_last_false(p: Packet) -> Result<Packet> {
     if let Packet::OnePassSig(mut ops) = p {
-        ops.set_last(false);
+        // XXX ops.set_last(false);
         Ok(Packet::OnePassSig(ops))
     } else {
         Err(anyhow::anyhow!("Not a OnePassSig packet"))

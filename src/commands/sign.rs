@@ -333,7 +333,7 @@ fn sign_message_(opts: SignOpts, output: &mut (dyn io::Write + Sync + Send)) -> 
                     State::InFirstSigGroup => {
                         // We want to append our signature here, hence
                         // we set last to false.
-                        ops.set_last(false);
+                        // XXX ops.set_last(false);
 
                         if was_last {
                             // The signature group ends here.
