@@ -93,3 +93,8 @@ autocrypt = ["sequoia-autocrypt"]
 
 [profile.release]
 debug = true
+
+[patch.crates-io]
+nettle = { git = "https://gitlab.com/sequoia-pgp/nettle-rs", branch = "justus/ocb" }
+buffered-reader = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "crypto-refresh-x25519" }
+sequoia-openpgp = { git = "https://gitlab.com/sequoia-pgp/sequoia", branch = "crypto-refresh-x25519" }
