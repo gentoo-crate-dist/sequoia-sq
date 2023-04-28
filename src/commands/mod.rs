@@ -496,6 +496,7 @@ pub fn encrypt(opts: EncryptOpts) -> Result<()> {
     // We want to encrypt a literal data packet.
     let encryptor =
         Encryptor::for_recipients(opts.message, recipient_subkeys)
+        .symmetric_algo(openpgp::types::SymmetricAlgorithm::AES128)
         .add_passwords(passwords);
 
     let mut sink = encryptor.build()
@@ -534,7 +535,11 @@ pub fn encrypt(opts: EncryptOpts) -> Result<()> {
     io::copy(opts.input, &mut literal_writer)
         .context("Failed to encrypt")?;
 
-    literal_writer.finalize()
+    let mut m = literal_writer.finalize_one()?.unwrap();
+    use openpgp::serialize::Serialize;
+    Packet::from(openpgp::packet::Padding::new(14)).serialize(&mut m)?;
+
+    m.finalize()
         .context("Failed to encrypt")?;
 
     Ok(())
