@@ -5,6 +5,7 @@ use self::openpgp::types::{Duration, Timestamp, SymmetricAlgorithm};
 use self::openpgp::fmt::hex;
 use self::openpgp::crypto::mpi;
 use self::openpgp::{Packet, Result};
+use self::openpgp::packet;
 use self::openpgp::packet::prelude::*;
 use self::openpgp::packet::header::CTB;
 use self::openpgp::packet::{Header, header::BodyLength, Signature};
@@ -702,6 +703,15 @@ impl PacketDumper {
 
             SEIP(ref s) => {
                 writeln!(output, "{}  Version: {}", i, s.version())?;
+                match s {
+                    packet::SEIP::V1(_) => (),
+                    packet::SEIP::V2(s) => {
+                        writeln!(output, "{}  Symmetric algo: {}", i, s.symmetric_algo())?;
+                        writeln!(output, "{}  AEAD algo: {}", i, s.aead())?;
+                        writeln!(output, "{}  Chunk size: {}", i, s.chunk_size())?;
+                        writeln!(output, "{}  Salt: {}", i, hex::encode(s.salt()))?;
+                    },
+                }
             },
 
             MDC(ref m) => {
