@@ -42,9 +42,11 @@ stages:
 before_script:
   - *before_script_start
   - *before_script_end
+  - apt-get update -yqq ; apt-get install mold elfutils -yqq
 
 after_script:
   - *after_script_end
+  - readelf -p .comment /target/debug/sq
 
 bookworm:
   tags:
