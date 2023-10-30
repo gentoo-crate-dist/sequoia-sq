@@ -46,6 +46,7 @@ sequoia-wot = "0.8"
 tempfile = "3.1"
 tokio = { version = "1.13.1" }
 rpassword = "7.0"
+secmem-proc = { version = "0.3", optional = true }
 serde_json = "1.0.80"
 serde = { version = "1.0.137", features = ["derive"] }
 roff = "0.2.1"
@@ -87,6 +88,7 @@ default = [
     "crypto-nettle",
     "compression-bzip2",
     "autocrypt",
+    "harden",
 ]
 crypto-nettle = ["sequoia-openpgp/crypto-nettle"]
 crypto-openssl = ["sequoia-openpgp/crypto-openssl"]
@@ -96,6 +98,10 @@ crypto-cng = ["sequoia-openpgp/crypto-cng"]
 crypto-rust = ["sequoia-openpgp/crypto-rust"]
 compression-bzip2 = ["sequoia-openpgp/compression-bzip2"]
 autocrypt = ["sequoia-autocrypt"]
+# Harden the process by disabling ptraceability and core-dumps, setting a
+# restrictive DACL on windows, and try to detect whether the program is being
+# traced. Disable this feature for debugging.
+harden = ["secmem-proc"]
 subplot = ["subplot-build"]
 
 [profile.release]
