@@ -977,6 +977,11 @@ impl<'store> Config<'store> {
 // TODO: Use `derive`d command structs. No more values_of
 // TODO: Handling (and cli position) of global arguments
 fn main() -> Result<()> {
+    // Harden the process by disabling ptrace-ability and core-dumps and
+    // setting a restrictive DACL on windows.
+    #[cfg(feature = "harden")]
+    secmem_proc::harden_process()?;
+
     if let Ok(dirname) = std::env::var("SQ_MAN") {
         let dirname = PathBuf::from(dirname);
         if !dirname.exists() {
