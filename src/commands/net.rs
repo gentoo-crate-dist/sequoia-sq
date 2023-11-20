@@ -1,6 +1,6 @@
 //! Network services.
 
-use std::borrow::Cow;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -81,7 +81,7 @@ fn import_certs(config: &mut Config, certs: Vec<Cert>) -> Result<()> {
 
     eprintln!("Importing {} certificates into the certificate store:\n", certs.len());
     for (i, (fpr, userid, cert)) in certs.into_iter().enumerate() {
-        cert_store.update_by(Cow::Owned(cert.into()), &mut stats)
+        cert_store.update_by(Arc::new(cert.into()), &mut stats)
             .with_context(|| format!("Inserting {}, {}", fpr, userid))?;
         eprintln!("  {}. {} {}", i + 1, fpr, userid);
     }
@@ -222,7 +222,7 @@ fn get_ca(config: &mut Config,
                 Ok(cert) => {
                     // Save it.
                     let cert_store = config.cert_store_mut_or_else()?;
-                    cert_store.update(Cow::Owned(cert.clone().into()))
+                    cert_store.update(Arc::new(cert.clone().into()))
                         .with_context(|| {
                             format!("Saving {:?}", ca_userid)
                         })?;
@@ -410,30 +410,28 @@ pub fn dispatch_keyserver(mut config: Config, c: cli::keyserver::Command)
             let handle = query.parse::<KeyHandle>();
 
             if let Ok(handle) = handle {
-                let cert = rt.block_on(ks.get(handle))
+                let certs = rt.block_on(ks.get(handle))
                     .context("Failed to retrieve cert")?;
+                let certs = certs.into_iter().filter_map(Result::ok).collect::<Vec<Cert>>();
 
                 if let Some(file) = c.output {
                     let mut output = file.create_safe(config.force)?;
-                    if !c.binary {
-                        cert.armored().serialize(&mut output)
-                    } else {
-                        cert.serialize(&mut output)
-                    }.context("Failed to serialize cert")?;
+                    serialize_keyring(&mut output, &certs, c.binary)?;
                 } else {
                     let certs = if let Some((ca_filename, ca_userid)) = ca() {
                         certify_downloads(
                             &mut config, &ca_filename, &ca_userid,
                             ca_trust_amount,
-                            vec![ cert ], None)
+                            certs, None)
                     } else {
-                        vec![ cert ]
+                        certs
                     };
                     import_certs(&mut config, certs)?;
                 }
             } else if let Ok(Some(addr)) = UserID::from(query.as_str()).email() {
                 let certs = rt.block_on(ks.search(addr))
                     .context("Failed to retrieve certs")?;
+                let certs = certs.into_iter().filter_map(Result::ok).collect::<Vec<Cert>>();
 
                 if let Some(file) = c.output {
                     let mut output = file.create_safe(config.force)?;
