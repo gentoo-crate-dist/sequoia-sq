@@ -351,7 +351,6 @@ fn certify_downloads(config: &mut Config,
 pub fn dispatch_keyserver(mut config: Config, c: cli::keyserver::Command)
     -> Result<()>
 {
-    let network_policy = c.network_policy.into();
     let uri = &c.server[..];
 
     // Get the filename for the CA's key and the default User ID.
@@ -395,7 +394,7 @@ pub fn dispatch_keyserver(mut config: Config, c: cli::keyserver::Command)
     };
     let ca_trust_amount = 1;
 
-    let mut ks = KeyServer::new(network_policy, uri)
+    let ks = KeyServer::new(uri)
         .context("Malformed keyserver URI")?;
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -470,8 +469,6 @@ pub fn dispatch_keyserver(mut config: Config, c: cli::keyserver::Command)
 }
 
 pub fn dispatch_wkd(mut config: Config, c: cli::wkd::Command) -> Result<()> {
-    let network_policy: net::Policy = c.network_policy.into();
-
     let ca_filename = "_wkd.pgp";
     let ca_userid = "Downloaded from a WKD";
     let ca_trust_amount = 1;
@@ -500,16 +497,14 @@ pub fn dispatch_wkd(mut config: Config, c: cli::wkd::Command) -> Result<()> {
             output.write(config.output_format, &mut std::io::stdout())?;
         },
         Get(c) => {
-            // Check that the policy allows https.
-            network_policy.assert(net::Policy::Encrypted)?;
-
             let email_address = c.email_address;
             // XXX: EmailAddress could be created here to
             // check it's a valid email address, print the error to
             // stderr and exit.
             // Because it might be created a WkdServer struct, not
             // doing it for now.
-            let certs = rt.block_on(wkd::get(&email_address))?;
+            let certs = rt.block_on(wkd::get(&net::reqwest::Client::new(), &email_address))?;
+            let certs = certs.into_iter().filter_map(Result::ok).collect::<Vec<Cert>>();
             // ```text
             //     The HTTP GET method MUST return the binary representation of the
             //     OpenPGP key for the given mail address.
@@ -569,8 +564,6 @@ pub fn dispatch_dane(mut config: Config, c: cli::dane::Command) -> Result<()> {
     let ca_userid = "Downloaded from DANE";
     let ca_trust_amount = 1;
 
-    let network_policy: net::Policy = c.network_policy.into();
-
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .enable_time()
@@ -579,9 +572,6 @@ pub fn dispatch_dane(mut config: Config, c: cli::dane::Command) -> Result<()> {
     use crate::cli::dane::Subcommands::*;
     match c.subcommand {
         Get(c) => {
-            // Check that the policy allows https.
-            network_policy.assert(net::Policy::Encrypted)?;
-
             let email_address = c.email_address;
             // XXX: EmailAddress could be created here to
             // check it's a valid email address, print the error to
@@ -589,6 +579,7 @@ pub fn dispatch_dane(mut config: Config, c: cli::dane::Command) -> Result<()> {
             // Because it might be created a WkdServer struct, not
             // doing it for now.
             let certs = rt.block_on(dane::get(&email_address))?;
+            let certs = certs.into_iter().filter_map(Result::ok).collect::<Vec<Cert>>();
             if let Some(file) = c.output {
                 let mut output = file.create_safe(config.force)?;
                 serialize_keyring(&mut output, &certs, c.binary)?;
