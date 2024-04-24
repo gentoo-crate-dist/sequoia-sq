@@ -11,7 +11,7 @@ variables:
   COMMON_CI_REF: main
 
 include:
-  - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@COMMON_CI_REF"
+  - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@$COMMON_CI_REF"
 
 
 docker-build-push:
