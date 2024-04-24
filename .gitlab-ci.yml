@@ -6,7 +6,7 @@ stages:
 
 
 include:
-  - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@{$COMMON_CI_REF:-main}"
+  - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@${COMMON_CI_REF:-main}"
 
 variables:
   SEQUOIA_CRYPTO_POLICY: ""
