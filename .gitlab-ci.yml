@@ -6,7 +6,7 @@ stages:
 
 
 include:
-  - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@main"
+  - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@dvn0/add-alpine"
 
 variables:
   SEQUOIA_CRYPTO_POLICY: ""
