@@ -7,7 +7,6 @@ stages:
 
 variables:
   SEQUOIA_CRYPTO_POLICY: ""
-  # Sets the component version/branch
   COMMON_CI_REF: main
 
 include:
