@@ -1323,6 +1323,82 @@ fn main() -> Result<()> {
         }
     };
 
+    use std::io::Read;
+    use std::io::Write;
+    use openpgp::packet::signature::cache::SignatureVerificationCache;
+    struct SignatureCache {
+    }
+    impl Drop for SignatureCache {
+        fn drop(&mut self) {
+            let doit = || -> Result<()> {
+                if ! SignatureVerificationCache::updated() {
+                    return Ok(());
+                }
+
+                let f = std::fs::File::create("/tmp/sig-cache")?;
+                let mut f = std::io::BufWriter::new(f);
+                for entry in SignatureVerificationCache::dump() {
+                    let key = entry.key();
+                    let value = entry.value();
+
+                    if key.len() > u8::MAX as usize
+                        || value.len() > u8::MAX as usize
+                    {
+                        eprintln!("Skipping entry, which is too large for \
+                                   this file format ({} / {})",
+                                  key.len(), value.len());
+                        continue;
+                    }
+
+                    let len: [u8; 1] = [key.len() as u8; 1];
+                    f.write(&len)?;
+                    f.write_all(&key)?;
+
+                    let len: [u8; 1] = [value.len() as u8; 1];
+                    f.write(&len)?;
+                    f.write_all(&value)?;
+                }
+                Ok(())
+            };
+            time_it!("saving signature cache", {
+            match doit() {
+                Ok(()) => {
+                    eprintln!("Saved signature cache.");
+                }
+                Err(err) => {
+                    eprintln!("Error saving signature cache: {}", err);
+                }
+            }
+            });
+        }
+    }
+    let _signature_cache = SignatureCache {};
+
+    match File::open("/tmp/sig-cache") {
+        Ok(f) => {
+            let mut f = std::io::BufReader::new(f);
+            let load_cache = std::iter::from_fn(move || {
+                let mut len = [0u8; 1];
+                f.read_exact(&mut len).ok()?;
+
+                let mut key = vec![0u8; len[0] as usize];
+                f.read_exact(&mut key).ok()?;
+
+                let mut len = [0u8; 1];
+                f.read_exact(&mut len).ok()?;
+
+                let mut value = vec![0u8; len[0] as usize];
+                f.read_exact(&mut value).ok()?;
+
+                Some((key.to_vec(), value.to_vec()))
+            });
+            SignatureVerificationCache::merge(load_cache);
+        }
+        Err(err) => {
+            eprintln!("Reading signature verification cache: {}",
+                      err);
+        }
+    }
     let time: SystemTime =
         c.time.clone().unwrap_or_else(|| Time::now()).into();
 

@@ -100,3 +100,10 @@ subplot = ["subplot-build"]
 
 [profile.release]
 debug = true
+
+[patch.crates-io]
+sequoia-openpgp = { path = '../sequoia/openpgp' }
+buffered-reader = { path = '../sequoia/buffered-reader' }
+sequoia-ipc = { path = '../sequoia/ipc' }
+sequoia-net = { path = '../sequoia/net' }
+sequoia-autocrypt = { path = '../sequoia/autocrypt' }
