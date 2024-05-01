@@ -559,6 +559,28 @@ pub enum UseridCommand {
     Strip(UseridStripCommand),
 }
 
+const SQ_KEY_USERID_ADD_EXAMPLES: Actions = Actions {
+    actions: &[
+        Action::Example(Example {
+            comment: "Add a user ID to a certificate managed by the key store.",
+            command: &[
+                "sq", "key", "userid", "add", "--userid", "<alice@example.com>",
+                "--cert", "EB28F26E2739A4870ECC47726F0073F60FD0CBF0",
+            ],
+        }),
+        Action::Example(Example {
+            comment: "Add a user ID to a certificate in a file.  The \
+                      new certificate is written to stdout.",
+            command: &[
+                "sq", "key", "userid", "add", "--userid", "Juliet",
+                "--cert-file", "juliet-secret.pgp",
+                "--output", "-",
+            ],
+        }),
+    ]
+};
+test_examples!(sq_key_userid_add, SQ_KEY_USERID_ADD_EXAMPLES);
+
 #[derive(Debug, Args)]
 #[clap(
     about = "Add a User ID",
@@ -573,22 +595,7 @@ combined as a single User ID, like `Juliet <juliet@example.org>`.
 `--time` argument.  It sets the creation time of the User ID's
 binding signature to the specified time.
 ",
-    after_help =
-"EXAMPLES:
-
-# First, generate a key:
-$ sq key generate --userid '<juliet@example.org>' \\
-     --output juliet.key.pgp
-
-# Then, add a User ID:
-$ sq key userid add --userid Juliet juliet.key.pgp \\
-  --output juliet-new.key.pgp
-
-# Or, add a User ID whose creation time is set to June 28, 2022 at
-# midnight UTC:
-$ sq key userid add --userid Juliet --creation-time 20210628 \\
-   juliet.key.pgp --output juliet-new.key.pgp
-",
+    after_help = SQ_KEY_USERID_ADD_EXAMPLES,
 )]
 #[clap(group(ArgGroup::new("cert_input").args(&["cert_file", "cert"]).required(true)))]
 pub struct UseridAddCommand {
