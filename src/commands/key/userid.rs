@@ -1,4 +1,5 @@
 use std::str::from_utf8;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -6,6 +7,7 @@ use anyhow::Context;
 use anyhow::anyhow;
 use itertools::Itertools;
 
+use sequoia_openpgp as openpgp;
 use openpgp::armor::Kind;
 use openpgp::armor::Writer;
 use openpgp::cert::amalgamation::ValidAmalgamation;
@@ -23,13 +25,17 @@ use openpgp::types::SignatureType;
 use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::Result;
-use sequoia_openpgp as openpgp;
 
+use sequoia_cert_store as cert_store;
+use cert_store::StoreUpdate;
+
+use crate::best_effort_primary_uid;
 use crate::Config;
 use crate::cli::key::UseridRevokeCommand;
 use crate::cli::types::FileOrStdout;
 use crate::cli;
 use crate::commands::get_primary_keys;
+use crate::commands::password;
 use crate::common::NULL_POLICY;
 use crate::common::RevocationOutput;
 use crate::common::get_secret_signer;
@@ -225,10 +231,77 @@ pub fn dispatch(
 
 fn userid_add(
     config: Config,
-    command: cli::key::UseridAddCommand,
+    mut command: cli::key::UseridAddCommand,
 ) -> Result<()> {
-    let input = command.input.open()?;
-    let key = Cert::from_buffered_reader(input)?;
+    let creation_time = Some(config.time);
+
+    let (cert, mut signer):
+        (openpgp::Cert, Box<dyn openpgp::crypto::Signer + Send + Sync>)
+        = if let Some(file) = command.cert_file
+    {
+        let input = file.open()?;
+        let cert = Cert::from_buffered_reader(input)?;
+
+        let signer = match get_primary_keys(
+            &[cert.clone()],
+            config.policy,
+            command.private_key_store.as_deref(),
+            creation_time,
+            None,
+        ) {
+            Ok(keys) => {
+                assert!(
+                    keys.len() == 1,
+                    "Expect exactly one result from get_primary_keys()"
+                );
+                keys.into_iter().next().unwrap().0
+            }
+            Err(error) => {
+                return Err(error)
+            }
+        };
+
+        // If `--output` is not specified, default to writing to
+        // stdout, not to the certificate store.
+        if command.output.is_none() {
+            command.output = Some(FileOrStdout::new(None));
+        }
+
+        (cert, signer)
+    } else if let Some(kh) = command.cert {
+        let cert = config.lookup_one(&kh, None, false)?;
+
+        let key_store = config.key_store_or_else()?;
+        let mut ks = key_store.lock().unwrap();
+
+        let keys = ks.find_key(kh.clone())?;
+        if keys.len() > 1 {
+            return Err(anyhow::anyhow!(
+                "Multiple keys match: {}",
+                keys.iter()
+                    .map(|k| k.fingerprint().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")));
+        } else if keys.len() == 0 {
+            return Err(anyhow::anyhow!("No key for {} is available", kh));
+        }
+
+        let mut key = keys.into_iter().next().expect("have one");
+        if key.locked()? {
+            let uid = best_effort_primary_uid(
+                Some(&config), &cert, config.policy, config.time);
+
+            let p = password::prompt_to_unlock(&format!(
+                "Please enter the password to decrypt the key {}, {}",
+                key.fingerprint(), uid))?;
+
+            key.unlock(p)?;
+        }
+
+        (cert, Box::new(key))
+    } else {
+        panic!("--cert or --cert-file is required");
+    };
 
     // Make sure the user IDs are in canonical form.  If not, and
     // `--allow-non-canonical-userids` is not set, error out.
@@ -237,12 +310,12 @@ fn userid_add(
     }
 
     // Fail if any of the User IDs to add already exist in the ValidCert
-    let key_userids: Vec<_> =
-        key.userids().map(|u| u.userid().value()).collect();
+    let cert_userids: Vec<_> =
+        cert.userids().map(|u| u.userid().value()).collect();
     let exists: Vec<_> = command
         .userid
         .iter()
-        .filter(|s| key_userids.contains(&s.value()))
+        .filter(|s| cert_userids.contains(&s.value()))
         .collect();
     if !exists.is_empty() {
         return Err(anyhow::anyhow!(
@@ -251,31 +324,10 @@ fn userid_add(
         ));
     }
 
-    let creation_time = Some(config.time);
-
-    let mut pk = match get_primary_keys(
-        &[key.clone()],
-        config.policy,
-        command.private_key_store.as_deref(),
-        creation_time,
-        None,
-    ) {
-        Ok(keys) => {
-            assert!(
-                keys.len() == 1,
-                "Expect exactly one result from get_primary_keys()"
-            );
-            keys.into_iter().next().unwrap().0
-        }
-        Err(error) => {
-            return Err(error)
-        }
-    };
-
-    let vcert = key
+    let vcert = cert
         .with_policy(config.policy, creation_time)
         .with_context(|| {
-            format!("Certificate {} is not valid", key.fingerprint())
+            format!("Certificate {} is not valid", cert.fingerprint())
         })?;
 
     // Use the primary User ID or direct key signature as template for the
@@ -372,19 +424,25 @@ fn userid_add(
             sb = sb.set_signature_creation_time(t)?;
         };
 
-        let binding = uid.bind(&mut pk, &key, sb.clone())?;
+        let binding = uid.bind(&mut signer, &cert, sb.clone())?;
         add.push(binding.into());
     }
 
-    // Merge additional User IDs into key
-    let cert = key.insert_packets(add)?;
+    // Merge the new User IDs into cert.
+    let cert = cert.insert_packets(add)?;
 
-    let mut sink = command.output.for_secrets().create_safe(config.force)?;
-    if command.binary {
-        cert.as_tsk().serialize(&mut sink)?;
+    if let Some(output) = command.output {
+        let mut sink = output.for_secrets().create_safe(config.force)?;
+        if command.binary {
+            cert.as_tsk().serialize(&mut sink)?;
+        } else {
+            cert.as_tsk().armored().serialize(&mut sink)?;
+        }
     } else {
-        cert.as_tsk().armored().serialize(&mut sink)?;
+        let cert_store = config.cert_store_or_else()?;
+        cert_store.update(Arc::new(cert.into()))?;
     }
+
     Ok(())
 }
 
