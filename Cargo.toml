@@ -57,6 +57,13 @@ terminal_size = ">=0.2.6, <0.4"
 termcolor = "1.2.0"
 textwrap = ">=0.15, <0.17"
 
+[dependencies.rusqlite]
+version = ">=0.29, <0.32"
+
+# Use the bundled sqlite on Windows.
+[target.'cfg(windows)'.dependencies]
+rusqlite = { version = ">=0.29, <0.32", features = ["bundled"] }
+
 [build-dependencies]
 anyhow = "1.0.18"
 buffered-reader = { version = "1.0.0", default-features = false, features = ["compression"] }
@@ -103,3 +110,10 @@ subplot = ["subplot-build"]
 
 [profile.release]
 debug = true
+
+[patch.crates-io]
+sequoia-openpgp = { path = '../sequoia/openpgp' }
+buffered-reader = { path = '../sequoia/buffered-reader' }
+sequoia-ipc = { path = '../sequoia/ipc' }
+sequoia-net = { path = '../sequoia/net' }
+sequoia-autocrypt = { path = '../sequoia/autocrypt' }

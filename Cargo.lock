@@ -231,12 +231,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
-name = "base64"
-version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -346,8 +340,6 @@ dependencies = [
 [[package]]
 name = "buffered-reader"
 version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd098763fdb64579407a8c83cf0d751e6d4a7e161d0114c89cc181a2ca760ec8"
 dependencies = [
  "bzip2",
  "flate2",
@@ -2433,6 +2425,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "p384"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70786f51bcc69f6a4c0360e063a4cac5419ef7c5cd5b3c99ad70f3be5ba79209"
+dependencies = [
+ "ecdsa",
+ "elliptic-curve",
+ "primeorder",
+ "sha2",
+]
+
+[[package]]
+name = "p521"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fc9e2161f1f215afdfce23677034ae137bbd45016a880c2eb3ba8eb95f085b2"
+dependencies = [
+ "base16ct",
+ "ecdsa",
+ "elliptic-curve",
+ "primeorder",
+ "rand_core",
+ "sha2",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2867,7 +2885,7 @@ version = "0.11.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd67538700a17451e7cba03ac727fb961abb7607553461627b97de0b89cf4a62"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -3044,7 +3062,7 @@ version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c74cae0a4cf6ccbbf5f359f08efdf8ee7e1dc532573bf0db71968cb56b1448c"
 dependencies = [
- "base64 0.21.7",
+ "base64",
 ]
 
 [[package]]
@@ -3135,10 +3153,8 @@ checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 [[package]]
 name = "sequoia-autocrypt"
 version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24fc0ec87c156a35f24fc153ab694e0f37cd6fa87c1cf5005c9f4fa5e10415b"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "sequoia-openpgp",
 ]
 
@@ -3199,8 +3215,6 @@ dependencies = [
 [[package]]
 name = "sequoia-ipc"
 version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4a7e644ec9e1055fde8dcdaa65c58fa4636c615b5e955a9b1942444145e308a"
 dependencies = [
  "anyhow",
  "buffered-reader",
@@ -3304,11 +3318,9 @@ dependencies = [
 [[package]]
 name = "sequoia-net"
 version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6abf810ba698339f332b946b485cc815c13a0f750189009bc10514c71fba814b"
 dependencies = [
  "anyhow",
- "base64 0.21.7",
+ "base64",
  "futures-util",
  "hickory-client",
  "hickory-resolver",
@@ -3319,7 +3331,6 @@ dependencies = [
  "percent-encoding",
  "reqwest",
  "sequoia-openpgp",
- "tempfile",
  "thiserror",
  "tokio",
  "url",
@@ -3329,13 +3340,11 @@ dependencies = [
 [[package]]
 name = "sequoia-openpgp"
 version = "1.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06f82708c8568218b8544b4abbba1f6483067dca0a946a54991c1d3f424dcade"
 dependencies = [
  "aes",
  "aes-gcm",
  "anyhow",
- "base64 0.22.1",
+ "base64",
  "block-padding",
  "blowfish",
  "botan",
@@ -3371,6 +3380,8 @@ dependencies = [
  "openssl",
  "openssl-sys",
  "p256",
+ "p384",
+ "p521",
  "rand",
  "rand_core",
  "regex",
@@ -3426,6 +3437,7 @@ dependencies = [
  "regex",
  "roff",
  "rpassword",
+ "rusqlite",
  "sequoia-autocrypt",
  "sequoia-cert-store",
  "sequoia-directories",
@@ -3704,7 +3716,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c5723f41235a3deefab3cfd6164a5b780802f596fa97eb40dfcf3c39c36b21"
 dependencies = [
  "anyhow",
- "base64 0.21.7",
+ "base64",
  "clap",
  "env_logger",
  "file_diff",
@@ -3746,7 +3758,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fc3c17998cc92ec00493a7d1c0d0256f8977c7baed553777ba347dd6d1c3ccf"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "fehler",
  "filetime",
  "fs2",

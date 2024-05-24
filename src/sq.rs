@@ -72,6 +72,8 @@ pub mod output;
 pub use output::{wkd::WkdUrlVariant, Model};
 use output::hint::Hint;
 
+mod signature_cache;
+
 /// Converts sequoia_openpgp types for rendering.
 pub trait Convert<T> {
     /// Performs the conversion.
@@ -1295,6 +1297,13 @@ fn main() -> Result<()> {
             err.exit();
         }
     };
+
+    // When this is dropped, the cache will be saved.
+    let _signature_cache = signature_cache::SignatureCache::init();
+    if let Err(err) = _signature_cache {
+        eprintln!("Loading signature cache: {}",
+                  crate::one_line_error_chain(err));
+    }
 
     let time: SystemTime =
         c.time.clone().unwrap_or_else(|| Time::now()).into();
