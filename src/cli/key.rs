@@ -49,16 +49,16 @@ impl From<KeyRevocationForReason> for ReasonForRevocation {
 
 /// The revocation reason for a UserID
 #[derive(ValueEnum, Clone, Debug)]
-pub enum UseridRevocationReason {
+pub enum UserIDRevocationForReason {
     Retired,
     Unspecified
 }
 
-impl From<UseridRevocationReason> for ReasonForRevocation {
-    fn from(rr: UseridRevocationReason) -> Self {
+impl From<UserIDRevocationForReason> for ReasonForRevocation {
+    fn from(rr: UserIDRevocationForReason) -> Self {
         match rr {
-            UseridRevocationReason::Retired => ReasonForRevocation::UIDRetired,
-            UseridRevocationReason::Unspecified => ReasonForRevocation::Unspecified,
+            UserIDRevocationForReason::Retired => ReasonForRevocation::UIDRetired,
+            UserIDRevocationForReason::Unspecified => ReasonForRevocation::Unspecified,
         }
     }
 }
@@ -901,7 +901,7 @@ If the reason happened in the past, you should specify that using the \
 accurately reason about objects whose validity depends on the validity \
 of a User ID."
     )]
-    pub reason: UseridRevocationReason,
+    pub reason: UserIDRevocationForReason,
 
     #[clap(
         value_name = "MESSAGE",
