@@ -431,7 +431,7 @@ fn sq_pki_link_add_retract() -> Result<()> {
 
     // Link all User IDs individually.
     sq_link(&sq, &ed_fpr,
-            &["ed@some.org"], &["ed@other.org", "ed@example.org"],
+            &["ed@some.org", "Ed <ed@example.org>"], &["ed@other.org"],
             &[], true);
     sq_verify(&sq, None, &[], &[], &ed_sig_file, 1, 0);
 

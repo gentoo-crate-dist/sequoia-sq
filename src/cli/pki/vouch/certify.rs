@@ -25,12 +25,12 @@ const CERTIFY_EXAMPLES: Actions = Actions {
         }),
         Action::Example(Example {
             comment: "\
-Alice certifies that Bob controls 3F68CB84CE537C9A and bob@example.org.",
+Alice certifies that Bob controls 3F68CB84CE537C9A and 'Bob <bob@example.org>'.",
             command: &[
                 "sq", "pki", "vouch", "certify",
                 "--certifier=EB28F26E2739A4870ECC47726F0073F60FD0CBF0",
                 "--cert=511257EBBF077B7AEDAE5D093F68CB84CE537C9A",
-                "--email=bob@example.org",
+                "--userid=Bob <bob@example.org>",
             ],
         }),
 

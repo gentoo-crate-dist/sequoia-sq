@@ -24,7 +24,7 @@ const VERIFY_EXAMPLES: Actions = Actions {
                 "sq", "--time", "2024-06-19",
                 "pki", "link", "add",
                 "--cert", "7A58B15E3B9459483D9FFA8D40E299AC5F2B0872",
-                "--email", "juliet@example.org",
+                "--userid", "Juliet Capulet <juliet@example.org>",
             ],
         }),
         Action::Example(Example {
