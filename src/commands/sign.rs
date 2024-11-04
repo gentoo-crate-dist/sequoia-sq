@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
@@ -38,6 +39,7 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
 
     let mut input = command.input.open()?;
     let output = &command.output;
+    let tee = command.tee.as_deref();
     let detached = command.detached;
     let binary = command.binary;
     let append = command.append;
@@ -75,11 +77,12 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
 
     if command.clearsign {
         let output = output.create_safe(&sq)?;
-        clearsign(sq, input, output, signers, &notations)?;
+        clearsign(sq, input, output, tee, signers, &notations)?;
     } else {
         sign(sq,
              &mut input,
              output,
+             tee,
              signers,
              detached,
              binary,
@@ -95,6 +98,7 @@ pub fn sign<'a, 'store, 'rstore>(
     sq: Sq<'store, 'rstore>,
     input: &'a mut (dyn io::Read + Sync + Send),
     output: &'a FileOrStdout,
+    tee: Option<&Path>,
     signers: Vec<Box<dyn crypto::Signer + Send + Sync>>,
     detached: bool,
     binary: bool,
@@ -108,6 +112,7 @@ pub fn sign<'a, 'store, 'rstore>(
             sign_data(sq,
                       input,
                       output,
+                      tee,
                       signers,
                       detached,
                       binary,
@@ -117,6 +122,7 @@ pub fn sign<'a, 'store, 'rstore>(
             sign_message(sq,
                          input,
                          output,
+                         tee,
                          signers,
                          binary,
                          notarize,
@@ -124,10 +130,35 @@ pub fn sign<'a, 'store, 'rstore>(
     }
 }
 
+struct Tee<'a, 'b> {
+    output: &'a mut Message<'b>,
+    other: Option<std::fs::File>
+}
+
+impl<'a, 'b> std::io::Write for Tee<'a, 'b> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let amount = self.output.write(buf)?;
+        if let Some(other) = self.other.as_mut() {
+            other.write_all(&buf[..amount])?;
+        }
+
+        Ok(amount)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.output.flush()?;
+        if let Some(other) = self.other.as_mut() {
+            other.flush()?;
+        }
+        Ok(())
+    }
+}
+
 fn sign_data<'a, 'store, 'rstore>(
     sq: Sq<'store, 'rstore>,
     input: &'a mut (dyn io::Read + Sync + Send),
     output_path: &'a FileOrStdout,
+    tee: Option<&Path>,
     mut signers: Vec<Box<dyn crypto::Signer + Send + Sync>>,
     detached: bool,
     binary: bool,
@@ -221,8 +252,17 @@ fn sign_data<'a, 'store, 'rstore>(
             .context("Failed to create literal writer")?
     };
 
+    let mut tee = Tee {
+        output: &mut writer,
+        other: if let Some(path) = tee {
+            Some(std::fs::File::create(path)?)
+        } else {
+            None
+        },
+    };
+
     // Finally, copy stdin to our writer stack to sign the data.
-    io::copy(input, &mut writer)
+    io::copy(input, &mut tee)
         .context("Failed to sign")?;
 
     writer.finalize()
@@ -242,6 +282,7 @@ fn sign_message<'a, 'store, 'rstore>(
     sq: Sq<'store, 'rstore>,
     input: &'a mut (dyn io::Read + Sync + Send),
     output: &'a FileOrStdout,
+    tee: Option<&Path>,
     signers: Vec<Box<dyn crypto::Signer + Send + Sync>>,
     binary: bool,
     notarize: bool,
@@ -258,7 +299,8 @@ fn sign_message<'a, 'store, 'rstore>(
                   signers,
                   notarize,
                   notations,
-                  &mut output)?;
+                  &mut output,
+                  tee)?;
     output.finalize()?;
     Ok(())
 }
@@ -269,7 +311,8 @@ fn sign_message_<'a, 'store, 'rstore>(
     mut signers: Vec<Box<dyn crypto::Signer + Send + Sync>>,
     notarize: bool,
     notations: &'a [(bool, NotationData)],
-    output: &mut (dyn io::Write + Sync + Send))
+    output: &mut (dyn io::Write + Sync + Send),
+    tee: Option<&Path>)
     -> Result<()>
 {
     let mut sink = Message::new(output);
@@ -386,8 +429,17 @@ fn sign_message_<'a, 'store, 'rstore>(
             let mut literal = literal.build()
                 .context("Failed to create literal writer")?;
 
+            let mut tee = Tee {
+                output: &mut literal,
+                other: if let Some(path) = tee {
+                    Some(std::fs::File::create(path)?)
+                } else {
+                    None
+                },
+            };
+
             // Finally, just copy all the data.
-            io::copy(&mut pp, &mut literal)
+            io::copy(&mut pp, &mut tee)
                 .context("Failed to sign data")?;
 
             // Pop the literal writer.
@@ -465,6 +517,7 @@ fn sign_message_<'a, 'store, 'rstore>(
 pub fn clearsign(sq: Sq,
                  mut input: impl io::Read + Sync + Send,
                  mut output: impl io::Write + Sync + Send,
+                 tee: Option<&Path>,
                  mut signers: Vec<Box<dyn crypto::Signer + Send + Sync>>,
                  notations: &[(bool, NotationData)])
                  -> Result<()>
@@ -489,8 +542,17 @@ pub fn clearsign(sq: Sq,
     }
     let mut message = signer.build().context("Failed to create signer")?;
 
+    let mut tee = Tee {
+        output: &mut message,
+        other: if let Some(path) = tee {
+            Some(std::fs::File::create(path)?)
+        } else {
+            None
+        },
+    };
+
     // Finally, copy stdin to our writer stack to sign the data.
-    io::copy(&mut input, &mut message)
+    io::copy(&mut input, &mut tee)
         .context("Failed to sign")?;
 
     message.finalize()

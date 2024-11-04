@@ -80,6 +80,12 @@ pub struct Command {
     )]
     pub output: FileOrStdout,
     #[clap(
+        help = "Write the unsigned input to the file",
+        long,
+        value_name = "FILE",
+    )]
+    pub tee: Option<PathBuf>,
+    #[clap(
         long,
         help = "Emit binary data",
     )]
