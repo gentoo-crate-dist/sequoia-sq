@@ -70,6 +70,8 @@ pub struct GossipArg {
     /// introducer, and authenticating Micah's certificate is easier
     /// than authenticating Laura's certificate, then Ed has learned
     /// about an easier way to authenticate Laura's certificate.
+    ///
+    /// Stable since 1.1.0.
     #[arg(long)]
     pub gossip: bool,
 }
@@ -83,17 +85,42 @@ impl Deref for GossipArg {
 }
 
 #[derive(clap::Args, Debug)]
+pub struct UnusableArg {
+    /// Show bindings that are unusable
+    ///
+    /// Normally, unusable certificates and bindings are not shown.
+    /// This option considers bindings, even if they are not unusable,
+    /// because they (or the certificates) are not valid according to
+    /// the policy, are revoked, or are not live.
+    ///
+    /// This option only makes sense with `--gossip`, because unusable
+    /// bindings are still considered unauthenticated.
+    ///
+    /// Stable since 1.1.0.
+    #[arg(long, requires="gossip")]
+    pub unusable: bool,
+}
+
+impl Deref for UnusableArg {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.unusable
+    }
+}
+
+#[derive(clap::Args, Debug)]
 pub struct CertificationNetworkArg {
     /// Treats the network as a certification network
     ///
-    /// Normally, `sq pki` treats the Web of Trust network as an
-    /// authentication network where a certification only means that
-    /// the binding is correct, not that the target should be treated
-    /// as a trusted introducer.  In a certification network, the
-    /// targets of certifications are treated as trusted introducers
-    /// with infinite depth, and any regular expressions are ignored.
-    /// Note: The trust amount remains unchanged.  This is how most
-    /// so-called PGP path-finding algorithms work.
+    /// Normally, the authentication machinery treats the Web of Trust
+    /// network as an authentication network where a certification
+    /// only means that the binding is correct, not that the target
+    /// should be treated as a trusted introducer.  In a certification
+    /// network, the targets of certifications are treated as trusted
+    /// introducers with infinite depth, and any regular expressions
+    /// are ignored.  Note: The trust amount remains unchanged.  This
+    /// is how most so-called PGP path-finding algorithms work.
     #[arg(long)]
     pub certification_network: bool,
 }
@@ -113,7 +140,7 @@ pub struct RequiredTrustAmountArg {
     /// 120 indicates full authentication; values less than 120
     /// indicate partial authentication.  When
     /// `--certification-network` is passed, this defaults to 1200,
-    /// i.e., `sq pki` tries to find 10 paths.
+    /// i.e., this command tries to find 10 paths.
     #[arg(long="amount", value_name = "AMOUNT")]
     pub trust_amount: Option<TrustAmount<usize>>,
 }

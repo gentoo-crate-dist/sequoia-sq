@@ -306,6 +306,23 @@ fn list_no_userids() {
     assert!(std::str::from_utf8(&output).unwrap().contains(&fp));
 }
 
+#[test]
+fn list_all_no_userids() {
+    // Check that `sq cert list` does not show certificates without
+    // user IDs, but `sq cert list --gossip` does.
+    let sq = Sq::new();
+    let (cert, cert_path, _rev_path)
+        = sq.key_generate::<&str>(&[], &[]);
+    sq.key_import(&cert_path);
+    let fp = cert.fingerprint().to_string();
+
+    let output = sq.cert_list(&[]);
+    assert!(! std::str::from_utf8(&output).unwrap().contains(&fp));
+
+    let output = sq.cert_list(&["--gossip"]);
+    assert!(std::str::from_utf8(&output).unwrap().contains(&fp));
+}
+
 /// Check that --cert FPR shows certificates that are otherwise
 /// unauthenticate.
 #[test]
@@ -366,9 +383,11 @@ fn list_invalid_certs() {
         assert!(sq.cert_list_maybe(&["--gossip", fpr]).is_err());
 
         for userid in userids.iter() {
-            assert!(sq.cert_list_maybe(&["--userid", &userid[..]]).is_err());
-            assert!(sq.cert_list_maybe(&["--gossip", "--userid", &userid[..]])
+            assert!(sq.cert_list_maybe(&["--cert-userid", &userid[..]]).is_err());
+            assert!(sq.cert_list_maybe(&["--gossip", "--cert-userid", &userid[..]])
                     .is_err());
+            sq.cert_list(&["--gossip", "--unusable",
+                           "--cert-userid", &userid[..]]);
         }
     }
 }
@@ -403,6 +422,7 @@ fn list_sha1_userid() {
             sq.cert_list_maybe(&["--cert-userid", &userid[..]]).is_err());
         // Using --gossip should succeed.
         sq.cert_list(&["--gossip", "--cert-userid", &userid[..]]);
+        sq.cert_list(&["--gossip", "--unusable", "--cert-userid", &userid[..]]);
     }
 
     assert!(saw_invalid);
@@ -418,6 +438,7 @@ fn list_sha1_userid() {
             sq.cert_list_maybe(&["--cert-userid", &userid[..]]).is_ok());
         assert!(
             sq.cert_list_maybe(&["--gossip", "--cert-userid", &userid[..]]).is_ok());
+        sq.cert_list(&["--gossip", "--unusable", "--cert-userid", &userid[..]]);
     }
 }
 
@@ -458,6 +479,8 @@ fn list_revoked_userid() {
         assert_eq!(
             sq.cert_list_maybe(&["--gossip", "--cert-userid", &userid[..]]).is_ok(),
             good);
+        // Using --gossip --unusable, so should always succeed.
+        sq.cert_list(&["--gossip", "--unusable", "--cert-userid", &userid[..]]);
     }
 
     assert!(saw_revoked);
