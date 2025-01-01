@@ -1,7 +1,7 @@
 [package]
 name = "sequoia-sq"
 description = "Command-line frontends for Sequoia"
-version = "1.0.0"
+version = "1.1.0"
 authors = [
     "Azul <azul@sequoia-pgp.org>",
     "Heiko Schaefer <heiko@schaefer.name>",
@@ -58,7 +58,7 @@ tokio = { version = "1.13.1" }
 toml_edit = { version = "0.22", default-features = false, features = ["display", "parse"] }
 regex = "1"
 rpassword = "7.0"
-rusqlite = "0.31"
+rusqlite = ">=0.31, <0.33"
 serde = { version = "1.0.137", features = ["derive"] }
 terminal_size = ">=0.2.6, <0.5"
 termcolor = "1.2.0"
@@ -67,7 +67,7 @@ typenum = "1"
 
 # This is for subplot only.  If you don't enable the subplot feature,
 # feel free to patch it out.
-subplotlib = { version = "0.11", optional = true }
+subplotlib = { version = ">=0.11, <0.13", optional = true }
 culpa = { version = "1", optional = true }
 
 [build-dependencies]
@@ -89,7 +89,7 @@ terminal_size = ">=0.2.6, <0.5"
 
 # This is for subplot only.  If you don't enable the subplot feature,
 # feel free to patch it out.
-subplot-build = { version = "0.11", optional = true }
+subplot-build = { version = ">=0.11, <0.13", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2"
