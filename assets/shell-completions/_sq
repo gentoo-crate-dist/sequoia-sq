@@ -1,0 +1,3968 @@
+#compdef sq
+
+autoload -U is-at-least
+
+_sq() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq_commands" \
+"*::: :->sq" \
+&& ret=0
+    case $state in
+    (sq)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-command-$line[1]:"
+        case $line[1] in
+            (encrypt)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'*--for=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--for-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--for-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--for-file=[Read certificates from PATH]:PATH:_files' \
+'*--with-password-file=[File containing password to encrypt the message]:PATH:_files' \
+'--set-metadata-filename=[Set the filename of the encrypted file as metadata]:SET_METADATA_FILENAME:_default' \
+'*--signer=[Sign the message using the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--signer-userid=[Sign the message using the key with the specified user ID]:USERID:_default' \
+'*--signer-email=[Sign the message using the key where a user ID includes the specified email address]:EMAIL:_default' \
+'*--signer-file=[Sign the message using the key read from PATH]:PATH:_files' \
+'*--signature-notation=[Add a notation to the signature.]:NAME:_default:NAME:_default' \
+'--encrypt-for=[Select what kind of keys are considered for encryption.]:PURPOSE:((transport\:"Protects data in transport"
+storage\:"Protects data at rest"
+universal\:"Protects data in transport and at rest"))' \
+'--compression=[Select compression scheme to use]:KIND:(none zip zlib bzip2)' \
+'--profile=[Select the OpenPGP standard for the encryption container]:PROFILE:((rfc4880\:"RFC4880, published in 2007, defines "v4" OpenPGP"))' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--binary[Emit binary data]' \
+'--for-self[Encrypt the message for yourself]' \
+'*--with-password[Prompt to add a password to encrypt with]' \
+'--signer-self[Sign using your default signer keys]' \
+'--use-expired-subkey[Fall back to expired encryption subkeys]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(decrypt)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--signatures=[Set the threshold of valid signatures to N]:N:_default' \
+'*--signer=[Require a signature from a certificate with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--signer-userid=[Require a signature from a certificate with the specified user ID]:USERID:_default' \
+'*--signer-email=[Require a signature from a certificate where a user ID includes the specified email address]:EMAIL:_default' \
+'*--signer-domain=[Require a signature from a certificate where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--signer-file=[Require a signature from a certificate read from PATH]:PATH:_files' \
+'*--recipient-file=[Decrypt the message using the key in KEY_FILE]:KEY_FILE:_files' \
+'*--session-key=[Decrypt an encrypted message using SESSION-KEY]:SESSION-KEY:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--dump-session-key[Print the session key to stderr]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(sign)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'(--output)--signature-file=[Create a detached signature file]:SIG:_default' \
+'(--cleartext)--mode=[Select the signature mode]:MODE:((binary\:"Create binary signatures"
+text\:"Create text signatures"))' \
+'(--append --signature-file --cleartext --notarize --signer --signer-file --signer-email --signer-userid)--merge=[Merge signatures from the input and SIGNED-MESSAGE]:SIGNED-MESSAGE:_files' \
+'*--signer=[Create the signature using the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--signer-userid=[Create the signature using the key with the specified user ID]:USERID:_default' \
+'*--signer-email=[Create the signature using the key where a user ID includes the specified email address]:EMAIL:_default' \
+'*--signer-file=[Create the signature using the key read from PATH]:PATH:_files' \
+'(--merge)*--signature-notation=[Add a notation to the signature.]:NAME:_default:NAME:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--binary[Emit binary data]' \
+'--message[Create an inline-signed message]' \
+'(--append --notarize --binary)--cleartext[Create a cleartext-signed message]' \
+'(--notarize)--append[Append a signature to existing signature]' \
+'(--append)--notarize[Sign a message and all existing signatures]' \
+'--signer-self[Sign using your default signer keys]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(verify)
+_arguments "${_arguments_options[@]}" : \
+'(--signature-file)--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--signature-file=[Verify a detached signature file]:SIG:_files' \
+'--signatures=[Set the threshold of valid signatures to N]:N:_default' \
+'*--signer=[Require a signature from a certificate with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--signer-userid=[Require a signature from a certificate with the specified user ID]:USERID:_default' \
+'*--signer-email=[Require a signature from a certificate where a user ID includes the specified email address]:EMAIL:_default' \
+'*--signer-domain=[Require a signature from a certificate where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--signer-file=[Require a signature from a certificate read from PATH]:PATH:_files' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--message[Verify an inline signed message]' \
+'--cleartext[Verify a cleartext-signed message]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(download)
+_arguments "${_arguments_options[@]}" : \
+'--url=[The data to download]:URL:_default' \
+'--signature=[URL of the signature]:URL:_default' \
+'*--signer=[Require a signature from a certificate with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--signer-userid=[Require a signature from a certificate with the specified user ID]:USERID:_default' \
+'*--signer-email=[Require a signature from a certificate where a user ID includes the specified email address]:EMAIL:_default' \
+'*--signer-domain=[Require a signature from a certificate where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--signer-file=[Require a signature from a certificate read from PATH]:PATH:_files' \
+'--signatures=[Set the threshold of valid signatures to N]:N:_default' \
+'--output=[Write to FILE or stdout if FILE is '\''-'\'']:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(inspect)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Inspect certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Inspect certificates with the specified user ID.  Note\: User IDs are not authenticated.]:USERID:_default' \
+'*--cert-email=[Inspect certificates where a user ID includes the specified email address.  Note\: User IDs are not authenticated.]:EMAIL:_default' \
+'*--cert-domain=[Inspect certificates where a user ID includes an email address for the specified domain.  Note\: User IDs are not authenticated.]:DOMAIN:_default' \
+'*--cert-grep=[Inspect certificates with a user ID that matches the pattern, case insensitively.  Note\: User IDs are not authenticated.]:PATTERN:_default' \
+'*--cert-file=[Read certificates from PATH]:PATH:_files' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--certifications[Print third-party certifications]' \
+'--dump-bad-signatures[Dump signatures that are definitively bad]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(cert)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__cert_commands" \
+"*::: :->cert" \
+&& ret=0
+
+    case $state in
+    (cert)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-cert-command-$line[1]:"
+        case $line[1] in
+            (import)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::input -- Read from FILE or stdin if omitted:_files' \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'*--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-domain=[Use certificates where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--cert-grep=[Use certificates with a user ID that matches the pattern, case insensitively]:PATTERN:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--local[Export local (non-exportable) signatures]' \
+'(--cert --cert-userid --cert-email --cert-domain --cert-grep)--all[Export all certificates]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+'*--userid=[Use the specified user ID]:USERID:_default' \
+'*--email=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[The required amount of trust]:AMOUNT:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--show-paths[Show why a binding is authenticated]' \
+'--gossip[Treats all certificates as unreliable trust roots]' \
+'--certification-network[Treats the network as a certification network]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::pattern -- A pattern to select the bindings to authenticate:_default' \
+&& ret=0
+;;
+(lint)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-domain=[Use certificates where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--cert-grep=[Use certificates with a user ID that matches the pattern, case insensitively]:PATTERN:_default' \
+'*--cert-file=[Read certificates from PATH]:PATH:_files' \
+'--output=[Write to the specified FILE.  If not specified, and the certificate was read from the certificate store, imports the modified certificate into the cert store.  If not specified, and the certificate was read from a file, writes the modified certificate to stdout.]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--fix[Attempts to fix certificates, when possible]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(key)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__key_commands" \
+"*::: :->key" \
+&& ret=0
+
+    case $state in
+    (key)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-key-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[List keys with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[List keys with the specified user ID]:USERID:_default' \
+'*--cert-email=[List keys where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-domain=[List keys where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--cert-grep=[List keys with a user ID that matches the pattern, case insensitively]:PATTERN:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::pattern -- A pattern to filter the displayed certificates:_default' \
+&& ret=0
+;;
+(generate)
+_arguments "${_arguments_options[@]}" : \
+'*--name=[Add a name as user ID to the key]:NAME:_default' \
+'*--email=[Add an email address as user ID to the key]:ADDRESS:_default' \
+'*--userid=[Add a user ID to the key]:USERID:_default' \
+'--cipher-suite=[Select the cryptographic algorithms for the key  The default can be changed in the configuration file using the setting \`key.generate.cipher-suite\`.]:CIPHER-SUITE:(rsa2k rsa3k rsa4k cv25519)' \
+'--profile=[Select the OpenPGP standard for the key]:PROFILE:((rfc4880\:"RFC4880, published in 2007, defines "v4" OpenPGP"))' \
+'(--without-password)--new-password-file=[File containing password to encrypt the secret key material]:PASSWORD_FILE:_files' \
+'--can-encrypt=[Add an encryption-capable subkey \[default\: universal\]]:PURPOSE:((transport\:"Protects data in transport"
+storage\:"Protects data at rest"
+universal\:"Protects data in transport and at rest"))' \
+'--output=[Write the key to the specified file]:FILE:_default' \
+'--rev-cert=[Write the emergency revocation certificate to FILE]:FILE:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--own-key[Mark the key as one'\''s own key]' \
+'--shared-key[Mark the key as a shared key]' \
+'--allow-non-canonical-userids[Don'\''t reject user IDs that are not in canonical form]' \
+'(--name --email --userid)--no-userids[Create a key without any user IDs]' \
+'--without-password[Don'\''t protect the secret key material with a password]' \
+'--can-sign[Add a signing-capable subkey (default)]' \
+'--cannot-sign[Don'\''t add a signing-capable subkey]' \
+'--can-authenticate[Add an authentication-capable subkey (default)]' \
+'--cannot-authenticate[Don'\''t add an authentication-capable subkey]' \
+'--cannot-encrypt[Don'\''t add an encryption-capable subkey]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(import)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::input -- Read from KEY_FILE or stdin if omitted:_files' \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Export keys with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Export keys with the specified user ID]:USERID:_default' \
+'*--cert-email=[Export keys where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-domain=[Export keys where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--cert-grep=[Export keys with a user ID that matches the pattern, case insensitively]:PATTERN:_default' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Delete secret key material from the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Delete secret key material from the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Delete secret key material from the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Delete the secret key material from the key read from PATH]:PATH:_files' \
+'(--cert)--output=[Write the stripped certificate to the specified file]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(password)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Change the password for the secret key material from the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Change the password for the secret key material from the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Change the password for the secret key material from the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Change the password for the secret key material from the key read from PATH]:PATH:_files' \
+'--new-password-file=[File containing password to encrypt the secret key material]:PASSWORD_FILE:_files' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--clear-password[Clear the password protecting the secret key material]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(expire)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Change the expiration of the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Change the expiration of the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Change the expiration of the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Change the expiration of the key read from PATH]:PATH:_files' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(revoke)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Revoke the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Revoke the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Revoke the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Revoke the key read from PATH]:PATH:_files' \
+'--revoker=[Use key with the specified fingerprint or key ID to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:FINGERPRINT|KEYID:_default' \
+'--revoker-userid=[Use key with the specified user ID to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:USERID:_default' \
+'--revoker-email=[Use key where a user ID includes the specified email address to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:EMAIL:_default' \
+'--revoker-file=[Read key from PATH to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:PATH:_files' \
+'--reason=[The reason for the revocation]:REASON:((compromised\:"The secret key material may have been compromised.  Prefer this value if you suspect that the secret key has been leaked"
+superseded\:"The owner of the certificate has a new certificate.  Prefer \`compromised\` if the secret key material has been compromised even if the certificate is also being replaced!  You should include the fingerprint of the new certificate in the message"
+retired\:"The certificate should not be used anymore, and there is no replacement.  This is appropriate when someone leaves an organisation.  Prefer \`compromised\` if the secret key material has been compromised even if the certificate is also being retired!  You should include how to contact the owner, or who to contact instead in the message"
+unspecified\:"None of the other reasons apply.  OpenPGP implementations conservatively treat this type of revocation similar to a compromised key"))' \
+'--message=[A short, explanatory text]:MESSAGE:_default' \
+'*--signature-notation=[Add a notation to the revocation]:NAME:_default:NAME:_default' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(userid)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__key__userid_commands" \
+"*::: :->userid" \
+&& ret=0
+
+    case $state in
+    (userid)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-key-userid-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Add the user ID to the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Add the user ID to the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Add the user ID to the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Add the user ID to the key read from PATH]:PATH:_files' \
+'*--name=[Add a name as user ID to the key]:NAME:_default' \
+'*--email=[Add an email address as user ID to the key]:ADDRESS:_default' \
+'*--userid=[Add a user ID to the key]:USERID:_default' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--allow-non-canonical-userids[Don'\''t reject user IDs that are not in canonical form]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(revoke)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Revoke the user ID from the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Revoke the user ID from the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Revoke the user ID from the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Revoke the user ID from the key read from PATH]:PATH:_files' \
+'--revoker=[Use key with the specified fingerprint or key ID to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:FINGERPRINT|KEYID:_default' \
+'--revoker-userid=[Use key with the specified user ID to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:USERID:_default' \
+'--revoker-email=[Use key where a user ID includes the specified email address to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:EMAIL:_default' \
+'--revoker-file=[Read key from PATH to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:PATH:_files' \
+'--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'--userid-or-add=[Use the specified user ID]:USERID:_default' \
+'--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'--email-or-add=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--name=[Use the self-signed user ID with the specified display name]:DISPLAY_NAME:_default' \
+'--name-or-add=[Use a user ID with the specified display name]:DISPLAY_NAME:_default' \
+'--reason=[The reason for the revocation]:REASON:((retired\:"The user ID is no longer valid.  This is appropriate when someone leaves an organisation, and the organisation does not have their secret key material.  For instance, if someone was part of Debian and retires, they would use this to indicate that a Debian-specific User ID is no longer valid"
+unspecified\:"None of the other reasons apply.  OpenPGP implementations conservatively treat this type of revocation similar to a compromised key"))' \
+'--message=[A short, explanatory text]:MESSAGE:_default' \
+'*--signature-notation=[Add a notation to the certification.]:NAME:_default:NAME:_default' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--allow-non-canonical-userids[Don'\''t reject new user IDs that are not in canonical form]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(subkey)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__key__subkey_commands" \
+"*::: :->subkey" \
+&& ret=0
+
+    case $state in
+    (subkey)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-key-subkey-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Add a subkey to the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Add a subkey to the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Add a subkey to the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Add a subkey to the key read from PATH]:PATH:_files' \
+'--cipher-suite=[Select the cryptographic algorithms for the subkey  The default can be changed in the configuration file using the setting \`key.generate.cipher-suite\`.]:CIPHER-SUITE:(rsa2k rsa3k rsa4k cv25519)' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'--can-encrypt=[Add an encryption-capable subkey \[default\: universal\]]:PURPOSE:((transport\:"Protects data in transport"
+storage\:"Protects data at rest"
+universal\:"Protects data in transport and at rest"))' \
+'(--without-password)--new-password-file=[File containing password to encrypt the secret key material]:PASSWORD_FILE:_files' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--can-sign[Add a signing-capable subkey]' \
+'--can-authenticate[Add an authentication-capable subkey]' \
+'--without-password[Don'\''t protect the subkey'\''s secret key material with a password]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--key=[Export the secret key material for the specified primary key or subkey]:FINGERPRINT|KEYID:_default' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Delete secret key material from the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Delete secret key material from the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Delete secret key material from the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Delete the secret key material from the key read from PATH]:PATH:_files' \
+'*--key=[Delete the specified key'\''s secret key material]:FINGERPRINT|KEYID:_default' \
+'(--cert)--output=[Write the stripped certificate to the specified file]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(password)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Change the password for the secret key material of the specified (sub)keys from the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Change the password for the secret key material of the specified (sub)keys from the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Change the password for the secret key material of the specified (sub)keys from the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Change the password for the secret key material of the specified (sub)keys from the key read from PATH]:PATH:_files' \
+'*--key=[Change the password protecting the specified key'\''s secret key material]:FINGERPRINT|KEYID:_default' \
+'--new-password-file=[File containing password to encrypt the secret key material]:PASSWORD_FILE:_files' \
+'(--cert)--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--clear-password[Clear the password protecting the secret key material]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(expire)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Change the expiration of the specified (sub)keys on the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Change the expiration of the specified (sub)keys on the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Change the expiration of the specified (sub)keys on the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Change the expiration of the specified (sub)keys on the key read from PATH]:PATH:_files' \
+'*--key=[Use the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(revoke)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Revoke the specified subkeys on the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Revoke the specified subkeys on the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Revoke the specified subkeys on the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Revoke the specified subkeys on the key read from PATH]:PATH:_files' \
+'--revoker=[Use key with the specified fingerprint or key ID to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:FINGERPRINT|KEYID:_default' \
+'--revoker-userid=[Use key with the specified user ID to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:USERID:_default' \
+'--revoker-email=[Use key where a user ID includes the specified email address to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:EMAIL:_default' \
+'--revoker-file=[Read key from PATH to create the revocation certificate.  Sign the revocation certificate using the specified key.  By default, the certificate being revoked is used.  Using this option, it is possible to create a third-party revocation.]:PATH:_files' \
+'*--key=[Revoke the specified subkey]:FINGERPRINT|KEYID:_default' \
+'--reason=[The reason for the revocation]:REASON:((compromised\:"The secret key material may have been compromised.  Prefer this value if you suspect that the secret key has been leaked"
+superseded\:"The owner of the certificate has a new certificate.  Prefer \`compromised\` if the secret key material has been compromised even if the certificate is also being replaced!  You should include the fingerprint of the new certificate in the message"
+retired\:"The certificate should not be used anymore, and there is no replacement.  This is appropriate when someone leaves an organisation.  Prefer \`compromised\` if the secret key material has been compromised even if the certificate is also being retired!  You should include how to contact the owner, or who to contact instead in the message"
+unspecified\:"None of the other reasons apply.  OpenPGP implementations conservatively treat this type of revocation similar to a compromised key"))' \
+'--message=[A short, explanatory text]:MESSAGE:_default' \
+'*--signature-notation=[Add a notation to the revocation.]:NAME:_default:NAME:_default' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(bind)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Add the specified subkeys on the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Add the specified subkeys on the key with the specified user ID]:USERID:_default' \
+'--cert-email=[Add the specified subkeys on the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Add the specified subkeys to the key read from PATH]:PATH:_files' \
+'*--key=[Add the key or subkey KEY to the certificate]:KEY:_default' \
+'--creation-time=[Make bound subkeys have the specified creation time]:CREATION_TIME:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'--can-encrypt=[Set the encryption-capable flag]:PURPOSE:((transport\:"Protects data in transport"
+storage\:"Protects data at rest"
+universal\:"Protects data in transport and at rest"))' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--allow-broken-crypto[Allow adopting keys from certificates using broken cryptography]' \
+'--can-sign[Set the signing-capable flag]' \
+'--cannot-sign[Don'\''t set the signing-capable flag]' \
+'--can-authenticate[Set the authentication-capable flag]' \
+'--cannot-authenticate[Don'\''t set the authentication-capable flag]' \
+'--cannot-encrypt[Don'\''t set the encryption-capable flag]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(approvals)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__key__approvals_commands" \
+"*::: :->approvals" \
+&& ret=0
+
+    case $state in
+    (approvals)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-key-approvals-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[List the approvals on the certificate with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[List the approvals on the certificate with the specified user ID]:USERID:_default' \
+'--cert-email=[List the approvals on the certificate where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[List the approvals on the certificate read from PATH]:PATH:_files' \
+'*--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'*--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'*--name=[Use the self-signed user ID with the specified display name]:DISPLAY_NAME:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--pending[List unapproved certifications]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[List the approvals on the certificate with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[List the approvals on the certificate with the specified user ID]:USERID:_default' \
+'--cert-email=[List the approvals on the certificate where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[List the approvals on the certificate read from PATH]:PATH:_files' \
+'*--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'*--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'*--name=[Use the self-signed user ID with the specified display name]:DISPLAY_NAME:_default' \
+'(--remove-all)*--remove-by=[Remove all prior approvals of certifications by this certifier]:FINGERPRINT|KEYID:_default' \
+'(--add-all)*--add-by=[Approve of all certifications by this certifier]:FINGERPRINT|KEYID:_default' \
+'--output=[Write to the specified FILE]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'(--add-all)--remove-all[Remove all prior approvals]' \
+'(--remove-all --remove-by)--add-all[Approve of all pending certifications]' \
+'(--add-all)--add-authenticated[Approve of all certifications by authenticated certifiers]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(pki)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__pki_commands" \
+"*::: :->pki" \
+&& ret=0
+
+    case $state in
+    (pki)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-pki-command-$line[1]:"
+        case $line[1] in
+            (authenticate)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--userid=[Use the specified user ID]:USERID:_default' \
+'--email=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[The required amount of trust]:AMOUNT:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--show-paths[Show why a binding is authenticated]' \
+'--gossip[Treats all certificates as unreliable trust roots]' \
+'--certification-network[Treats the network as a certification network]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(lookup)
+_arguments "${_arguments_options[@]}" : \
+'--userid=[Use the specified user ID]:USERID:_default' \
+'--email=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[The required amount of trust]:AMOUNT:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--show-paths[Show why a binding is authenticated]' \
+'--gossip[Treats all certificates as unreliable trust roots]' \
+'--certification-network[Treats the network as a certification network]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(identify)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--amount=[The required amount of trust]:AMOUNT:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--show-paths[Show why a binding is authenticated]' \
+'--gossip[Treats all certificates as unreliable trust roots]' \
+'--certification-network[Treats the network as a certification network]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(vouch)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__pki__vouch_commands" \
+"*::: :->vouch" \
+&& ret=0
+
+    case $state in
+    (vouch)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-pki-vouch-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+'--certifier=[Create the certification using the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--certifier-userid=[Create the certification using the key with the specified user ID]:USERID:_default' \
+'--certifier-email=[Create the certification using the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--certifier-file=[Create the certification using the key read from PATH]:PATH:_files' \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-file=[Read certificates from PATH]:PATH:_files' \
+'*--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'*--userid-or-add=[Use the specified user ID]:USERID:_default' \
+'*--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'*--email-or-add=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[Set the amount of trust]:AMOUNT:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'*--signature-notation=[Add a notation to the certification.]:NAME:_default:NAME:_default' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--certifier-self[Create the certification using your default certification key]' \
+'--all[Use all self-signed user IDs]' \
+'--allow-non-canonical-userids[Don'\''t reject new user IDs that are not in canonical form]' \
+'--local[Make the certification a local certification]' \
+'--non-revocable[Mark the certification as being non-revocable]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(authorize)
+_arguments "${_arguments_options[@]}" : \
+'--certifier=[Create the certification using the key with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--certifier-userid=[Create the certification using the key with the specified user ID]:USERID:_default' \
+'--certifier-email=[Create the certification using the key where a user ID includes the specified email address]:EMAIL:_default' \
+'--certifier-file=[Create the certification using the key read from PATH]:PATH:_files' \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-file=[Read certificates from PATH]:PATH:_files' \
+'*--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'*--userid-or-add=[Use the specified user ID]:USERID:_default' \
+'*--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'*--email-or-add=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[Set the amount of trust]:AMOUNT:_default' \
+'--depth=[Set the trust depth]:TRUST_DEPTH:_default' \
+'*--domain=[Add a domain constraint to the introducer]:DOMAIN:_default' \
+'*--regex=[Add a regular expression to constrain the introducer]:REGEX:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'*--signature-notation=[Add a notation to the certification.]:NAME:_default:NAME:_default' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--certifier-self[Create the certification using your default certification key]' \
+'--all[Use all self-signed user IDs]' \
+'--allow-non-canonical-userids[Don'\''t reject new user IDs that are not in canonical form]' \
+'(--regex)--unconstrained[Don'\''t constrain the introducer]' \
+'--local[Make the certification a local certification]' \
+'--non-revocable[Mark the certification as being non-revocable]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(link)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__pki__link_commands" \
+"*::: :->link" \
+&& ret=0
+
+    case $state in
+    (link)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-pki-link-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-special=[Use certificates identified by the special name]:SPECIAL:(public-directories keys.openpgp.org keys.mailvelope.com proton.me wkd dane autocrypt web)' \
+'*--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'*--userid-or-add=[Use the specified user ID]:USERID:_default' \
+'*--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'*--email-or-add=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[Set the amount of trust]:AMOUNT:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'*--signature-notation=[Add a notation to the certification.]:NAME:_default:NAME:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--all[Use all self-signed user IDs]' \
+'--allow-non-canonical-userids[Don'\''t reject new user IDs that are not in canonical form]' \
+'(--amount)--temporary[Temporarily accepts the binding]' \
+'--recreate[Recreate signature even if the parameters did not change]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(authorize)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-special=[Use certificates identified by the special name]:SPECIAL:(public-directories keys.openpgp.org keys.mailvelope.com proton.me wkd dane autocrypt web)' \
+'*--userid=[Use the specified self-signed user ID]:USERID:_default' \
+'*--userid-or-add=[Use the specified user ID]:USERID:_default' \
+'*--email=[Use the self-signed user ID with the specified email address]:EMAIL:_default' \
+'*--email-or-add=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--amount=[Set the amount of trust]:AMOUNT:_default' \
+'--depth=[Set the trust depth]:TRUST_DEPTH:_default' \
+'*--domain=[Add a domain constraint to the introducer]:DOMAIN:_default' \
+'*--regex=[Add a regular expression to constrain the introducer]:REGEX:_default' \
+'--expiration=[Sets the expiration time]:EXPIRATION:_default' \
+'*--signature-notation=[Add a notation to the certification.]:NAME:_default:NAME:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--all[Use all self-signed user IDs]' \
+'--allow-non-canonical-userids[Don'\''t reject new user IDs that are not in canonical form]' \
+'(--regex)--unconstrained[Don'\''t constrain the introducer]' \
+'--recreate[Recreate the signature even if the parameters did not change]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(retract)
+_arguments "${_arguments_options[@]}" : \
+'*--signature-notation=[Add a notation to the certification.]:NAME:_default:NAME:_default' \
+'--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-special=[Use certificates identified by the special name]:SPECIAL:(public-directories keys.openpgp.org keys.mailvelope.com proton.me wkd dane autocrypt web)' \
+'*--userid=[Use the specified user ID]:USERID:_default' \
+'*--email=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--recreate[Recreate signature even if the parameters did not change]' \
+'--all[Use all self-signed user IDs]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-domain=[Use certificates where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--cert-grep=[Use certificates with a user ID that matches the pattern, case insensitively]:PATTERN:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--ca[Only lists bindings linked as CAs.]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::pattern -- A pattern to select the bindings to authenticate:_default' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(path)
+_arguments "${_arguments_options[@]}" : \
+'--userid=[Use the specified user ID]:USERID:_default' \
+'--email=[Use a user ID with the specified email address]:EMAIL:_default' \
+'--name=[Use a user ID with the specified display name]:DISPLAY_NAME:_default' \
+'--amount=[The required amount of trust]:AMOUNT:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--certification-network[Treats the network as a certification network]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::path -- The path to authenticate:_default' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(network)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__network_commands" \
+"*::: :->network" \
+&& ret=0
+
+    case $state in
+    (network)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-network-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+'*--server=[Set a key server to use.  Can be given multiple times.  The default can be changed in the configuration file using the setting \`network.keyserver.servers\`.]:URI:_default' \
+'--output=[Write to FILE (or stdout when omitted) instead of importing into the certificate store]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'()--all[Fetch updates for all known certificates]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::query -- Retrieve certificate(s) using QUERY. This may be a fingerprint, a KeyID, an email address, or a https URL.:_default' \
+&& ret=0
+;;
+(keyserver)
+_arguments "${_arguments_options[@]}" : \
+'*--server=[Set a key server to use.  Can be given multiple times.  The default can be changed in the configuration file using the setting \`network.keyserver.servers\`.]:URI:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__network__keyserver_commands" \
+"*::: :->keyserver" \
+&& ret=0
+
+    case $state in
+    (keyserver)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-network-keyserver-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE (or stdout when omitted) instead of importing into the certificate store]:FILE:_default' \
+'*--server=[Set a key server to use.  Can be given multiple times.  The default can be changed in the configuration file using the setting \`network.keyserver.servers\`.]:URI:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'()--all[Fetch updates for all known certificates]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::query -- Retrieve certificate(s) using QUERY. This may be a fingerprint, a KeyID, or an email address.:_default' \
+&& ret=0
+;;
+(publish)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-domain=[Use certificates where a user ID includes an email address for the specified domain]:DOMAIN:_default' \
+'*--cert-file=[Read certificates from PATH]:PATH:_files' \
+'*--server=[Set a key server to use.  Can be given multiple times.  The default can be changed in the configuration file using the setting \`network.keyserver.servers\`.]:URI:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(wkd)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__network__wkd_commands" \
+"*::: :->wkd" \
+&& ret=0
+
+    case $state in
+    (wkd)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-network-wkd-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE (or stdout when omitted) instead of importing into the certificate store]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'()--all[Fetch updates for all known certificates]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::addresses -- Retrieve certificate(s) for ADDRESS:_default' \
+&& ret=0
+;;
+(publish)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-file=[Read certificates from PATH]:PATH:_files' \
+'--method=[Select kind of WKD hierarchy to be created]:METHOD:((advanced\:"Create a WKD using the advanced method"
+direct\:"Create a WKD using the direct method"))' \
+'--rsync-path=[Path to the local rsync command to use, implies --rsync]:RSYNC:_files' \
+'--domain=[Generate a WKD for a fully qualified domain name for email]:FQDN:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--all[Publish authenticated certs with a user ID matching domain]' \
+'--create[Create the WKD hierarchy if it does not exist yet]' \
+'--rsync[Use rsync(1) to access DEST]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':destination -- WKD location on the server, passed to rsync(1):_default' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(dane)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__network__dane_commands" \
+"*::: :->dane" \
+&& ret=0
+
+    case $state in
+    (dane)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-network-dane-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE (or stdout when omitted) instead of importing into the certificate store]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'()--all[Fetch updates for all known certificates]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::addresses -- Retrieve certificate(s) for ADDRESS:_default' \
+&& ret=0
+;;
+(generate)
+_arguments "${_arguments_options[@]}" : \
+'*--cert=[Use certificates with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'*--cert-userid=[Use certificates with the specified user ID]:USERID:_default' \
+'*--cert-email=[Use certificates where a user ID includes the specified email address]:EMAIL:_default' \
+'*--cert-file=[Read certificates from PATH]:PATH:_files' \
+'--domain=[Generate DANE records for this domain name]:FQDN:_default' \
+'--ttl=[Set the TTL (maximum cache duration) of the resource records]:DURATION:_default' \
+'--size-limit=[Try to shrink the certificates to this size]:BYTES:_default' \
+'--type=[Change the emitted resource record type]:TYPE:(openpgp generic)' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--all[Publish authenticated certs with a user ID matching domain]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(keyring)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__keyring_commands" \
+"*::: :->keyring" \
+&& ret=0
+
+    case $state in
+    (keyring)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-keyring-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--all-userids[List all user ids]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(split)
+_arguments "${_arguments_options[@]}" : \
+'--prefix=[Write to files with PREFIX \[defaults\: \`FILE-\` if FILE is set, or \`output-\` if read from stdin\]]:PREFIX:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(merge)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::input -- Read from FILE or stdin if omitted:_files' \
+&& ret=0
+;;
+(filter)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'*--userid=[Match on USERID]:USERID:_default' \
+'*--name=[Match on NAME]:NAME:_default' \
+'*--email=[Match on email ADDRESS]:ADDRESS:_default' \
+'*--domain=[Match on email domain FQDN]:FQDN:_default' \
+'*--cert=[Match on certificate fingerprints and key IDs]:FINGERPRINT|KEYID:_default' \
+'*--key=[Match on (sub)key fingerprints and key IDs]:FINGERPRINT|KEYID:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--experimental[Opt-in to using an experimental feature]' \
+'--prune-certs[Remove certificate components not matching the filter]' \
+'--to-cert[Convert any keys in the input to certificates.  Converting a key to a certificate removes secret key material from the key thereby turning it into a certificate.]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::input -- Read from FILE or stdin if omitted:_files' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(packet)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__packet_commands" \
+"*::: :->packet" \
+&& ret=0
+
+    case $state in
+    (packet)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-packet-command-$line[1]:"
+        case $line[1] in
+            (armor)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--label=[Select the kind of armor header]:LABEL:(auto message cert key sig file)' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(dearmor)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(dump)
+_arguments "${_arguments_options[@]}" : \
+'--cert=[Dump the packets of the certificate with the specified fingerprint or key ID]:FINGERPRINT|KEYID:_default' \
+'--cert-userid=[Dump the packets of the certificate with the specified user ID]:USERID:_default' \
+'--cert-email=[Dump the packets of the certificate where a user ID includes the specified email address]:EMAIL:_default' \
+'--cert-file=[Dump the packets of the cert read from PATH]:PATH:_files' \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'*--session-key=[Decrypt an encrypted message using SESSION-KEY]:SESSION-KEY:_default' \
+'*--recipient-file=[Decrypt the message using the key in KEY_FILE]:KEY_FILE:_files' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--mpis[Print cryptographic artifacts]' \
+'--hex[Print a hexdump]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(decrypt)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'*--recipient-file=[Decrypt the message using the key in KEY_FILE]:KEY_FILE:_files' \
+'*--session-key=[Decrypt an encrypted message using SESSION-KEY]:SESSION-KEY:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--binary[Emit binary data]' \
+'--dump-session-key[Print the session key to stderr]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(split)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--output-prefix=[Write packets to individual files starting with the given prefix.  The file names are formed by joining the prefix, the path of the packet in the source object (recall\: packets can be nested), and a human-readable packet type with dashes ('\''-'\''). ]:PREFIX:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--binary[Emit binary data]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::input -- Read from FILE or stdin if FILE is '\''-'\'':_default' \
+&& ret=0
+;;
+(join)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'(--binary)--label=[Select the kind of armor header]:LABEL:(auto message cert key sig file)' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--binary[Emit binary data]' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'*::input -- Read from FILE or stdin if omitted:_files' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(config)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__config_commands" \
+"*::: :->config" \
+&& ret=0
+
+    case $state in
+    (config)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-config-command-$line[1]:"
+        case $line[1] in
+            (get)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::name -- Get the value of the configuration NAME:_default' \
+&& ret=0
+;;
+(inspect)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+":: :_sq__config__inspect_commands" \
+"*::: :->inspect" \
+&& ret=0
+
+    case $state in
+    (inspect)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-config-inspect-command-$line[1]:"
+        case $line[1] in
+            (paths)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(network)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(policy)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(template)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Write to FILE or stdout if omitted]:FILE:_default' \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(version)
+_arguments "${_arguments_options[@]}" : \
+'--cli-version=[Select a CLI version]:CLI_VERSION:_default' \
+'--home=[Set the home directory.]:PATH:_default' \
+'--key-store=[Override the key store server and its data]:PATH:_default' \
+'--cert-store=[Specify the location of the certificate store]:PATH:_default' \
+'*--keyring=[Specify the location of a keyring to use]:PATH:_files' \
+'*--known-notation=[Add NOTATION to the list of known notations]:NOTATION:_default' \
+'--time=[Set the reference time as an ISO 8601 formatted timestamp]:TIME:_default' \
+'--policy-as-of=[Select the cryptographic policy as of the specified time]:TIME:_default' \
+'*--trust-root=[Consider the specified certificate to be a trust root]:FINGERPRINT|KEYID:_default' \
+'*--password-file=[Seed the password cache with the specified password]:FILE:_files' \
+'--overwrite[Overwrite existing files]' \
+'-v[Be more verbose]' \
+'--verbose[Be more verbose]' \
+'(-v --verbose)-q[Be more quiet]' \
+'(-v --verbose)--quiet[Be more quiet]' \
+'--batch[Prevents any kind of prompting]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-command-$line[1]:"
+        case $line[1] in
+            (encrypt)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(decrypt)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(sign)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(verify)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(download)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(inspect)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(cert)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__cert_commands" \
+"*::: :->cert" \
+&& ret=0
+
+    case $state in
+    (cert)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-cert-command-$line[1]:"
+        case $line[1] in
+            (import)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(lint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(key)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__key_commands" \
+"*::: :->key" \
+&& ret=0
+
+    case $state in
+    (key)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-key-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(generate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(import)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(password)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(expire)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(revoke)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(userid)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__key__userid_commands" \
+"*::: :->userid" \
+&& ret=0
+
+    case $state in
+    (userid)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-key-userid-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(revoke)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(subkey)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__key__subkey_commands" \
+"*::: :->subkey" \
+&& ret=0
+
+    case $state in
+    (subkey)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-key-subkey-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(password)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(expire)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(revoke)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(bind)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(approvals)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__key__approvals_commands" \
+"*::: :->approvals" \
+&& ret=0
+
+    case $state in
+    (approvals)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-key-approvals-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(pki)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__pki_commands" \
+"*::: :->pki" \
+&& ret=0
+
+    case $state in
+    (pki)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-pki-command-$line[1]:"
+        case $line[1] in
+            (authenticate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(lookup)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(identify)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(vouch)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__pki__vouch_commands" \
+"*::: :->vouch" \
+&& ret=0
+
+    case $state in
+    (vouch)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-pki-vouch-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(authorize)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(link)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__pki__link_commands" \
+"*::: :->link" \
+&& ret=0
+
+    case $state in
+    (link)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-pki-link-command-$line[1]:"
+        case $line[1] in
+            (add)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(authorize)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(retract)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(path)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(network)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__network_commands" \
+"*::: :->network" \
+&& ret=0
+
+    case $state in
+    (network)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-network-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(keyserver)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__network__keyserver_commands" \
+"*::: :->keyserver" \
+&& ret=0
+
+    case $state in
+    (keyserver)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-network-keyserver-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(publish)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(wkd)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__network__wkd_commands" \
+"*::: :->wkd" \
+&& ret=0
+
+    case $state in
+    (wkd)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-network-wkd-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(publish)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(dane)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__network__dane_commands" \
+"*::: :->dane" \
+&& ret=0
+
+    case $state in
+    (dane)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-network-dane-command-$line[1]:"
+        case $line[1] in
+            (search)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(generate)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(keyring)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__keyring_commands" \
+"*::: :->keyring" \
+&& ret=0
+
+    case $state in
+    (keyring)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-keyring-command-$line[1]:"
+        case $line[1] in
+            (list)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(split)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(merge)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(filter)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(packet)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__packet_commands" \
+"*::: :->packet" \
+&& ret=0
+
+    case $state in
+    (packet)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-packet-command-$line[1]:"
+        case $line[1] in
+            (armor)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(dearmor)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(dump)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(decrypt)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(split)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(join)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(config)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__config_commands" \
+"*::: :->config" \
+&& ret=0
+
+    case $state in
+    (config)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-config-command-$line[1]:"
+        case $line[1] in
+            (get)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(inspect)
+_arguments "${_arguments_options[@]}" : \
+":: :_sq__help__config__inspect_commands" \
+"*::: :->inspect" \
+&& ret=0
+
+    case $state in
+    (inspect)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:sq-help-config-inspect-command-$line[1]:"
+        case $line[1] in
+            (paths)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(network)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(policy)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(template)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+(version)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_sq_commands] )) ||
+_sq_commands() {
+    local commands; commands=(
+'encrypt:Encrypt a message' \
+'decrypt:Decrypt a message' \
+'sign:Sign messages or data files' \
+'verify:Verify signed messages or detached signatures' \
+'download:Download and authenticate the data' \
+'inspect:Inspect data, like file(1)' \
+'cert:Manage certificates' \
+'key:Manage keys' \
+'pki:Authenticate certs using the Web of Trust' \
+'network:Retrieve and publish certificates over the network' \
+'keyring:Manage collections of keys or certs' \
+'packet:Low-level packet manipulation' \
+'config:Get configuration options' \
+'version:Detailed version and output version information' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'sq commands' commands "$@"
+}
+(( $+functions[_sq__cert_commands] )) ||
+_sq__cert_commands() {
+    local commands; commands=(
+'import:Import certificates into the local certificate store' \
+'export:Export certificates from the local certificate store' \
+'list:List all authenticated bindings (User ID and certificate pairs)' \
+'lint:Check certificates for issues' \
+    )
+    _describe -t commands 'sq cert commands' commands "$@"
+}
+(( $+functions[_sq__cert__export_commands] )) ||
+_sq__cert__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq cert export commands' commands "$@"
+}
+(( $+functions[_sq__cert__import_commands] )) ||
+_sq__cert__import_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq cert import commands' commands "$@"
+}
+(( $+functions[_sq__cert__lint_commands] )) ||
+_sq__cert__lint_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq cert lint commands' commands "$@"
+}
+(( $+functions[_sq__cert__list_commands] )) ||
+_sq__cert__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq cert list commands' commands "$@"
+}
+(( $+functions[_sq__config_commands] )) ||
+_sq__config_commands() {
+    local commands; commands=(
+'get:Get configuration options' \
+'inspect:Inspect effective configuration details' \
+'template:Write a template configuration file' \
+    )
+    _describe -t commands 'sq config commands' commands "$@"
+}
+(( $+functions[_sq__config__get_commands] )) ||
+_sq__config__get_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq config get commands' commands "$@"
+}
+(( $+functions[_sq__config__inspect_commands] )) ||
+_sq__config__inspect_commands() {
+    local commands; commands=(
+'paths:Inspect relevant paths' \
+'network:Inspect the network configuration' \
+'policy:Inspect the cryptographic policy' \
+    )
+    _describe -t commands 'sq config inspect commands' commands "$@"
+}
+(( $+functions[_sq__config__inspect__network_commands] )) ||
+_sq__config__inspect__network_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq config inspect network commands' commands "$@"
+}
+(( $+functions[_sq__config__inspect__paths_commands] )) ||
+_sq__config__inspect__paths_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq config inspect paths commands' commands "$@"
+}
+(( $+functions[_sq__config__inspect__policy_commands] )) ||
+_sq__config__inspect__policy_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq config inspect policy commands' commands "$@"
+}
+(( $+functions[_sq__config__template_commands] )) ||
+_sq__config__template_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq config template commands' commands "$@"
+}
+(( $+functions[_sq__decrypt_commands] )) ||
+_sq__decrypt_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq decrypt commands' commands "$@"
+}
+(( $+functions[_sq__download_commands] )) ||
+_sq__download_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq download commands' commands "$@"
+}
+(( $+functions[_sq__encrypt_commands] )) ||
+_sq__encrypt_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq encrypt commands' commands "$@"
+}
+(( $+functions[_sq__help_commands] )) ||
+_sq__help_commands() {
+    local commands; commands=(
+'encrypt:Encrypt a message' \
+'decrypt:Decrypt a message' \
+'sign:Sign messages or data files' \
+'verify:Verify signed messages or detached signatures' \
+'download:Download and authenticate the data' \
+'inspect:Inspect data, like file(1)' \
+'cert:Manage certificates' \
+'key:Manage keys' \
+'pki:Authenticate certs using the Web of Trust' \
+'network:Retrieve and publish certificates over the network' \
+'keyring:Manage collections of keys or certs' \
+'packet:Low-level packet manipulation' \
+'config:Get configuration options' \
+'version:Detailed version and output version information' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'sq help commands' commands "$@"
+}
+(( $+functions[_sq__help__cert_commands] )) ||
+_sq__help__cert_commands() {
+    local commands; commands=(
+'import:Import certificates into the local certificate store' \
+'export:Export certificates from the local certificate store' \
+'list:List all authenticated bindings (User ID and certificate pairs)' \
+'lint:Check certificates for issues' \
+    )
+    _describe -t commands 'sq help cert commands' commands "$@"
+}
+(( $+functions[_sq__help__cert__export_commands] )) ||
+_sq__help__cert__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help cert export commands' commands "$@"
+}
+(( $+functions[_sq__help__cert__import_commands] )) ||
+_sq__help__cert__import_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help cert import commands' commands "$@"
+}
+(( $+functions[_sq__help__cert__lint_commands] )) ||
+_sq__help__cert__lint_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help cert lint commands' commands "$@"
+}
+(( $+functions[_sq__help__cert__list_commands] )) ||
+_sq__help__cert__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help cert list commands' commands "$@"
+}
+(( $+functions[_sq__help__config_commands] )) ||
+_sq__help__config_commands() {
+    local commands; commands=(
+'get:Get configuration options' \
+'inspect:Inspect effective configuration details' \
+'template:Write a template configuration file' \
+    )
+    _describe -t commands 'sq help config commands' commands "$@"
+}
+(( $+functions[_sq__help__config__get_commands] )) ||
+_sq__help__config__get_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help config get commands' commands "$@"
+}
+(( $+functions[_sq__help__config__inspect_commands] )) ||
+_sq__help__config__inspect_commands() {
+    local commands; commands=(
+'paths:Inspect relevant paths' \
+'network:Inspect the network configuration' \
+'policy:Inspect the cryptographic policy' \
+    )
+    _describe -t commands 'sq help config inspect commands' commands "$@"
+}
+(( $+functions[_sq__help__config__inspect__network_commands] )) ||
+_sq__help__config__inspect__network_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help config inspect network commands' commands "$@"
+}
+(( $+functions[_sq__help__config__inspect__paths_commands] )) ||
+_sq__help__config__inspect__paths_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help config inspect paths commands' commands "$@"
+}
+(( $+functions[_sq__help__config__inspect__policy_commands] )) ||
+_sq__help__config__inspect__policy_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help config inspect policy commands' commands "$@"
+}
+(( $+functions[_sq__help__config__template_commands] )) ||
+_sq__help__config__template_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help config template commands' commands "$@"
+}
+(( $+functions[_sq__help__decrypt_commands] )) ||
+_sq__help__decrypt_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help decrypt commands' commands "$@"
+}
+(( $+functions[_sq__help__download_commands] )) ||
+_sq__help__download_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help download commands' commands "$@"
+}
+(( $+functions[_sq__help__encrypt_commands] )) ||
+_sq__help__encrypt_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help encrypt commands' commands "$@"
+}
+(( $+functions[_sq__help__help_commands] )) ||
+_sq__help__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help help commands' commands "$@"
+}
+(( $+functions[_sq__help__inspect_commands] )) ||
+_sq__help__inspect_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help inspect commands' commands "$@"
+}
+(( $+functions[_sq__help__key_commands] )) ||
+_sq__help__key_commands() {
+    local commands; commands=(
+'list:List keys managed by the key store' \
+'generate:Generate a new key' \
+'import:Import keys into the key store' \
+'export:Export keys from the key store' \
+'delete:Delete a certificate'\''s secret key material' \
+'password:Change the password protecting secret key material' \
+'expire:Change a certificate'\''s expiration time' \
+'revoke:Revoke a certificate' \
+'userid:Manage User IDs' \
+'subkey:Manage subkeys' \
+'approvals:Manages certification approvals' \
+    )
+    _describe -t commands 'sq help key commands' commands "$@"
+}
+(( $+functions[_sq__help__key__approvals_commands] )) ||
+_sq__help__key__approvals_commands() {
+    local commands; commands=(
+'list:Lists third-party certifications' \
+'update:Approves of third-party certifications' \
+    )
+    _describe -t commands 'sq help key approvals commands' commands "$@"
+}
+(( $+functions[_sq__help__key__approvals__list_commands] )) ||
+_sq__help__key__approvals__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key approvals list commands' commands "$@"
+}
+(( $+functions[_sq__help__key__approvals__update_commands] )) ||
+_sq__help__key__approvals__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key approvals update commands' commands "$@"
+}
+(( $+functions[_sq__help__key__delete_commands] )) ||
+_sq__help__key__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key delete commands' commands "$@"
+}
+(( $+functions[_sq__help__key__expire_commands] )) ||
+_sq__help__key__expire_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key expire commands' commands "$@"
+}
+(( $+functions[_sq__help__key__export_commands] )) ||
+_sq__help__key__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key export commands' commands "$@"
+}
+(( $+functions[_sq__help__key__generate_commands] )) ||
+_sq__help__key__generate_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key generate commands' commands "$@"
+}
+(( $+functions[_sq__help__key__import_commands] )) ||
+_sq__help__key__import_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key import commands' commands "$@"
+}
+(( $+functions[_sq__help__key__list_commands] )) ||
+_sq__help__key__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key list commands' commands "$@"
+}
+(( $+functions[_sq__help__key__password_commands] )) ||
+_sq__help__key__password_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key password commands' commands "$@"
+}
+(( $+functions[_sq__help__key__revoke_commands] )) ||
+_sq__help__key__revoke_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key revoke commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey_commands] )) ||
+_sq__help__key__subkey_commands() {
+    local commands; commands=(
+'add:Add a new subkey to a certificate' \
+'export:Export keys from the key store' \
+'delete:Delete a certificate'\''s secret key material' \
+'password:Change the password protecting secret key material' \
+'expire:Change a subkey'\''s expiration time' \
+'revoke:Revoke a subkey' \
+'bind:Bind keys from one certificate to another' \
+    )
+    _describe -t commands 'sq help key subkey commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__add_commands] )) ||
+_sq__help__key__subkey__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey add commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__bind_commands] )) ||
+_sq__help__key__subkey__bind_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey bind commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__delete_commands] )) ||
+_sq__help__key__subkey__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey delete commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__expire_commands] )) ||
+_sq__help__key__subkey__expire_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey expire commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__export_commands] )) ||
+_sq__help__key__subkey__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey export commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__password_commands] )) ||
+_sq__help__key__subkey__password_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey password commands' commands "$@"
+}
+(( $+functions[_sq__help__key__subkey__revoke_commands] )) ||
+_sq__help__key__subkey__revoke_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key subkey revoke commands' commands "$@"
+}
+(( $+functions[_sq__help__key__userid_commands] )) ||
+_sq__help__key__userid_commands() {
+    local commands; commands=(
+'add:Add a user ID' \
+'revoke:Revoke a user ID' \
+    )
+    _describe -t commands 'sq help key userid commands' commands "$@"
+}
+(( $+functions[_sq__help__key__userid__add_commands] )) ||
+_sq__help__key__userid__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key userid add commands' commands "$@"
+}
+(( $+functions[_sq__help__key__userid__revoke_commands] )) ||
+_sq__help__key__userid__revoke_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help key userid revoke commands' commands "$@"
+}
+(( $+functions[_sq__help__keyring_commands] )) ||
+_sq__help__keyring_commands() {
+    local commands; commands=(
+'list:List keys in a keyring' \
+'split:Split a keyring into individual keys' \
+'merge:Merge keys or keyrings into a single keyring' \
+'filter:Join keys into a keyring applying a filter' \
+    )
+    _describe -t commands 'sq help keyring commands' commands "$@"
+}
+(( $+functions[_sq__help__keyring__filter_commands] )) ||
+_sq__help__keyring__filter_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help keyring filter commands' commands "$@"
+}
+(( $+functions[_sq__help__keyring__list_commands] )) ||
+_sq__help__keyring__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help keyring list commands' commands "$@"
+}
+(( $+functions[_sq__help__keyring__merge_commands] )) ||
+_sq__help__keyring__merge_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help keyring merge commands' commands "$@"
+}
+(( $+functions[_sq__help__keyring__split_commands] )) ||
+_sq__help__keyring__split_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help keyring split commands' commands "$@"
+}
+(( $+functions[_sq__help__network_commands] )) ||
+_sq__help__network_commands() {
+    local commands; commands=(
+'search:Retrieve certificates using all supported network services' \
+'keyserver:Retrieve and publishes certificates via key servers' \
+'wkd:Retrieve and publishes certificates via Web Key Directories' \
+'dane:Retrieve and publishes certificates via DANE' \
+    )
+    _describe -t commands 'sq help network commands' commands "$@"
+}
+(( $+functions[_sq__help__network__dane_commands] )) ||
+_sq__help__network__dane_commands() {
+    local commands; commands=(
+'search:Retrieve certificates using DANE' \
+'generate:Generate DANE records for the given domain and certs' \
+    )
+    _describe -t commands 'sq help network dane commands' commands "$@"
+}
+(( $+functions[_sq__help__network__dane__generate_commands] )) ||
+_sq__help__network__dane__generate_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network dane generate commands' commands "$@"
+}
+(( $+functions[_sq__help__network__dane__search_commands] )) ||
+_sq__help__network__dane__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network dane search commands' commands "$@"
+}
+(( $+functions[_sq__help__network__keyserver_commands] )) ||
+_sq__help__network__keyserver_commands() {
+    local commands; commands=(
+'search:Retrieve certificates from key servers' \
+'publish:Publish certificates on key servers' \
+    )
+    _describe -t commands 'sq help network keyserver commands' commands "$@"
+}
+(( $+functions[_sq__help__network__keyserver__publish_commands] )) ||
+_sq__help__network__keyserver__publish_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network keyserver publish commands' commands "$@"
+}
+(( $+functions[_sq__help__network__keyserver__search_commands] )) ||
+_sq__help__network__keyserver__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network keyserver search commands' commands "$@"
+}
+(( $+functions[_sq__help__network__search_commands] )) ||
+_sq__help__network__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network search commands' commands "$@"
+}
+(( $+functions[_sq__help__network__wkd_commands] )) ||
+_sq__help__network__wkd_commands() {
+    local commands; commands=(
+'search:Retrieve certificates from a Web Key Directory' \
+'publish:Publish certificates in a Web Key Directory' \
+    )
+    _describe -t commands 'sq help network wkd commands' commands "$@"
+}
+(( $+functions[_sq__help__network__wkd__publish_commands] )) ||
+_sq__help__network__wkd__publish_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network wkd publish commands' commands "$@"
+}
+(( $+functions[_sq__help__network__wkd__search_commands] )) ||
+_sq__help__network__wkd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help network wkd search commands' commands "$@"
+}
+(( $+functions[_sq__help__packet_commands] )) ||
+_sq__help__packet_commands() {
+    local commands; commands=(
+'armor:Convert binary to ASCII' \
+'dearmor:Convert ASCII to binary' \
+'dump:List packets' \
+'decrypt:Unwrap an encryption container' \
+'split:Split a message into packets' \
+'join:Join packets split across files' \
+    )
+    _describe -t commands 'sq help packet commands' commands "$@"
+}
+(( $+functions[_sq__help__packet__armor_commands] )) ||
+_sq__help__packet__armor_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help packet armor commands' commands "$@"
+}
+(( $+functions[_sq__help__packet__dearmor_commands] )) ||
+_sq__help__packet__dearmor_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help packet dearmor commands' commands "$@"
+}
+(( $+functions[_sq__help__packet__decrypt_commands] )) ||
+_sq__help__packet__decrypt_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help packet decrypt commands' commands "$@"
+}
+(( $+functions[_sq__help__packet__dump_commands] )) ||
+_sq__help__packet__dump_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help packet dump commands' commands "$@"
+}
+(( $+functions[_sq__help__packet__join_commands] )) ||
+_sq__help__packet__join_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help packet join commands' commands "$@"
+}
+(( $+functions[_sq__help__packet__split_commands] )) ||
+_sq__help__packet__split_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help packet split commands' commands "$@"
+}
+(( $+functions[_sq__help__pki_commands] )) ||
+_sq__help__pki_commands() {
+    local commands; commands=(
+'authenticate:Authenticate a binding' \
+'lookup:Lookup the certificates associated with a User ID' \
+'identify:Identify a certificate' \
+'vouch:Manage certifications' \
+'link:Manage authenticated certificate and User ID links' \
+'path:Verify the specified path' \
+    )
+    _describe -t commands 'sq help pki commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__authenticate_commands] )) ||
+_sq__help__pki__authenticate_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki authenticate commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__identify_commands] )) ||
+_sq__help__pki__identify_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki identify commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__link_commands] )) ||
+_sq__help__pki__link_commands() {
+    local commands; commands=(
+'add:Link a certificate and a user ID' \
+'authorize:Make a certificate a trusted introducer' \
+'retract:Retract links' \
+'list:List links' \
+    )
+    _describe -t commands 'sq help pki link commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__link__add_commands] )) ||
+_sq__help__pki__link__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki link add commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__link__authorize_commands] )) ||
+_sq__help__pki__link__authorize_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki link authorize commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__link__list_commands] )) ||
+_sq__help__pki__link__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki link list commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__link__retract_commands] )) ||
+_sq__help__pki__link__retract_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki link retract commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__lookup_commands] )) ||
+_sq__help__pki__lookup_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki lookup commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__path_commands] )) ||
+_sq__help__pki__path_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki path commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__vouch_commands] )) ||
+_sq__help__pki__vouch_commands() {
+    local commands; commands=(
+'add:Certify a User ID for a Certificate' \
+'authorize:Mark a certificate as a trusted introducer' \
+    )
+    _describe -t commands 'sq help pki vouch commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__vouch__add_commands] )) ||
+_sq__help__pki__vouch__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki vouch add commands' commands "$@"
+}
+(( $+functions[_sq__help__pki__vouch__authorize_commands] )) ||
+_sq__help__pki__vouch__authorize_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help pki vouch authorize commands' commands "$@"
+}
+(( $+functions[_sq__help__sign_commands] )) ||
+_sq__help__sign_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help sign commands' commands "$@"
+}
+(( $+functions[_sq__help__verify_commands] )) ||
+_sq__help__verify_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help verify commands' commands "$@"
+}
+(( $+functions[_sq__help__version_commands] )) ||
+_sq__help__version_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq help version commands' commands "$@"
+}
+(( $+functions[_sq__inspect_commands] )) ||
+_sq__inspect_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq inspect commands' commands "$@"
+}
+(( $+functions[_sq__key_commands] )) ||
+_sq__key_commands() {
+    local commands; commands=(
+'list:List keys managed by the key store' \
+'generate:Generate a new key' \
+'import:Import keys into the key store' \
+'export:Export keys from the key store' \
+'delete:Delete a certificate'\''s secret key material' \
+'password:Change the password protecting secret key material' \
+'expire:Change a certificate'\''s expiration time' \
+'revoke:Revoke a certificate' \
+'userid:Manage User IDs' \
+'subkey:Manage subkeys' \
+'approvals:Manages certification approvals' \
+    )
+    _describe -t commands 'sq key commands' commands "$@"
+}
+(( $+functions[_sq__key__approvals_commands] )) ||
+_sq__key__approvals_commands() {
+    local commands; commands=(
+'list:Lists third-party certifications' \
+'update:Approves of third-party certifications' \
+    )
+    _describe -t commands 'sq key approvals commands' commands "$@"
+}
+(( $+functions[_sq__key__approvals__list_commands] )) ||
+_sq__key__approvals__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key approvals list commands' commands "$@"
+}
+(( $+functions[_sq__key__approvals__update_commands] )) ||
+_sq__key__approvals__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key approvals update commands' commands "$@"
+}
+(( $+functions[_sq__key__delete_commands] )) ||
+_sq__key__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key delete commands' commands "$@"
+}
+(( $+functions[_sq__key__expire_commands] )) ||
+_sq__key__expire_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key expire commands' commands "$@"
+}
+(( $+functions[_sq__key__export_commands] )) ||
+_sq__key__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key export commands' commands "$@"
+}
+(( $+functions[_sq__key__generate_commands] )) ||
+_sq__key__generate_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key generate commands' commands "$@"
+}
+(( $+functions[_sq__key__import_commands] )) ||
+_sq__key__import_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key import commands' commands "$@"
+}
+(( $+functions[_sq__key__list_commands] )) ||
+_sq__key__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key list commands' commands "$@"
+}
+(( $+functions[_sq__key__password_commands] )) ||
+_sq__key__password_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key password commands' commands "$@"
+}
+(( $+functions[_sq__key__revoke_commands] )) ||
+_sq__key__revoke_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key revoke commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey_commands] )) ||
+_sq__key__subkey_commands() {
+    local commands; commands=(
+'add:Add a new subkey to a certificate' \
+'export:Export keys from the key store' \
+'delete:Delete a certificate'\''s secret key material' \
+'password:Change the password protecting secret key material' \
+'expire:Change a subkey'\''s expiration time' \
+'revoke:Revoke a subkey' \
+'bind:Bind keys from one certificate to another' \
+    )
+    _describe -t commands 'sq key subkey commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__add_commands] )) ||
+_sq__key__subkey__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey add commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__bind_commands] )) ||
+_sq__key__subkey__bind_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey bind commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__delete_commands] )) ||
+_sq__key__subkey__delete_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey delete commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__expire_commands] )) ||
+_sq__key__subkey__expire_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey expire commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__export_commands] )) ||
+_sq__key__subkey__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey export commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__password_commands] )) ||
+_sq__key__subkey__password_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey password commands' commands "$@"
+}
+(( $+functions[_sq__key__subkey__revoke_commands] )) ||
+_sq__key__subkey__revoke_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key subkey revoke commands' commands "$@"
+}
+(( $+functions[_sq__key__userid_commands] )) ||
+_sq__key__userid_commands() {
+    local commands; commands=(
+'add:Add a user ID' \
+'revoke:Revoke a user ID' \
+    )
+    _describe -t commands 'sq key userid commands' commands "$@"
+}
+(( $+functions[_sq__key__userid__add_commands] )) ||
+_sq__key__userid__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key userid add commands' commands "$@"
+}
+(( $+functions[_sq__key__userid__revoke_commands] )) ||
+_sq__key__userid__revoke_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq key userid revoke commands' commands "$@"
+}
+(( $+functions[_sq__keyring_commands] )) ||
+_sq__keyring_commands() {
+    local commands; commands=(
+'list:List keys in a keyring' \
+'split:Split a keyring into individual keys' \
+'merge:Merge keys or keyrings into a single keyring' \
+'filter:Join keys into a keyring applying a filter' \
+    )
+    _describe -t commands 'sq keyring commands' commands "$@"
+}
+(( $+functions[_sq__keyring__filter_commands] )) ||
+_sq__keyring__filter_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq keyring filter commands' commands "$@"
+}
+(( $+functions[_sq__keyring__list_commands] )) ||
+_sq__keyring__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq keyring list commands' commands "$@"
+}
+(( $+functions[_sq__keyring__merge_commands] )) ||
+_sq__keyring__merge_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq keyring merge commands' commands "$@"
+}
+(( $+functions[_sq__keyring__split_commands] )) ||
+_sq__keyring__split_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq keyring split commands' commands "$@"
+}
+(( $+functions[_sq__network_commands] )) ||
+_sq__network_commands() {
+    local commands; commands=(
+'search:Retrieve certificates using all supported network services' \
+'keyserver:Retrieve and publishes certificates via key servers' \
+'wkd:Retrieve and publishes certificates via Web Key Directories' \
+'dane:Retrieve and publishes certificates via DANE' \
+    )
+    _describe -t commands 'sq network commands' commands "$@"
+}
+(( $+functions[_sq__network__dane_commands] )) ||
+_sq__network__dane_commands() {
+    local commands; commands=(
+'search:Retrieve certificates using DANE' \
+'generate:Generate DANE records for the given domain and certs' \
+    )
+    _describe -t commands 'sq network dane commands' commands "$@"
+}
+(( $+functions[_sq__network__dane__generate_commands] )) ||
+_sq__network__dane__generate_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network dane generate commands' commands "$@"
+}
+(( $+functions[_sq__network__dane__search_commands] )) ||
+_sq__network__dane__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network dane search commands' commands "$@"
+}
+(( $+functions[_sq__network__keyserver_commands] )) ||
+_sq__network__keyserver_commands() {
+    local commands; commands=(
+'search:Retrieve certificates from key servers' \
+'publish:Publish certificates on key servers' \
+    )
+    _describe -t commands 'sq network keyserver commands' commands "$@"
+}
+(( $+functions[_sq__network__keyserver__publish_commands] )) ||
+_sq__network__keyserver__publish_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network keyserver publish commands' commands "$@"
+}
+(( $+functions[_sq__network__keyserver__search_commands] )) ||
+_sq__network__keyserver__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network keyserver search commands' commands "$@"
+}
+(( $+functions[_sq__network__search_commands] )) ||
+_sq__network__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network search commands' commands "$@"
+}
+(( $+functions[_sq__network__wkd_commands] )) ||
+_sq__network__wkd_commands() {
+    local commands; commands=(
+'search:Retrieve certificates from a Web Key Directory' \
+'publish:Publish certificates in a Web Key Directory' \
+    )
+    _describe -t commands 'sq network wkd commands' commands "$@"
+}
+(( $+functions[_sq__network__wkd__publish_commands] )) ||
+_sq__network__wkd__publish_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network wkd publish commands' commands "$@"
+}
+(( $+functions[_sq__network__wkd__search_commands] )) ||
+_sq__network__wkd__search_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq network wkd search commands' commands "$@"
+}
+(( $+functions[_sq__packet_commands] )) ||
+_sq__packet_commands() {
+    local commands; commands=(
+'armor:Convert binary to ASCII' \
+'dearmor:Convert ASCII to binary' \
+'dump:List packets' \
+'decrypt:Unwrap an encryption container' \
+'split:Split a message into packets' \
+'join:Join packets split across files' \
+    )
+    _describe -t commands 'sq packet commands' commands "$@"
+}
+(( $+functions[_sq__packet__armor_commands] )) ||
+_sq__packet__armor_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq packet armor commands' commands "$@"
+}
+(( $+functions[_sq__packet__dearmor_commands] )) ||
+_sq__packet__dearmor_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq packet dearmor commands' commands "$@"
+}
+(( $+functions[_sq__packet__decrypt_commands] )) ||
+_sq__packet__decrypt_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq packet decrypt commands' commands "$@"
+}
+(( $+functions[_sq__packet__dump_commands] )) ||
+_sq__packet__dump_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq packet dump commands' commands "$@"
+}
+(( $+functions[_sq__packet__join_commands] )) ||
+_sq__packet__join_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq packet join commands' commands "$@"
+}
+(( $+functions[_sq__packet__split_commands] )) ||
+_sq__packet__split_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq packet split commands' commands "$@"
+}
+(( $+functions[_sq__pki_commands] )) ||
+_sq__pki_commands() {
+    local commands; commands=(
+'authenticate:Authenticate a binding' \
+'lookup:Lookup the certificates associated with a User ID' \
+'identify:Identify a certificate' \
+'vouch:Manage certifications' \
+'link:Manage authenticated certificate and User ID links' \
+'path:Verify the specified path' \
+    )
+    _describe -t commands 'sq pki commands' commands "$@"
+}
+(( $+functions[_sq__pki__authenticate_commands] )) ||
+_sq__pki__authenticate_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki authenticate commands' commands "$@"
+}
+(( $+functions[_sq__pki__identify_commands] )) ||
+_sq__pki__identify_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki identify commands' commands "$@"
+}
+(( $+functions[_sq__pki__link_commands] )) ||
+_sq__pki__link_commands() {
+    local commands; commands=(
+'add:Link a certificate and a user ID' \
+'authorize:Make a certificate a trusted introducer' \
+'retract:Retract links' \
+'list:List links' \
+    )
+    _describe -t commands 'sq pki link commands' commands "$@"
+}
+(( $+functions[_sq__pki__link__add_commands] )) ||
+_sq__pki__link__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki link add commands' commands "$@"
+}
+(( $+functions[_sq__pki__link__authorize_commands] )) ||
+_sq__pki__link__authorize_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki link authorize commands' commands "$@"
+}
+(( $+functions[_sq__pki__link__list_commands] )) ||
+_sq__pki__link__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki link list commands' commands "$@"
+}
+(( $+functions[_sq__pki__link__retract_commands] )) ||
+_sq__pki__link__retract_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki link retract commands' commands "$@"
+}
+(( $+functions[_sq__pki__lookup_commands] )) ||
+_sq__pki__lookup_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki lookup commands' commands "$@"
+}
+(( $+functions[_sq__pki__path_commands] )) ||
+_sq__pki__path_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki path commands' commands "$@"
+}
+(( $+functions[_sq__pki__vouch_commands] )) ||
+_sq__pki__vouch_commands() {
+    local commands; commands=(
+'add:Certify a User ID for a Certificate' \
+'authorize:Mark a certificate as a trusted introducer' \
+    )
+    _describe -t commands 'sq pki vouch commands' commands "$@"
+}
+(( $+functions[_sq__pki__vouch__add_commands] )) ||
+_sq__pki__vouch__add_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki vouch add commands' commands "$@"
+}
+(( $+functions[_sq__pki__vouch__authorize_commands] )) ||
+_sq__pki__vouch__authorize_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq pki vouch authorize commands' commands "$@"
+}
+(( $+functions[_sq__sign_commands] )) ||
+_sq__sign_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq sign commands' commands "$@"
+}
+(( $+functions[_sq__verify_commands] )) ||
+_sq__verify_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq verify commands' commands "$@"
+}
+(( $+functions[_sq__version_commands] )) ||
+_sq__version_commands() {
+    local commands; commands=()
+    _describe -t commands 'sq version commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_sq" ]; then
+    _sq "$@"
+else
+    compdef _sq sq
+fi
