@@ -1810,7 +1810,23 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
     where
         Prefix: cert_designator::ArgumentPrefix,
     {
-        tracer!(TRACE, "Sq::resolve_certs");
+        self.resolve_certs_filter_intern(
+            &designators.designators, Prefix::prefix(), trust_amount, filter)
+    }
+
+    /// Like [`Sq::resolve_certs_filter`], but prevents
+    /// monomorphization.
+    fn resolve_certs_filter_intern(
+        &self,
+        designators: &[cert_designator::CertDesignator],
+        prefix: &str,
+        trust_amount: usize,
+        filter: &mut dyn Fn(&cert_designator::CertDesignator, &LazyCert)
+                            -> Result<()>,
+    )
+        -> Result<(Vec<Cert>, Vec<anyhow::Error>)>
+    {
+        tracer!(TRACE, "Sq::resolve_certs_filter_intern");
         t!("{:?}", designators);
 
         // To report all errors, and not just the first one that we
@@ -1867,7 +1883,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
                     errors.push(
                         err.context(format!(
                             "Failed to resolve {}",
-                            designator.argument::<Prefix>())));
+                            designator.argument_with_prefix(prefix))));
                     return;
                 }
             };
@@ -1877,7 +1893,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
                     errors.push(
                         err.context(format!(
                             "Failed to resolve {}",
-                            designator.argument::<Prefix>())));
+                            designator.argument_with_prefix(prefix))));
                     return;
                 }
             }
@@ -1902,7 +1918,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
                             errors.push(
                                 err.context(format!(
                                     "Failed to resolve {}",
-                                    designator.argument::<Prefix>())));
+                                    designator.argument_with_prefix(prefix))));
                             return;
                         }
                     };
@@ -1925,7 +1941,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
                             errors.push(
                                 err.context(format!(
                                     "Failed to resolve {}",
-                                    designator.argument::<Prefix>())));
+                                    designator.argument_with_prefix(prefix))));
                             return;
                         }
                     };
@@ -1939,7 +1955,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
             }
         };
 
-        for designator in designators.designators.iter() {
+        for designator in designators {
             *matched.borrow_mut() = false;
 
             match designator {
@@ -2129,7 +2145,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
 
                 cert_designator::CertDesignator::Self_ => {
                     let (certs, config): (Box<dyn Iterator<Item=&Fingerprint>>, _)
-                        = match Prefix::name()
+                        = match prefix
                     {
                         "for" => (
                             Box::new(self.config.encrypt_for_self().iter()),
@@ -2161,7 +2177,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
                         return Err(anyhow::anyhow!(
                             "`--{}-self` is given but no default \
                              is set in the configuration file under `{}`",
-                            Prefix::name(),
+                            prefix,
                             config));
                     }
                 },
@@ -2306,23 +2322,37 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
     where
         Prefix: cert_designator::ArgumentPrefix,
     {
+        self.resolve_cert_intern(
+            &designators.designators, Prefix::prefix(), trust_amount)
+    }
+
+    /// Like [`Sq::resolve_certs`], but prevents monomorphization.
+    fn resolve_cert_intern(
+        &self,
+        designators: &[cert_designator::CertDesignator],
+        prefix: &str,
+        trust_amount: usize,
+    )
+        -> Result<(Cert, FileStdinOrKeyHandle)>
+    {
         // Assuming this is only called with OneValue, then the
         // following are not required.
-        if designators.designators.len() == 0 {
+        if designators.len() == 0 {
             panic!("clap failed to enforce that the {} argument is \
                     required.",
-                   Prefix::name());
-        } else if designators.designators.len() > 1 {
+                   prefix);
+        } else if designators.len() > 1 {
             panic!("clap failed to enforce that the {} argument is \
                     specified at most once.",
-                   Prefix::name());
+                   prefix);
         }
 
         let (certs, errors) =
-            self.resolve_certs(designators, trust_amount)?;
+            self.resolve_certs_filter_intern(designators, prefix, trust_amount,
+                                             &mut |_, _| Ok(()))?;
         if certs.len() > 1 {
             weprintln!("{} is ambiguous.  It resolves to multiple certificates.",
-                       designators.designators[0].argument::<Prefix>());
+                       designators[0].argument_with_prefix(prefix));
             for cert in certs.iter() {
                 eprintln!("  - {} {}",
                           cert.fingerprint(),
@@ -2331,7 +2361,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
 
             return Err(anyhow::anyhow!(
                 "{} is ambiguous.  It resolves to multiple certificates.",
-                designators.designators[0].argument::<Prefix>()))
+                designators[0].argument_with_prefix(prefix)))
         }
 
         if let Some(errors) = errors.into_iter().next() {
@@ -2341,7 +2371,7 @@ impl<'store: 'rstore, 'rstore> Sq<'store, 'rstore> {
         let cert = certs.into_iter().next().unwrap();
         let handle = cert.key_handle();
         Ok((cert,
-            match &designators.designators[0] {
+            match &designators[0] {
                 cert_designator::CertDesignator::Stdin =>
                     FileStdinOrKeyHandle::FileOrStdin(Default::default()),
                 cert_designator::CertDesignator::File(p) =>
