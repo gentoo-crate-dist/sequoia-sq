@@ -532,7 +532,9 @@ test_examples!(sq_pki_link_retract, RETRACT_EXAMPLES);
 
 This command lists all bindings that are linked or whose link has been \
 retracted.
-",
+
+Returns a non-zero exit code if an explicitly designated certificate
+was never linked.",
     after_help = LIST_EXAMPLES,
 )]
 pub struct ListCommand {
@@ -582,7 +584,8 @@ with the email address alice@example.org.",
         ]).build(),
 
         Action::example().comment(
-            "List all links in the example.org domain.",
+            "List links to certificates with an authenticated user ID \
+             that contains an email address in the specified domain.",
         ).command(&[
             "sq", "pki", "link", "list",
             "--cert-domain=example.org",
