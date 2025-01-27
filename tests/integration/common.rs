@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 use std::borrow::Borrow;
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::File;
@@ -63,6 +64,71 @@ pub fn power_set<T: Clone>(set: &[T]) -> Vec<Vec<T>> {
 /// Returns the time formatted as an ISO 8106 string.
 pub fn time_as_string(t: DateTime<Utc>) -> String {
     t.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Extracts fingerprints from human readable output and returns a map
+/// from fingerprint to count.
+pub fn extract_fingerprints(output: &str) -> BTreeMap<Fingerprint, usize> {
+    use regex::Regex;
+
+    // v4 fingerprints without spaces.
+    let re = Regex::new(r"(\b[A-F0-9]{40}\b)").unwrap();
+
+    let mut fprs: Vec<(Fingerprint, usize)> = re
+        .captures_iter(output).map(|c| c.extract())
+        .map(|(_, [fpr])| {
+            (fpr.parse::<Fingerprint>().expect("valid fingerprint"), 1)
+        })
+        .collect();
+
+    fprs.sort();
+    fprs.dedup_by(|a, b| {
+            if a.0 == b.0 {
+                // a is removed
+                b.1 += a.1;
+                true
+            } else {
+                false
+            }
+        });
+
+    fprs.into_iter().collect()
+}
+
+pub fn check_fingerprints<B>(output: &str,
+                             expected: B)
+where B: Into<BTreeMap<Fingerprint, usize>>
+{
+    let expected = expected.into();
+
+    let got = extract_fingerprints(output);
+
+    if got == expected {
+        return;
+    }
+
+    let mut bad = false;
+    for (fpr, got_count) in got.iter() {
+        let expected_count = expected.get(&fpr).unwrap_or(&0);
+        if got_count != expected_count {
+            eprintln!("Got {} {} times, but expected it {} times",
+                      fpr, got_count, expected_count);
+            bad = true;
+        }
+    }
+    for (fpr, expected_count) in expected.iter() {
+        let got_count = got.get(&fpr).unwrap_or(&0);
+        if *got_count == 0 && *expected_count > 0 {
+            eprintln!("Got {} {} times, but expected it {} times",
+                      fpr, got_count, expected_count);
+            bad = true;
+        }
+    }
+
+    if bad {
+        eprintln!("Output is:\n{}", output);
+        panic!("Fingerprint mismatch");
+    }
 }
 
 /// Designates a certificate by path, or by key handle.
@@ -317,6 +383,127 @@ impl std::fmt::Display for UserIDArg<'_> {
         -> std::result::Result<(), std::fmt::Error>
     {
         write!(f, "{}", self.raw())
+    }
+}
+
+/// An enum for user ID arguments.
+#[derive(Debug, Clone)]
+pub enum CertArg<'a> {
+    Stdin(),
+    File(PathBuf),
+    Cert(KeyHandle),
+    UserID(&'a str),
+    Email(&'a str),
+    Domain(&'a str),
+    Grep(&'a str),
+    Special(&'a str),
+    Self_(),
+}
+
+impl From<PathBuf> for CertArg<'_> {
+    fn from(path: PathBuf) -> Self {
+        CertArg::File(path)
+    }
+}
+
+impl<'a> From<&'a Path> for CertArg<'_> {
+    fn from(path: &'a Path) -> Self {
+        CertArg::File(path.to_path_buf())
+    }
+}
+
+impl From<KeyHandle> for CertArg<'_> {
+    fn from(kh: KeyHandle) -> Self {
+        CertArg::Cert(kh)
+    }
+}
+
+impl<'a> From<&'a KeyHandle> for CertArg<'_> {
+    fn from(kh: &'a KeyHandle) -> Self {
+        CertArg::Cert(kh.clone())
+    }
+}
+
+impl From<Fingerprint> for CertArg<'_> {
+    fn from(fpr: Fingerprint) -> Self {
+        CertArg::Cert(fpr.into())
+    }
+}
+
+impl<'a> From<&'a Fingerprint> for CertArg<'_> {
+    fn from(fpr: &'a Fingerprint) -> Self {
+        CertArg::Cert(fpr.into())
+    }
+}
+
+impl<'a> From<&'a Cert> for CertArg<'_> {
+    fn from(cert: &'a Cert) -> Self {
+        CertArg::Cert(cert.key_handle())
+    }
+}
+
+impl CertArg<'_> {
+    /// Add the argument to a `Command`.
+    pub fn as_arg<'a, P>(&self, cmd: &mut Command, prefix: P)
+    where P: Into<Option<&'a str>>
+    {
+        cmd.args(self.raw(prefix));
+    }
+
+    pub fn raw<'a, P>(&self, prefix: P) -> Vec<String>
+    where P: Into<Option<&'a str>>
+    {
+        let prefix = prefix.into();
+
+        let s;
+        let (suffix, value) = match self {
+            CertArg::Stdin() => (Some("file"), Some("-")),
+            CertArg::File(p) => {
+                s = p.display().to_string();
+                (Some("file"), Some(&s[..]))
+            }
+            CertArg::Cert(kh) => {
+                s = kh.to_string();
+                if prefix.is_none() {
+                    (Some("cert"), Some(&s[..]))
+                } else {
+                    (None, Some(&s[..]))
+                }
+            }
+            CertArg::UserID(userid) => (Some("userid"), Some(*userid)),
+            CertArg::Email(email) => (Some("email"), Some(*email)),
+            CertArg::Domain(domain) => (Some("domain"), Some(*domain)),
+            CertArg::Grep(pattern) => (Some("grep"), Some(*pattern)),
+            CertArg::Special(special) => (Some("special"), Some(*special)),
+            CertArg::Self_() => (Some("self"), None),
+        };
+
+        let arg = match (prefix, suffix) {
+            (Some(prefix), Some(suffix)) => {
+                format!("--{}-{}", prefix, suffix)
+            }
+            (None, Some(suffix)) => {
+                format!("--{}", suffix)
+            }
+            (Some(prefix), None) => {
+                format!("--{}", prefix)
+            }
+            (None, None) => panic!("No prefix and no suffix specified"),
+        };
+
+        if let Some(value) = value {
+            vec![ arg, value.to_string() ]
+        } else {
+            vec![ arg ]
+        }
+    }
+}
+
+impl std::fmt::Display for CertArg<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
+        -> std::result::Result<(), std::fmt::Error>
+    {
+        write!(f, "{}", self.raw(None).join(" "))
     }
 }
 
@@ -1860,24 +2047,22 @@ impl Sq {
     }
 
     /// List certifications made by certifier.
-    pub fn try_pki_vouch_list<H>(&self, extra_args: &[&str], certifier: H)
+    pub fn try_pki_vouch_list<'a, C1, C2>(&self, extra_args: &[&str],
+                                          certifier: C1, cert: C2)
         -> Result<String>
-    where H: Into<FileOrKeyHandle>,
+    where C1: Into<Option<CertArg<'a>>>,
+          C2: Into<Option<CertArg<'a>>>
     {
-        let certifier = certifier.into();
-
         let mut cmd = self.command();
         cmd.args([ "pki", "vouch", "list" ]);
         for arg in extra_args {
             cmd.arg(arg);
         }
-        match &certifier {
-            FileOrKeyHandle::FileOrStdin(file) => {
-                cmd.arg("--certifier-file").arg(file);
-            }
-            FileOrKeyHandle::KeyHandle((_kh, s)) => {
-                cmd.arg("--certifier").arg(s);
-            }
+        if let Some(certifier) = certifier.into() {
+            certifier.as_arg(&mut cmd, "certifier");
+        }
+        if let Some(cert) = cert.into() {
+            cert.as_arg(&mut cmd, "cert");
         }
 
         let output = self.run(cmd, None);
@@ -1891,11 +2076,13 @@ impl Sq {
     }
 
     /// List certifications made by certifier.
-    pub fn pki_vouch_list<H>(&self, extra_args: &[&str], certifier: H)
+    pub fn pki_vouch_list<'a, C1, C2>(&self, extra_args: &[&str],
+                                      certifier: C1, cert: C2)
         -> String
-    where H: Into<FileOrKeyHandle>,
+    where C1: Into<Option<CertArg<'a>>>,
+          C2: Into<Option<CertArg<'a>>>
     {
-        self.try_pki_vouch_list(extra_args, certifier)
+        self.try_pki_vouch_list(extra_args, certifier, cert)
             .expect("success")
     }
 
