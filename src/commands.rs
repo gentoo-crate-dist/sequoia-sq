@@ -22,6 +22,7 @@ pub mod config;
 pub mod decrypt;
 pub mod download;
 pub mod encrypt;
+pub mod explain;
 pub mod keyring;
 pub mod sign;
 pub mod inspect;
@@ -63,6 +64,10 @@ pub fn dispatch(sq: Sq, command: SqCommand, matches: &ArgMatches) -> Result<()>
 
         SqSubcommands::Network(command) =>
             network::dispatch(sq, command, matches),
+
+        SqSubcommands::Explain(command) =>
+            explain::dispatch(sq, command),
+
         SqSubcommands::Keyring(command) =>
             keyring::dispatch(sq, command),
         SqSubcommands::Packet(command) =>
