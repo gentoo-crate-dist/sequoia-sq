@@ -2,7 +2,7 @@
 
 use clap::Parser;
 
-#[derive(Parser, Debug)]
+#[derive(Debug, Parser)]
 #[clap(
     name = "explain",
     about = "A dictionary that explains Sequoia terminology",
@@ -16,4 +16,10 @@ out more about these terms.
     arg_required_else_help = true,
     disable_help_subcommand = true
 )]
-pub struct Command {}
+pub struct Command {
+    #[clap(
+        value_name = "TERMS",
+        help = "Search the dictionary for these TERMS"
+    )]
+    pub explain_terms: Vec<String>
+}
