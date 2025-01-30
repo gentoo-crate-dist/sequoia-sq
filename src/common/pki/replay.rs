@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -9,6 +10,7 @@ use openpgp::Cert;
 use openpgp::Fingerprint;
 use openpgp::Packet;
 use openpgp::Result;
+use openpgp::crypto;
 use openpgp::packet::signature::SignatureBuilder;
 use openpgp::policy::HashAlgoSecurity;
 use openpgp::policy::Policy;
@@ -17,10 +19,21 @@ use openpgp::types::RevocationStatus;
 use crate::Sq;
 use crate::common::pki::certify::diff_certification;
 use crate::common::pki::list::summarize_certification;
-use crate::common::ui::emit_cert_userid;
+use crate::common::ui::emit_cert_userid_indent;
 use crate::common::ui;
 
-const TRACE: bool = true;
+const TRACE: bool = false;
+
+// Concatenate two strings.
+fn strcat<'a>(a: &'a str, b: &'a str) -> Cow<'a, str> {
+    if a.is_empty() {
+        Cow::Borrowed(b)
+    } else if b.is_empty() {
+        Cow::Borrowed(a)
+    } else {
+        Cow::Owned(format!("{}{}", a, b))
+    }
+}
 
 /// Replays the active certifications made by source using target.
 ///
@@ -31,8 +44,15 @@ const TRACE: bool = true;
 /// Certifications are also not replayed if a binding is invalid (the
 /// certificate is not valid according to the policy, is revoked, or
 /// not live, or the user ID is revoked).
-pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
-              source: RefCell<Cert>, target: &Cert)
+///
+/// If `certs` is provided, only certifications of the specified
+/// certificates are replyed.  Otherwise, all certificates are
+/// considered.
+pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
+              source: RefCell<Cert>,
+              target: &Cert,
+              target_signer: Option<&mut Box<dyn crypto::Signer + Send + Sync>>,
+              certs: Option<&[RefCell<Cert>]>)
     -> Result<Vec<Cert>>
 {
     tracer!(TRACE, "pki::replay");
@@ -44,11 +64,28 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
 
     // Get the signer to certify with (and fail early if its not
     // available).
-    let mut signer = sq.get_certification_key(target, None)?;
+    let mut signer_;
+    let signer = if let Some(signer) = target_signer {
+        signer
+    } else {
+        signer_ = sq.get_certification_key(target, None)?;
+        &mut signer_
+    };
 
     // Get all of the certifications that the source made.
-    let certifications = crate::common::pki::list::list_certifications(
-        &sq, Some(RefCell::clone(&source)), None)?;
+    let certifications = if let Some(certs) = certs {
+        let mut results = Vec::new();
+        for cert in certs {
+            results.append(
+                &mut crate::common::pki::list::list_certifications(
+                    &sq, Some(RefCell::clone(&source)),
+                    Some(RefCell::clone(cert)))?);
+        }
+        results
+    } else {
+        crate::common::pki::list::list_certifications(
+            &sq, Some(RefCell::clone(&source)), None)?
+    };
 
     // Drop the certifier (its always source) and convert the
     // certifications to a vector so that we can merge them.
@@ -104,10 +141,10 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
            String::from_utf8_lossy(userid.value()),
            certifications.len());
 
-        wwriteln!(stream = o,
+        wwriteln!(stream = o, indent = indent,
                   "Considering the source certificate's certification \
                    of the binding:");
-        emit_cert_userid(o, &cert, &userid)?;
+        emit_cert_userid_indent(o, indent, &cert, &userid)?;
 
         // Skip if cert is invalid, expired, or revoked, or
         // user ID is revoked.
@@ -115,7 +152,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
             Ok(vc) => vc,
             Err(err) => {
                 wwriteln!(stream = o,
-                          indent = "  ",
+                          indent = strcat(indent, "  "),
                           "Certificate is not valid according to the \
                            policy: {}",
                           crate::one_line_error_chain(err));
@@ -128,12 +165,12 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
             if let Some((reason, message)) = sig.reason_for_revocation()
             {
                 wwriteln!(stream = o,
-                          initial_indent = "  ",
+                          initial_indent = strcat(indent, "  "),
                           "Certificate was revoked: {}, {}",
                           reason, ui::Safe(message));
             } else {
                 wwriteln!(stream = o,
-                          initial_indent = "  - ",
+                          initial_indent = strcat(indent, "  - "),
                           "Certificate was revoked");
             }
 
@@ -142,7 +179,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
 
         if let Err(err) = vc.alive() {
             wwriteln!(stream = o,
-                      initial_indent = "  ",
+                      initial_indent = strcat(indent, "  "),
                       "Certificate is not live: {}", err);
             continue;
         }
@@ -156,12 +193,12 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
                 if let Some((reason, message)) = sig.reason_for_revocation()
                 {
                     wwriteln!(stream = o,
-                              initial_indent = "  ",
+                              initial_indent = strcat(indent, "  "),
                               "User ID was revoked: {}, {}",
                               reason, ui::Safe(message));
                 } else {
                     wwriteln!(stream = o,
-                              initial_indent = "  - ",
+                              initial_indent = strcat(indent, "  - "),
                               "User ID was revoked");
                 }
 
@@ -228,9 +265,10 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
                 reasons.push((ct_str, err));
             } else {
                 wwriteln!(stream=o,
-                          indent="  ",
+                          indent=strcat(indent, "  "),
                           "Source certificate's active certification:");
-                summarize_certification(o, "  ", &certification, false)?;
+                summarize_certification(o, &strcat(indent, "  "),
+                                        &certification, false)?;
 
                 // Check that the target hasn't already certified the
                 // target with the same parameters.
@@ -265,7 +303,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
                                 .format("%Y‑%m‑%d %H:%M:%S")
                                 .to_string();
                             wwriteln!(stream = o,
-                                      initial_indent = "  ",
+                                      initial_indent = strcat(indent, "  "),
                                       "Skipping: the target already \
                                        certified the binding with the same \
                                        parameters at {}.",
@@ -294,7 +332,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
                 let builder = builder.set_signature_creation_time(sq.time)?;
 
                 let sig = builder.sign_userid_binding(
-                    &mut signer,
+                    signer,
                     cert.primary_key().key(),
                     &userid)
                     .with_context(|| {
@@ -319,20 +357,23 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
                     }
                 }
 
+                wwriteln!(stream = o, indent = strcat(indent, "  "),
+                          "Replayed certification.");
+
                 good = true;
                 break;
             }
         }
 
         if ! good {
-            wwriteln!(stream = o,
+            wwriteln!(stream = o, indent = strcat(indent, "  "),
                       "Warning: {} certified {}, {} but none of the \
                        certifications are usable:",
                       source_kh,
                       cert.fingerprint(),
                       String::from_utf8_lossy(userid.value()));
             for (ct, err) in reasons.into_iter() {
-                wwriteln!(stream = o,
+                wwriteln!(stream = o, indent = strcat(indent, "  "),
                           "Certification made at {} is invalid: {}",
                           ct, crate::one_line_error_chain(err));
             }
@@ -340,7 +381,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write,
     }
 
     if results.is_empty() {
-        wwriteln!(stream=o, "Nothing to replay");
+        wwriteln!(stream=o, indent = indent, "Nothing to replay");
     }
 
     return Ok(results.into_values().collect());
