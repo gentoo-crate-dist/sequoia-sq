@@ -98,6 +98,7 @@ pub mod config;
 pub mod decrypt;
 pub mod download;
 pub mod encrypt;
+pub mod explain;
 pub mod inspect;
 pub mod key;
 pub mod keyring;
@@ -608,6 +609,8 @@ pub enum SqSubcommands {
     Pki(pki::Command),
 
     Network(network::Command),
+
+    Explain(explain::Command),
 
     Keyring(keyring::Command),
     Packet(packet::Command),
