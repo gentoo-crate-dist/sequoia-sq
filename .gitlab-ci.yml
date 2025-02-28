@@ -49,7 +49,7 @@ docker-build-push:
     DOCKER_HOST: tcp://docker:2376
 
 pages:
-  stage: deploy
+  stage: build
   image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie-pandoc:latest
   script:
     - ASSET_OUT_DIR=/tmp/assets cargo doc --no-deps -p sequoia-sq
@@ -57,9 +57,10 @@ pages:
     - mv -v target/doc public/impl
 
     # Man pages.
-    - bash /tmp/assets/man-pages/man2html.sh
+    - /tmp/assets/man-pages/man2html.sh --generate
     - mkdir public/man
-    - mv -v /tmp/assets/man-pages/*.html public/man
+    - mv -v $(for f in $(/tmp/assets/man-pages/man2html.sh --html-files); do echo /tmp/assets/man-pages/$f; done) public/man
+    - echo "/sequoia-sq/man /sequoia-sqv/man/$(/tmp/assets/man-pages/man2html.sh --html-root) 302" >> public/_redirects
 
     - mkdir public/subplot
     - pandoc -s -o public/subplot/sq-subplot.html sq-subplot.md
@@ -67,10 +68,19 @@ pages:
 
     - echo "/sequoia-sq/ /sequoia-sq/man/sq.1.html 302" > public/_redirects
     - echo "/sequoia-sq/impl /sequoia-sq/impl/sq/index.html 302" >> public/_redirects
-    - echo "/sequoia-sq/man /sequoia-sq/man/sq.1.html 302" >> public/_redirects
     - echo "/sequoia-sq/subplot /sequoia-sq/subplot/sq-subplot.html 302" >> public/_redirects
   artifacts:
     paths:
       - public
-  only:
-    - main
+  pages: false
+
+pages-deploy:
+  stage: deploy
+  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie-pandoc:latest
+  script: echo "publishing"
+  artifacts:
+    paths:
+      - public
+  pages: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
