@@ -190,8 +190,6 @@ impl<'c, 'store, 'rstore> VHelper<'c, 'store, 'rstore> {
         use crate::common::pki::output::print_path;
         use crate::print_error_chain;
 
-        let reference_time = self.sq.time;
-
         use self::VerificationError::*;
         for result in results {
             let (sig, ka) = match result {
@@ -249,6 +247,12 @@ impl<'c, 'store, 'rstore> VHelper<'c, 'store, 'rstore> {
                     self.bad_signatures += 1;
                     continue;
                 }
+            };
+             
+            // get reference time from the signature if it has one, fall back to sq.time
+            let reference_time = match sig.signature_creation_time() {
+                Some(time) => time,
+                None => self.sq.time
             };
 
             let cert = ka.cert();
