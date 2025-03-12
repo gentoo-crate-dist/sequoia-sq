@@ -32,6 +32,12 @@ fingerprint.  Otherwise, it is treated as if it were passed via \
                                "cert-domain", "cert-grep"],
     )]
     pub pattern: Option<String>,
+
+    #[clap(
+        long = "with-keyids",
+        help = "Add KeyID and KeyGrip to output",
+    )]
+    pub with_keyids: bool,
 }
 
 const EXAMPLES: Actions = Actions {
