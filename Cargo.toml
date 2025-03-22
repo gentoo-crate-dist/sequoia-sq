@@ -84,6 +84,7 @@ serde = { version = "1.0.137", features = ["derive"] }
 sequoia-directories = "0.1"
 sequoia-man = "0.3"
 sequoia-openpgp = { version = "2", default-features = false, features = ["compression"] }
+sequoia-policy-config = "0.8"
 sequoia-net = { version = "0.30", default-features = false }
 textwrap = ">=0.15, <0.17"
 typenum = "1"
