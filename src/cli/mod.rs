@@ -79,6 +79,7 @@
 pub const USER_INTERFACE_GUIDELINES: () = ();
 
 use std::borrow::Cow;
+use std::ffi::OsString;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -89,6 +90,8 @@ use clap::builder::StyledStr;
 
 use sequoia_openpgp as openpgp;
 use openpgp::Fingerprint;
+
+use sequoia_policy_config::ConfiguredStandardPolicy;
 
 #[macro_use]
 pub mod examples;
@@ -476,6 +479,50 @@ $ sq --time 20130721T0550+0200 --message verify msg.pgp
 ",
     )]
     pub time: Option<types::Time>,
+
+    #[clap(
+        long = "policy",
+        value_name = "PATH",
+        env = ConfiguredStandardPolicy::ENV_VAR,
+        global = true,
+        help_heading = GLOBAL_OPTIONS_HEADER,
+        help = "Override the default cryptographic policy",
+        long_help = format!("Override the default cryptographic policy
+
+Sequoia PGP has a policy that defines which algorithms (ciphers, hash \
+functions, etc.) are valid and available. This policy can be adjusted \
+to care for specific needs.
+
+The adjustments are configured in a file, by default located in {}. \
+If given, `sq` will read this file first, then refine the policy using \
+its configuration file (see `sq config`).
+
+To examine the effective cryptographic policy, use `sq config inspect \
+policy`.
+
+See \
+https://book.sequoia-pgp.org/configuration.html#cryptographic-policy-configuration \
+for more information.",
+                            ConfiguredStandardPolicy::CONFIG_FILE),
+    )]
+    // XXX: this can neither be a Option<PathBuf> (because clap
+    // refuses empty `PathBuf`s, and people like to set environment
+    // variables to the empty string to unset them, and
+    // sequoia-policy-config accepts that, so we can never improve
+    // upon that), nor can it be a Option<StateDirectory> which would
+    // be consistent with --home, --cert-store, and --key-store, where
+    // we also disallow empty paths but show a nice help and have an
+    // explicit "none" and "default" value.  Should this be an
+    // absolute path?  Should we do tilde expansion like we do for the
+    // state directories?  Does
+    // ConfiguredStandardPolicy::parse_config_file react differently
+    // than ConfiguredStandardPolicy::parse_default_config?  Who
+    // knows.
+    //
+    // See also
+    // https://gitlab.com/sequoia-pgp/sequoia-policy-config/-/issues/6
+    pub policy: Option<OsString>,
+
     #[clap(
         long = "policy-as-of",
         allow_hyphen_values = true,

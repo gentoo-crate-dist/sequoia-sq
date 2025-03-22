@@ -305,6 +305,9 @@ fn real_main() -> Result<()> {
 
     config.init_verbose(c.verbose, matches.value_source("verbose"));
     config.init_quiet(c.quiet, matches.value_source("quiet"));
+    if ! c.policy.as_ref().map(|p| p.is_empty()).unwrap_or(true) {
+        config.set_default_policy_path(c.policy.clone().map(Into::into));
+    }
 
     let time_is_now = c.time.is_none();
     let time: SystemTime = if let Some(t) = c.time.as_ref() {

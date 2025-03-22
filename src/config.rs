@@ -64,7 +64,16 @@ pub struct Config {
     /// The default validity period for third-party certifications.
     pki_vouch_expiration: Option<cli::types::Expiration>,
 
+    /// Path to the default cryptographic policy file, given by
+    /// SEQUOIA_CRYPTO_POLICY or the `--crypto-policy` parameter.
+    /// file.
+    default_policy_path: Option<PathBuf>,
+
+    /// Path to the cryptographic policy file in the configuration
+    /// file.
     policy_path: Option<PathBuf>,
+
+    /// The cryptographic policy embedded in the configuration file.
     policy_inline: Option<Vec<u8>>,
 
     /// The default cipher suite for newly generated keys.
@@ -100,6 +109,7 @@ impl Default for Config {
             sign_signer_self: Default::default(),
             pki_vouch_certifier_self: None,
             pki_vouch_expiration: None,
+            default_policy_path: None,
             policy_path: None,
             policy_inline: None,
             cipher_suite: None,
@@ -231,6 +241,11 @@ impl Config {
         }.clone()
     }
 
+    /// Sets the default policy path.
+    pub fn set_default_policy_path(&mut self, path: Option<PathBuf>) {
+        self.default_policy_path = path;
+    }
+
     /// Returns the path to the referenced cryptographic policy, if
     /// any.
     pub fn policy_path(&self) -> Option<&Path> {
@@ -246,7 +261,11 @@ impl Config {
     {
         let mut policy = ConfiguredStandardPolicy::at(at);
 
-        policy.parse_default_config()?;
+        if let Some(p) = &self.default_policy_path {
+            policy.parse_config_file(p)?;
+        } else {
+            policy.parse_default_config()?;
+        }
 
         if let Some(p) = &self.policy_path {
             if ! policy.parse_config_file(p)? {
