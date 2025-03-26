@@ -5,6 +5,7 @@ use std::{
     time::SystemTime,
 };
 
+use sequoia_ipc::Keygrip;
 use sequoia_openpgp::{
     Cert,
     Fingerprint,
@@ -513,6 +514,15 @@ pub fn list(sq: Sq, mut cmd: cli::key::list::Command) -> Result<()> {
             for loc in &primary.locations {
                 wwriteln!(stream=o, initial_indent = "   - ", "{}", loc);
             }
+
+            if cmd.with_keyids {
+                if let Ok(key_grip) = Keygrip::of(primary.key.mpis()) {
+                    wwriteln!(stream=o, initial_indent = "   - ", "KeyGrip: {}", key_grip.to_string());
+                }
+                let key_id = primary.key.keyid();
+                wwriteln!(stream=o, initial_indent = "   - ", "KeyId: {}", key_id.to_string());
+            }
+
         }
 
         // Subkey information, if any.
