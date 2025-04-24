@@ -89,3 +89,30 @@ fn sq_key_generate_with_password() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn sq_key_generate_with_profiles() -> Result<()> {
+    use openpgp::types::PublicKeyAlgorithm;
+
+    let sq = common::Sq::new();
+
+    for (ciphersuite, algo) in [
+        ("mldsa65-ed25519", PublicKeyAlgorithm::MLDSA65_Ed25519),
+        ("mldsa87-ed448", PublicKeyAlgorithm::MLDSA87_Ed448),
+    ]
+    {
+        if ! algo.is_supported() {
+            continue;
+        }
+
+        let (cert, _, _) = sq.key_generate(
+            &["--cipher-suite", ciphersuite, "--profile", "rfc9580"],
+            NO_USERIDS);
+
+        let vc = cert.with_policy(common::STANDARD_POLICY, None)?;
+
+        assert_eq!(vc.primary_key().key().pk_algo(), algo);
+    }
+
+    Ok(())
+}
