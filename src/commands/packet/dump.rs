@@ -457,6 +457,16 @@ impl<'a, 'b, 'c> PacketDumper<'a, 'b, 'c> {
                             self.dump_mpis(output, &ii,
                                            &[&e[..], key],
                                            &["e", "key"])?,
+
+                        mpi::Ciphertext::MLKEM768_X25519 { ecdh, mlkem, esk } =>
+                            self.dump_mpis(output, &ii,
+                                           &[&ecdh[..], &mlkem[..], esk],
+                                           &["ecdh", "mlkem", "esk"])?,
+                        mpi::Ciphertext::MLKEM1024_X448 { ecdh, mlkem, esk } =>
+                            self.dump_mpis(output, &ii,
+                                           &[&ecdh[..], &mlkem[..], esk],
+                                           &["ecdh", "mlkem", "esk"])?,
+
                         mpi::Ciphertext::RSA { c } =>
                             self.dump_mpis(output, &ii,
                                            &[c.value()],
@@ -628,6 +638,32 @@ impl<'a, 'b, 'c> PacketDumper<'a, 'b, 'c> {
                     self.dump_mpis(output, &ii, &[a], &["a"])?,
                 mpi::PublicKey::Ed448 { a } =>
                     self.dump_mpis(output, &ii, &[&a[..]], &["a"])?,
+
+                mpi::PublicKey::MLDSA65_Ed25519 { eddsa, mldsa } =>
+                    self.dump_mpis(output, &ii,
+                                   &[&eddsa[..], &mldsa[..]],
+                                   &["eddsa", "mldsa"])?,
+                mpi::PublicKey::MLDSA87_Ed448 { eddsa, mldsa } =>
+                    self.dump_mpis(output, &ii,
+                                   &[&eddsa[..], &mldsa[..]],
+                                   &["eddsa", "mldsa"])?,
+
+                mpi::PublicKey::SLHDSA128s { public } =>
+                    self.dump_mpis(output, &ii, &[&public[..]], &["public"])?,
+                mpi::PublicKey::SLHDSA128f { public } =>
+                    self.dump_mpis(output, &ii, &[&public[..]], &["public"])?,
+                mpi::PublicKey::SLHDSA256s { public } =>
+                    self.dump_mpis(output, &ii, &[&public[..]], &["public"])?,
+
+                mpi::PublicKey::MLKEM768_X25519 { ecdh, mlkem } =>
+                    self.dump_mpis(output, &ii,
+                                   &[&ecdh[..], &mlkem[..]],
+                                   &["ecdh", "mlkem"])?,
+                mpi::PublicKey::MLKEM1024_X448 { ecdh, mlkem } =>
+                    self.dump_mpis(output, &ii,
+                                   &[&ecdh[..], &mlkem[..]],
+                                   &["ecdh", "mlkem"])?,
+
                 mpi::PublicKey::RSA { e, n } =>
                     self.dump_mpis(output, &ii,
                                  &[e.value(), n.value()],
@@ -702,6 +738,43 @@ impl<'a, 'b, 'c> PacketDumper<'a, 'b, 'c> {
                                 mpi::SecretKeyMaterial::Ed448 { x } =>
                                     self.dump_mpis(output, &ii,
                                                    &[&x[..]], &["x"])?,
+
+                                mpi::SecretKeyMaterial::MLDSA65_Ed25519 {
+                                    eddsa, mldsa
+                                } =>
+                                    self.dump_mpis(output, &ii,
+                                                   &[&eddsa[..], &mldsa[..]],
+                                                   &["eddsa", "mldsa"])?,
+                                mpi::SecretKeyMaterial::MLDSA87_Ed448 {
+                                    eddsa, mldsa
+                                } =>
+                                    self.dump_mpis(output, &ii,
+                                                   &[&eddsa[..], &mldsa[..]],
+                                                   &["eddsa", "mldsa"])?,
+
+                                mpi::SecretKeyMaterial::SLHDSA128s { secret } =>
+                                    self.dump_mpis(output, &ii, &[&secret[..]],
+                                                   &["secret"])?,
+                                mpi::SecretKeyMaterial::SLHDSA128f { secret } =>
+                                    self.dump_mpis(output, &ii, &[&secret[..]],
+                                                   &["secret"])?,
+                                mpi::SecretKeyMaterial::SLHDSA256s { secret } =>
+                                    self.dump_mpis(output, &ii, &[&secret[..]],
+                                                   &["secret"])?,
+
+                                mpi::SecretKeyMaterial::MLKEM768_X25519 {
+                                    ecdh, mlkem
+                                } =>
+                                    self.dump_mpis(output, &ii,
+                                                   &[&ecdh[..], &mlkem[..]],
+                                                   &["ecdh", "mlkem"])?,
+                                mpi::SecretKeyMaterial::MLKEM1024_X448 {
+                                    ecdh, mlkem
+                                } =>
+                                    self.dump_mpis(output, &ii,
+                                                   &[&ecdh[..], &mlkem[..]],
+                                                   &["ecdh", "mlkem"])?,
+
                                 mpi::SecretKeyMaterial::RSA { d, p, q, u } =>
                                     self.dump_mpis(output, &ii,
                                                  &[d.value(), p.value(),
@@ -812,6 +885,25 @@ impl<'a, 'b, 'c> PacketDumper<'a, 'b, 'c> {
                     self.dump_mpis(output, &ii, &[&s[..]], &["s"])?,
                 mpi::Signature::Ed448 { s } =>
                     self.dump_mpis(output, &ii, &[&s[..]], &["s"])?,
+
+
+                mpi::Signature::MLDSA65_Ed25519 { eddsa, mldsa } =>
+                    self.dump_mpis(output, &ii,
+                                   &[&eddsa[..], &mldsa[..]],
+                                   &["eddsa", "mldsa"])?,
+                mpi::Signature::MLDSA87_Ed448 { eddsa, mldsa } =>
+                    self.dump_mpis(output, &ii,
+                                   &[&eddsa[..], &mldsa[..]],
+                                   &["eddsa", "mldsa"])?,
+
+                mpi::Signature::SLHDSA128s { sig } =>
+                    self.dump_mpis(output, &ii, &[&sig[..]], &["signature"])?,
+                mpi::Signature::SLHDSA128f { sig } =>
+                    self.dump_mpis(output, &ii, &[&sig[..]], &["signature"])?,
+                mpi::Signature::SLHDSA256s { sig } =>
+                    self.dump_mpis(output, &ii, &[&sig[..]], &["signature"])?,
+
+
                 mpi::Signature::RSA { s } =>
                     self.dump_mpis(output, &ii,
                                    &[s.value()],
