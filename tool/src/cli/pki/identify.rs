@@ -75,7 +75,7 @@ const EXAMPLES: Actions = Actions {
         ]).build(),
 
         Action::example().comment(
-            "List all user IDs that have that have been certified by anyone.",
+            "List all user IDs that have been certified by anyone.",
         ).command(&[
             "sq", "pki", "identify", "--gossip",
             "--cert", "511257EBBF077B7AEDAE5D093F68CB84CE537C9A",
