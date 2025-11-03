@@ -7,17 +7,18 @@ use sequoia_openpgp as openpgp;
 use openpgp::Fingerprint;
 use openpgp::KeyHandle;
 use openpgp::Result;
-use openpgp::{Packet, PacketPile, Cert};
 use openpgp::cert::CertBuilder;
 use openpgp::crypto::KeyPair;
 use openpgp::packet::key::SecretKeyMaterial;
 use openpgp::packet::signature::subpacket::NotationData;
 use openpgp::packet::signature::subpacket::NotationDataFlags;
-use openpgp::types::{CompressionAlgorithm, SignatureType};
 use openpgp::parse::Parse;
 use openpgp::policy::StandardPolicy;
-use openpgp::serialize::stream::{Message, Signer, Compressor, LiteralWriter};
 use openpgp::serialize::Serialize;
+use openpgp::serialize::stream::{Message, Signer, Compressor, LiteralWriter};
+use openpgp::types::PublicKeyAlgorithm;
+use openpgp::types::{CompressionAlgorithm, SignatureType};
+use openpgp::{Packet, PacketPile, Cert};
 
 use super::common::*;
 
@@ -364,6 +365,41 @@ fn sq_sign_detached() {
 
     // Verify detached.
     sq.verify(&["--signer-file", &artifact_s("keys/emmelie-dorothea-dina-samantha-awina-ed25519.pgp")],
+              Verify::SignatureFile(sig),
+              &artifact("messages/a-cypherpunks-manifesto.txt"), None);
+}
+
+#[test]
+fn sq_sign_mldsa65_detached() {
+    if ! PublicKeyAlgorithm::MLDSA65_Ed25519.is_supported() {
+        return;
+    }
+
+    let sq = Sq::new();
+    let tmp_dir = TempDir::new().unwrap();
+    let sig = tmp_dir.path().join("sig0");
+
+    // Sign detached.
+    sq.sign_detached(&[],
+                     artifact("keys/pqc_mldsa65.sk.pgp"),
+                     &artifact("messages/a-cypherpunks-manifesto.txt"),
+                     sig.as_path());
+
+    // Check that the content is sane.
+    let packets: Vec<Packet> =
+        PacketPile::from_file(&sig).unwrap().into_children().collect();
+    assert_eq!(packets.len(), 1);
+    if let Packet::Signature(ref sig) = packets[0] {
+        assert_eq!(sig.typ(), SignatureType::Binary);
+    } else {
+        panic!("expected signature");
+    }
+
+    let content = fs::read(&sig).unwrap();
+    assert!(&content[..].starts_with(b"-----BEGIN PGP SIGNATURE-----\n\n"));
+
+    // Verify detached.
+    sq.verify(&["--signer-file", &artifact_s("keys/pqc_mldsa65.pk.pgp")],
               Verify::SignatureFile(sig),
               &artifact("messages/a-cypherpunks-manifesto.txt"), None);
 }

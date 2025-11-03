@@ -2,14 +2,15 @@ use std::collections::HashSet;
 
 use sequoia_openpgp as openpgp;
 use openpgp::Cert;
+use openpgp::Fingerprint;
 use openpgp::KeyHandle;
 use openpgp::KeyID;
-use openpgp::Fingerprint;
 use openpgp::Packet;
+use openpgp::Result;
 use openpgp::parse::PacketParser;
 use openpgp::parse::PacketParserResult;
 use openpgp::parse::Parse;
-use openpgp::Result;
+use openpgp::types::PublicKeyAlgorithm;
 
 use crate::integration::common::power_set;
 use crate::integration::common::Sq;
@@ -816,6 +817,39 @@ fn sq_encrypt_weak() -> Result<()>
     sq.tick(2 * 24 * 60 * 60);
 
     try_encrypt(&sq, &[], &[], &[ &cert.fingerprint() ], &[], &[]);
+
+    Ok(())
+}
+
+// Encrypt/decrypt using a certificate with PQC mlkem768+x25519.
+#[test]
+fn sq_encrypt_pqc_mldsa65() -> Result<()> {
+    if ! PublicKeyAlgorithm::MLDSA65_Ed25519.is_supported()
+        && ! PublicKeyAlgorithm::MLKEM768_X25519.is_supported()
+    {
+        return Ok(());
+    }
+
+    let sq = Sq::new();
+    let message = "Hello World";
+
+    let cert_path = sq.test_data()
+        .join("keys")
+        .join("pqc_mldsa65.sk.pgp");
+    sq.key_import(&cert_path);
+
+    let cert = Cert::from_file(&cert_path).expect("can read");
+    let fpr = &cert.fingerprint().to_string();
+
+    let crypted = sq.encrypt(&["--for", fpr], message.as_bytes());
+
+    assert!(&crypted[..].starts_with(b"-----BEGIN PGP MESSAGE-----\n\n"));
+
+    let decrypted = sq.decrypt(
+        &[ ],
+        &crypted);
+
+    assert_eq!(decrypted, message.as_bytes());
 
     Ok(())
 }
