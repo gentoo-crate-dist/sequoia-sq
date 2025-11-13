@@ -31,7 +31,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 aho-corasick = "1"
 buffered-reader = { version = "1.4", default-features = false, features = ["compression"] }
-dirs = "5"
+dirs = ">=5, <7"
 filetime = "0.2"
 fs_extra = "1"
 sequoia-directories = "0.1"
@@ -78,7 +78,7 @@ clap = { version = "4", features = ["derive", "env", "string", "wrap_help"] }
 clap_complete = "4"
 clap_lex = { version = "0.7", default-features = false }
 chrono = "0.4.38"
-dirs = "5"
+dirs = ">=5, <7"
 roff = "0.2.1"
 serde = { version = "1.0.137", features = ["derive"] }
 sequoia-directories = "0.1"
