@@ -26,13 +26,15 @@ use openpgp::types::ReasonForRevocation;
 use openpgp::types::RevocationStatus;
 use openpgp::types::SignatureType;
 
+use sequoia::wot;
+use wot::FULLY_TRUSTED;
+
 use sequoia::cert_store;
 use cert_store::StoreUpdate;
 
 use sequoia::inspect::inspect;
 use sequoia::prompt::Prompt as _;
 use sequoia::prompt;
-use sequoia::types::TrustAmount;
 use sequoia::types::TrustThreshold;
 use sequoia::types::import_stats::ImportStatus;
 
@@ -551,48 +553,40 @@ pub fn dispatch(
                 if command.own_key && have_userids {
                     // Mark all user IDs as authenticated, and mark
                     // the key as a trusted introducer.
-                    sequoia::pki::certify::certify(
-                        o,
-                        &sq.sequoia,
-                        false, // Recreate.
-                        &trust_root,
-                        &cert,
-                        &userids.into_iter().map(Into::into)
-                            .collect::<Vec<_>>(),
-                        true, // User-supplied user IDs.
-                        &[(TrustAmount::Full, Expiration::Never)],
+                    sq.sequoia.pki_certify()
+                        .recreate(false)
+                        .user_supplied_userids(true)
+                        .trust_amount(FULLY_TRUSTED as u8)
                         // Make it an unconstrained trusted introducer.
-                        u8::MAX, // Trust depth.
-                        &[][..], // Domain.
-                        &[][..], // Regex.
-                        true, // Local.
-                        false, // Non-revocable.
-                        &[][..], // Notations.
-                        None, // Output.
-                        prompt,
-                    )?;
+                        .trust_depth(u8::MAX)
+                        .expiration(Expiration::Never)
+                        .exportable(false)
+                        .certify(
+                            &trust_root,
+                            &cert,
+                            &userids.into_iter().map(Into::into)
+                                .collect::<Vec<_>>(),
+                            None, // Output.
+                            o,
+                            prompt)?;
                 } else if command.shared_key && have_userids {
                     // Mark all user IDs as authenticated.
-                    sequoia::pki::certify::certify(
-                        o,
-                        &sq.sequoia,
-                        false, // Recreate.
-                        &trust_root,
-                        &cert,
-                        &userids.into_iter().map(Into::into)
-                            .collect::<Vec<_>>(),
-                        true, // User-supplied user IDs.
-                        &[(TrustAmount::Full, Expiration::Never)],
-                        // No trusted introducer.
-                        0, // Trust depth.
-                        &[][..], // Domain.
-                        &[][..], // Regex.
-                        true, // Local.
-                        false, // Non-revocable.
-                        &[][..], // Notations.
-                        None, // Output.
-                        prompt,
-                    )?;
+                    sq.sequoia.pki_certify()
+                        .recreate(false)
+                        .user_supplied_userids(true)
+                        .trust_amount(FULLY_TRUSTED as u8)
+                        // Not a trusted introducer.
+                        .trust_depth(0)
+                        .expiration(Expiration::Never)
+                        .exportable(false)
+                        .certify(
+                            &trust_root,
+                            &cert,
+                            &userids.into_iter().map(Into::into)
+                                .collect::<Vec<_>>(),
+                            None, // Output.
+                            o,
+                            prompt)?;
                 }
 
                 // And save any updates.

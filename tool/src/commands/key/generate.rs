@@ -13,10 +13,12 @@ use openpgp::Packet;
 use openpgp::packet::UserID;
 use openpgp::Result;
 
+use sequoia::wot;
+use wot::FULLY_TRUSTED;
+
 use sequoia::inspect::inspect;
 use sequoia::prompt::Prompt as _;
 use sequoia::prompt;
-use sequoia::types::TrustAmount;
 use sequoia::types::import_stats::ImportStatus;
 
 use crate::common::password;
@@ -312,48 +314,39 @@ pub fn generate(
                 if command.own_key && have_userids {
                     // Mark all user IDs as authenticated, and mark
                     // the key as a trusted introducer.
-                    sequoia::pki::certify::certify(
-                        &mut std::io::stderr(),
-                        &sq.sequoia,
-                        false, // Recreate.
-                        &trust_root,
-                        &cert,
-                        &command.userid.into_iter().map(Into::into)
-                            .collect::<Vec<_>>(),
-                        true, // User-supplied user IDs.
-                        &[(TrustAmount::Full, Expiration::Never)],
-                        // Make it a unconstrained trusted introducer.
-                        u8::MAX, // Trust depth.
-                        &[][..], // Domain.
-                        &[][..], // Regex.
-                        true, // Local.
-                        false, // Non-revocable.
-                        &[][..], // Notations.
-                        None, // Output.
-                        prompt,
-                    )?;
+                    sq.sequoia.pki_certify()
+                        .recreate(false)
+                        .user_supplied_userids(true)
+                        .trust_amount(FULLY_TRUSTED as u8)
+                        .trust_depth(u8::MAX)
+                        .expiration(Expiration::Never)
+                        .exportable(false)
+                        .certify(
+                            &trust_root,
+                            &cert,
+                            &command.userid.into_iter().map(Into::into)
+                                .collect::<Vec<_>>(),
+                            None, // Output.
+                            &mut std::io::stderr(),
+                            prompt)?;
                 } else if command.shared_key && have_userids {
                     // Mark all user IDs as authenticated.
-                    sequoia::pki::certify::certify(
-                        &mut std::io::stderr(),
-                        &sq.sequoia,
-                        false, // Recreate.
-                        &trust_root,
-                        &cert,
-                        &command.userid.into_iter().map(Into::into)
-                            .collect::<Vec<_>>(),
-                        true, // User-supplied user IDs.
-                        &[(TrustAmount::Full, Expiration::Never)],
-                        // No trusted introducer.
-                        0, // Trust depth.
-                        &[][..], // Domain.
-                        &[][..], // Regex.
-                        true, // Local.
-                        false, // Non-revocable.
-                        &[][..], // Notations.
-                        None, // Output.
-                        prompt,
-                    )?;
+                    sq.sequoia.pki_certify()
+                        .recreate(false)
+                        .user_supplied_userids(true)
+                        .trust_amount(FULLY_TRUSTED as u8)
+                        // Not a trusted introducer.
+                        .trust_depth(0)
+                        .expiration(Expiration::Never)
+                        .exportable(false)
+                        .certify(
+                            &trust_root,
+                            &cert,
+                            &command.userid.into_iter().map(Into::into)
+                                .collect::<Vec<_>>(),
+                            None, // Output.
+                            &mut std::io::stderr(),
+                            prompt)?;
                 }
             }
         }

@@ -53,23 +53,25 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
 
     let prompt = password::Prompt::new(&sq, true);
 
-    sequoia::pki::certify::certify(
-        &mut std::io::stderr(),
-        &sq.sequoia,
-        true, // Always recreate.
-        &certifier,
-        &cert,
-        &userids[..],
-        ! c.userids.all().unwrap_or(false), // User-supplied user IDs.
-        &[(c.amount, expiration)],
-        c.depth,
-        &c.domain[..],
-        &c.regex[..],
-        c.local,
-        c.non_revocable,
-        &notations[..],
-        output,
-        prompt)?;
+    sq.sequoia.pki_certify()
+        // Always recreate.
+        .recreate(true)
+        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .trust_amount(c.amount.amount())
+        .trust_depth(c.depth)
+        .expiration(expiration)
+        .exportable(! c.local)
+        .revocable(! c.non_revocable)
+        .add_domain_constraints(c.domain.iter())
+        .add_regular_expression_constraints(c.regex.iter())
+        .add_notations(notations.into_iter())
+        .certify(
+            &certifier,
+            &cert,
+            &userids[..],
+            output,
+            &mut std::io::stderr(),
+            prompt)?;
 
     if let Some(message) = message_ {
         message.finalize()?;

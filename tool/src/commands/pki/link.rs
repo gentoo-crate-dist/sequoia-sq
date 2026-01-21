@@ -4,7 +4,7 @@ use std::{
 
 use anyhow::Result;
 
-use sequoia::types::TrustAmount;
+use sequoia::pki::certify::CertificationTemplateBuilder;
 use sequoia::types::TrustThreshold;
 
 use crate::Sq;
@@ -44,44 +44,52 @@ pub fn add(sq: Sq, c: link::AddCommand)
 
     let notations = c.signature_notations.parse()?;
 
-    let templates: Vec<(TrustAmount<_>, Expiration)> = if c.temporary {
-        // Make the partially trusted link one second younger.  When
-        // the fully trusted link expired, then this link will come
-        // into effect.  If the user has fully linked the binding in
-        // the meantime, then this won't override that, which is
-        // exactly what we want.
-        let week = Duration::new(7 * 24 * 60 * 60, 0);
+    let primary_expiration;
+    let mut extra_certification = None;
+    if c.temporary {
+        // The first certification at t-1 is the long-term
+        // certification.  It marks the binding as partially
+        // authenticated and expires at the specified time.  The
+        // primary certification at t is the temporary certification.
+        // It will be valid for a week with the specified trust
+        // amount.
+        //
+        // When the primary certification expires, then the older link
+        // will come into effect.  If the user has fully linked the
+        // binding in the meantime, then this won't override that,
+        // which is exactly what we want.
+        extra_certification = Some(
+            CertificationTemplateBuilder::new()
+                .trust_amount(40)
+                .expiration(c.expiration.value())
+                .build());
 
-        vec![
-            (TrustAmount::Other(40), c.expiration.value()),
-            (c.amount, Expiration::from_duration(week)),
-        ]
+        primary_expiration = Expiration::from_duration(
+            Duration::new(7 * 24 * 60 * 60, 0));
     } else {
-        vec![
-            (c.amount, c.expiration.value()),
-        ]
+        primary_expiration = c.expiration.value();
     };
 
     let prompt = password::Prompt::new(&sq, true);
 
-    sequoia::pki::certify::certify(
-        &mut std::io::stdout(),
-        &sq.sequoia,
-        c.recreate, // Recreate.
-        &trust_root,
-        &cert,
-        &userids[..],
-        ! c.userids.all().unwrap_or(false), // User-supplied user IDs.
-        &templates,
-        0, // Trust depth.
-        &[][..], // Domain.
-        &[][..], // Regex.
-        true, // Local.
-        false, // Non-revocable.
-        &notations[..],
-        None, // Output.
-        prompt,
-    )?;
+    sq.sequoia.pki_certify()
+        .recreate(c.recreate)
+        .user_supplied_userids(
+            ! c.userids.all().unwrap_or(false))
+        .trust_amount(c.amount.amount())
+        // Not a trusted introducer.
+        .trust_depth(0)
+        .expiration(primary_expiration)
+        .exportable(false)
+        .add_notations(notations.into_iter())
+        .add_certifications(extra_certification.into_iter())
+        .certify(
+            &trust_root,
+            &cert,
+            &userids[..],
+            None, // Output.
+            &mut std::io::stdout(),
+            prompt)?;
 
     Ok(())
 }
@@ -105,23 +113,23 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
 
     let prompt = password::Prompt::new(&sq, true);
 
-    sequoia::pki::certify::certify(
-        &mut std::io::stdout(),
-        &sq.sequoia,
-        c.recreate, // Recreate.
-        &trust_root,
-        &cert,
-        &userids[..],
-        ! c.userids.all().unwrap_or(false), // User-supplied user IDs.
-        &[(c.amount, c.expiration.value())][..],
-        c.depth,
-        &c.domain[..],
-        &c.regex[..],
-        true, // Local.
-        false, // Non-revocable.
-        &notations[..],
-        None, // Output.
-        prompt)
+    sq.sequoia.pki_certify()
+        .recreate(c.recreate)
+        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .trust_amount(c.amount.amount())
+        .trust_depth(c.depth)
+        .expiration(c.expiration.value())
+        .exportable(false)
+        .add_domain_constraints(c.domain.iter())
+        .add_regular_expression_constraints(c.regex.iter())
+        .add_notations(notations.into_iter())
+        .certify(
+            &trust_root,
+            &cert,
+            &userids[..],
+            None, // Output.
+            &mut std::io::stdout(),
+            prompt)
 }
 
 pub fn retract(sq: Sq, c: link::RetractCommand)
@@ -143,20 +151,18 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
 
     let prompt = password::Prompt::new(&sq, true);
 
-    sequoia::pki::certify::certify(
-        &mut std::io::stdout(),
-        &sq.sequoia,
-        c.recreate, // Recreate.
-        &trust_root,
-        &cert,
-        &userids[..],
-        ! c.userids.all().unwrap_or(false), // User-supplied user IDs.
-        &[(TrustAmount::None, Expiration::Never)],
-        0,
-        &[][..], &[][..], // Domain, regex.
-        true, // Local.
-        false, // Non-revocable.
-        &notations[..],
-        None, // Output.
-        prompt)
+    sq.sequoia.pki_certify()
+        .recreate(c.recreate)
+        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .trust_amount(0)
+        .expiration(Expiration::Never)
+        .exportable(false)
+        .add_notations(notations.into_iter())
+        .certify(
+            &trust_root,
+            &cert,
+            &userids[..],
+            None, // Output.
+            &mut std::io::stdout(),
+            prompt)
 }
