@@ -41,7 +41,7 @@ impl Expiration {
     }
 
     /// Create a new Expiration from a `Duration`.
-    pub fn from_duration(duration: Duration) -> Self {
+    pub const fn from_duration(duration: Duration) -> Self {
         Expiration::Timestamp(Time::from_duration(duration))
     }
 

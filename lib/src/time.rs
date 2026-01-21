@@ -78,7 +78,7 @@ impl Time {
     }
 
     /// Returns a relative time in the future.
-    pub fn from_duration(duration: Duration) -> Self {
+    pub const fn from_duration(duration: Duration) -> Self {
         Time::Offset(Offset {
             positive: true,
             seconds: duration.as_secs(),
