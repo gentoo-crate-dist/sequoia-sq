@@ -964,9 +964,12 @@ impl<'sequoia> Builder<'sequoia> {
 
         if helper.authenticated_signatures >= signatures {
             Ok(())
-        } else {
+        } else if helper.authenticated_signatures == 0 {
             Err(anyhow::anyhow!("Verification failed: could not \
                                  authenticate any signatures"))
+        } else {
+            Err(anyhow::anyhow!("Verification failed: could not \
+                                 authenticate enough signatures"))
         }
     }
 }
@@ -1188,6 +1191,9 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
 
         if self.authenticated_signatures >= self.signatures {
             Ok(())
+        } else if self.authenticated_signatures == 0 {
+            Err(anyhow::anyhow!("Verification failed: could not \
+                                 authenticate any signatures"))
         } else {
             Err(anyhow::anyhow!("Verification failed: could not \
                                  authenticate enough signatures"))
