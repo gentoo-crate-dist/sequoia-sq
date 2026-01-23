@@ -35,130 +35,264 @@ use crate::transitional::output::cert::emit_cert_userid;
 use crate::types::Convert;
 use crate::types::Safe;
 
-// Returns whether two certifications have different parameters.
-//
-// Returns true if the parameters are different.  Returns false if
-// they are the same.
-//
-// This does some normalization and only considers things that are
-// relevant to certifications:
-//
-//   - Expiration time
-//   - Trust depth
-//   - Trust amount
-//   - Regular expressions
-//   - Notations
-//   - Exportable
-pub fn diff_certification(unless_quiet: &mut dyn std::io::Write,
-                          old: &Signature, new: &SignatureBuilder,
-                          new_ct: SystemTime)
-    -> bool
+/// The difference of two values, if any.
+pub enum CertificationDiffValue<T>
+where
+    T: PartialEq + Eq
 {
-    let mut changed = false;
+    /// The value is unchanged.
+    Unchanged(T),
+    /// The value changed.
+    ///
+    /// Old, new.
+    Changed(T, T),
+}
 
-    let a_expiration = old.signature_expiration_time();
-    let b_expiration = if let Some(vp) = new.signature_validity_period() {
-        Some(new_ct + vp)
-    } else {
-        None
-    };
-    if a_expiration != b_expiration {
-        changed = true;
-        wwriteln!(stream = unless_quiet, initial_indent = "   - ",
-            "updating expiration time: {} -> {}",
-            if let Some(a_expiration) = a_expiration {
-                chrono::DateTime::<chrono::offset::Utc>::from(
-                    a_expiration).to_string()
-            } else {
-                "no expiration".to_string()
-            },
-            if let Some(b_expiration) = b_expiration {
-                chrono::DateTime::<chrono::offset::Utc>::from(
-                    b_expiration).to_string()
-            } else {
-                "no expiration".to_string()
-            });
-    }
-
-    let (a_depth, a_amount) = old.trust_signature().unwrap_or((0, 120));
-    let (b_depth, b_amount) = new.trust_signature().unwrap_or((0, 120));
-
-    if a_amount != b_amount {
-        changed = true;
-        wwriteln!(stream = unless_quiet, initial_indent = "   - ",
-                  "updating trust amount: {} -> {}",
-                  a_amount, b_amount);
-    }
-    if a_depth != b_depth {
-        changed = true;
-        wwriteln!(stream = unless_quiet, initial_indent = "   - ",
-                  "updating trust depth: {} -> {}",
-                  a_depth, b_depth);
-    }
-
-    let mut a_regex: Vec<_> = old.regular_expressions().collect();
-    a_regex.sort();
-    a_regex.dedup();
-    let mut b_regex: Vec<_> = new.regular_expressions().collect();
-    b_regex.sort();
-    b_regex.dedup();
-
-    if a_regex != b_regex {
-        changed = true;
-        wwriteln!(stream = unless_quiet, initial_indent = "   - ",
-                  "updating regular expressions");
-
-        wwriteln!(stream = unless_quiet, initial_indent = "     - ",
-                  "current certification");
-        for (i, r) in a_regex.into_iter().enumerate() {
-            wwriteln!(stream = unless_quiet, initial_indent = "       - ",
-                      "{}. {}", i + 1, Safe(r));
-        }
-
-        wwriteln!(stream = unless_quiet, initial_indent = "     - ",
-                  "new certification");
-        for (i, r) in b_regex.into_iter().enumerate() {
-            wwriteln!(stream = unless_quiet, initial_indent = "       - ",
-                      "{}. {}", i + 1, Safe(r));
+impl<T> CertificationDiffValue<T>
+where
+    T: PartialEq + Eq
+{
+    fn compute(old: T, new: T) -> Self {
+        if old == new {
+            CertificationDiffValue::Unchanged(old)
+        } else {
+            CertificationDiffValue::Changed(old, new)
         }
     }
 
-    let a_notations: Vec<_> = old.notation_data()
-        .filter(|n| n.name() != "salt@notations.sequoia-pgp.org")
-        .collect();
-    let b_notations: Vec<_> = new.notation_data()
-        .filter(|n| n.name() != "salt@notations.sequoia-pgp.org")
-        .collect();
-    if a_notations != b_notations {
-        changed = true;
-        wwriteln!(stream = unless_quiet, initial_indent = "   - ",
-                  "updating notations");
+    /// Whether the value is unchanged.
+    fn unchanged(&self) -> bool {
+        matches!(self, Self::Unchanged(_))
+    }
+}
 
-        wwriteln!(stream = unless_quiet, initial_indent = "     - ",
-                  "current certification");
-        for (i, n) in a_notations.into_iter().enumerate() {
-            wwriteln!(stream = unless_quiet, initial_indent = "       - ",
-                      "{}. {}", i + 1, Safe(n));
-        }
+/// A `diff` of important parameters in a `Certification`.
+///
+/// This `diff` does not intend to cover every possible different
+/// between two certifications.  Instead, its purpose is to determine
+/// whether a certification should be updated.  If the answer is yes,
+/// this data structure can be used to conveniently summarize the
+/// changes.
+///
+/// The following parameters are considered:
+///
+///   - (Absolute) expiration time
+///   - Trust depth
+///   - Trust amount
+///   - Regular expressions
+///   - Notations
+///   - Exportable flag
+pub struct CertificationDiff {
+    expiration: CertificationDiffValue<Option<SystemTime>>,
+    trust_depth: CertificationDiffValue<u8>,
+    trust_amount: CertificationDiffValue<u8>,
+    regular_expressions: CertificationDiffValue<Vec<Vec<u8>>>,
+    notations: CertificationDiffValue<Vec<String>>,
+    exportable: CertificationDiffValue<bool>,
+}
 
-        wwriteln!(stream = unless_quiet, initial_indent = "     - ",
-                  "updated certification");
-        for (i, n) in b_notations.into_iter().enumerate() {
-            wwriteln!(stream = unless_quiet, initial_indent = "       - ",
-                      "{}. {}", i + 1, Safe(n));
+impl CertificationDiff {
+    /// Returns whether the certification changed.
+    ///
+    /// Changes are normalized, and filtered to relevant changes.  For
+    /// instance, regular expressions and notations are sorted and
+    /// deduped, the salt notation is ignored, and a missing
+    /// expiration is considered equivalent to an expiration that
+    /// never expires.
+    pub fn unchanged(&self) -> bool {
+        self.expiration.unchanged()
+            && self.trust_depth.unchanged()
+            && self.trust_amount.unchanged()
+            && self.regular_expressions.unchanged()
+            && self.notations.unchanged()
+            && self.exportable.unchanged()
+    }
+
+    /// Returns the change to the expiration value.
+    pub fn expiration(&self) -> &CertificationDiffValue<Option<SystemTime>> {
+        &self.expiration
+    }
+
+    /// Returns the change to the trust depth value.
+    pub fn trust_depth(&self) -> &CertificationDiffValue<u8> {
+        &self.trust_depth
+    }
+
+    /// Returns the change to the trust amount value.
+    pub fn trust_amount(&self) -> &CertificationDiffValue<u8> {
+        &self.trust_amount
+    }
+
+    /// Returns the change to the regular expressions.
+    pub fn regular_expressions(&self) -> &CertificationDiffValue<Vec<Vec<u8>>> {
+        &self.regular_expressions
+    }
+
+    /// Returns the change to the notations.
+    pub fn notations(&self) -> &CertificationDiffValue<Vec<String>> {
+        &self.notations
+    }
+
+    /// Returns the change to the exportable field.
+    pub fn exportable(&self) -> &CertificationDiffValue<bool> {
+        &self.exportable
+    }
+
+    /// Computes the difference between a certification and a
+    /// signature builder.
+    pub fn for_builder(old: &Signature,
+                       new: &SignatureBuilder, new_ct: SystemTime)
+        -> Self
+    {
+        let a_expiration = old.signature_expiration_time();
+        let b_expiration = if let Some(vp) = new.signature_validity_period() {
+            Some(new_ct + vp)
+        } else {
+            None
+        };
+        let expiration = CertificationDiffValue::compute(
+            a_expiration, b_expiration);
+
+        let (a_depth, a_amount) = old.trust_signature().unwrap_or((0, 120));
+        let (b_depth, b_amount) = new.trust_signature().unwrap_or((0, 120));
+
+        let trust_depth
+            = CertificationDiffValue::compute(a_depth, b_depth);
+        let trust_amount
+            = CertificationDiffValue::compute(a_amount, b_amount);
+
+        let mut a_regex: Vec<_> = old.regular_expressions()
+            .map(|re| re.to_vec())
+            .collect();
+        a_regex.sort();
+        a_regex.dedup();
+        let mut b_regex: Vec<_> = new.regular_expressions()
+            .map(|re| re.to_vec())
+            .collect();
+        b_regex.sort();
+        b_regex.dedup();
+
+        let regular_expressions
+            = CertificationDiffValue::compute(a_regex, b_regex);
+
+        let a_notations: Vec<_> = old.notation_data()
+            .filter(|n| n.name() != "salt@notations.sequoia-pgp.org")
+            .map(|n| n.to_string())
+            .collect();
+        let b_notations: Vec<_> = new.notation_data()
+            .filter(|n| n.name() != "salt@notations.sequoia-pgp.org")
+            .map(|n| n.to_string())
+            .collect();
+
+        let notations = CertificationDiffValue::compute(
+            a_notations, b_notations);
+
+        let a_exportable = old.exportable_certification().unwrap_or(true);
+        let b_exportable = new.exportable_certification().unwrap_or(true);
+
+        let exportable = CertificationDiffValue::compute(
+            a_exportable, b_exportable);
+
+        CertificationDiff {
+            expiration,
+            trust_depth,
+            trust_amount,
+            regular_expressions,
+            notations,
+            exportable,
         }
     }
 
-    let a_exportable = old.exportable_certification().unwrap_or(true);
-    let b_exportable = new.exportable_certification().unwrap_or(true);
-    if a_exportable != b_exportable {
-        changed = true;
-        wwriteln!(stream = unless_quiet, initial_indent = "   - ",
-                  "updating exportable flag: {} -> {}",
-                  a_exportable, b_exportable);
-    }
+    /// Dumps the diff to the specified writer.
+    ///
+    /// The output is formatted as a markdown list with each line
+    /// indicating the difference.
+    pub fn dump(&self, output: &mut dyn std::io::Write)
+    {
+        if let CertificationDiffValue::Changed(a_expiration, b_expiration)
+            = self.expiration()
+        {
+            wwriteln!(stream = output, initial_indent = "   - ",
+                      "updating expiration time: {} -> {}",
+                      if let Some(a_expiration) = a_expiration {
+                          chrono::DateTime::<chrono::offset::Utc>::from(
+                              *a_expiration).to_string()
+                      } else {
+                          "no expiration".to_string()
+                      },
+                      if let Some(b_expiration) = b_expiration {
+                          chrono::DateTime::<chrono::offset::Utc>::from(
+                              *b_expiration).to_string()
+                      } else {
+                          "no expiration".to_string()
+                      });
+        }
 
-    changed
+        if let CertificationDiffValue::Changed(a_amount, b_amount)
+            = self.trust_amount()
+        {
+            wwriteln!(stream = output, initial_indent = "   - ",
+                      "updating trust amount: {} -> {}",
+                      a_amount, b_amount);
+        }
+        if let CertificationDiffValue::Changed(a_depth, b_depth)
+            = self.trust_depth()
+        {
+            wwriteln!(stream = output, initial_indent = "   - ",
+                      "updating trust depth: {} -> {}",
+                      a_depth, b_depth);
+        }
+
+        if let CertificationDiffValue::Changed(a_regex, b_regex)
+            = self.regular_expressions()
+        {
+            wwriteln!(stream = output, initial_indent = "   - ",
+                      "updating regular expressions");
+
+            wwriteln!(stream = output, initial_indent = "     - ",
+                      "current certification");
+            for (i, r) in a_regex.into_iter().enumerate() {
+                wwriteln!(stream = output, initial_indent = "       - ",
+                          "{}. {}", i + 1, Safe(r));
+            }
+
+            wwriteln!(stream = output, initial_indent = "     - ",
+                      "new certification");
+            for (i, r) in b_regex.into_iter().enumerate() {
+                wwriteln!(stream = output, initial_indent = "       - ",
+                          "{}. {}", i + 1, Safe(r));
+            }
+        }
+
+        if let CertificationDiffValue::Changed(a_notations, b_notations)
+            = self.notations()
+        {
+            wwriteln!(stream = output, initial_indent = "   - ",
+                      "updating notations");
+
+            wwriteln!(stream = output, initial_indent = "     - ",
+                      "current certification");
+            for (i, n) in a_notations.into_iter().enumerate() {
+                wwriteln!(stream = output, initial_indent = "       - ",
+                          "{}. {}", i + 1, Safe(n));
+            }
+
+            wwriteln!(stream = output, initial_indent = "     - ",
+                      "updated certification");
+            for (i, n) in b_notations.into_iter().enumerate() {
+                wwriteln!(stream = output, initial_indent = "       - ",
+                          "{}. {}", i + 1, Safe(n));
+            }
+        }
+
+        if let CertificationDiffValue::Changed(a_exportable, b_exportable)
+            = self.exportable()
+        {
+            wwriteln!(stream = output, initial_indent = "   - ",
+                      "updating exportable flag: {} -> {}",
+                      a_exportable, b_exportable);
+        }
+    }
 }
 
 impl Sequoia {
@@ -1093,12 +1227,13 @@ The certifier is the same as the certificate to certify."));
                                   active_certification_ct.convert());
                     }
 
-                    let changed = diff_certification(
-                        unless_quiet,
+                    let diff = CertificationDiff::for_builder(
                         &active_certification,
                         &builders[0], sequoia.time());
 
-                    if ! changed {
+                    diff.dump(unless_quiet);
+
+                    if diff.unchanged() {
                         wwriteln!(stream = unless_quiet, initial_indent = "   - ",
                                   "certification parameters are unchanged; \
                                    there is nothing to do");

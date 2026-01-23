@@ -16,7 +16,7 @@ use openpgp::policy::HashAlgoSecurity;
 use openpgp::policy::Policy;
 use openpgp::types::RevocationStatus;
 
-use sequoia::pki::certify::diff_certification;
+use sequoia::pki::certify::CertificationDiff;
 
 use crate::Sq;
 use crate::common::pki::list::summarize_certification;
@@ -293,11 +293,13 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
                         // as we don't want the creation time or the
                         // expiration time to flag a difference.
                         let mut trace: Vec<u8> = Vec::new();
-                        let mut sink = std::io::sink();
-                        if ! diff_certification(
-                            if TRACE { &mut trace } else { &mut sink },
-                            preexisting, &builder, preexisting_ct)
-                        {
+
+                        let diff = CertificationDiff::for_builder(
+                            preexisting, &builder, preexisting_ct);
+                        if TRACE {
+                            diff.dump(&mut trace);
+                        }
+                        if diff.unchanged() {
                             let p_ct = preexisting.signature_creation_time()
                                 .expect("valid signature");
                             let p_ct_str = chrono::DateTime::<chrono::Utc>::from(p_ct)
