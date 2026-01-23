@@ -45,6 +45,19 @@ impl Expiration {
         Expiration::Timestamp(Time::from_duration(duration))
     }
 
+    /// Create a new Expiration from a `Duration`.
+    ///
+    /// A value of `None` is interpreted as meaning no expiration.
+    pub const fn from_optional_duration(duration: Option<Duration>)
+        -> Self
+    {
+        if let Some(duration) = duration {
+            Expiration::Timestamp(Time::from_duration(duration))
+        } else {
+            Expiration::Never
+        }
+    }
+
     /// Return the expiry as an optional Duration in a Result
     ///
     /// This method returns an Error if the reference time is later than the
