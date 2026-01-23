@@ -23,6 +23,21 @@ pub enum TrustAmount<T> {
     Other(T),
 }
 
+impl<T> PartialEq for TrustAmount<T>
+where
+    T: PartialEq + Copy + From<u8>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.amount() == other.amount()
+    }
+}
+
+impl<T> Eq for TrustAmount<T>
+where
+    T: PartialEq + Copy + From<u8>
+{
+}
+
 impl<T: Copy + From<u8>> TrustAmount<T> {
     /// Returns the trust amount as numeric value.
     pub fn amount(&self) -> T {
