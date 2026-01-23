@@ -53,6 +53,23 @@ impl<T: Copy + From<u8>> TrustAmount<T> {
     }
 }
 
+impl<T> From<usize> for TrustAmount<T>
+where
+    T: From<usize>
+{
+    fn from(amount: usize) -> Self {
+        match amount {
+            0 => TrustAmount::None,
+            // See section 5.2.3.13. Trust Signature of RFC4880 for
+            // the values of partial and full trust.
+            60 => TrustAmount::Partial,
+            120 => TrustAmount::Full,
+            240 => TrustAmount::Double,
+            a => TrustAmount::Other(T::from(a)),
+        }
+    }
+}
+
 impl<T: Display + FromStr> FromStr for TrustAmount<T>
 where
     <T as FromStr>::Err: std::error::Error + Send + Sync + 'static,
