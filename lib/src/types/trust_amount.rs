@@ -4,7 +4,12 @@ use std::str::FromStr;
 
 use crate::Result;
 
-/// Describes the purpose of the encryption.
+/// A trust amount.
+///
+/// Note that OpenPGP data structures only describe a u8, however,
+/// this trust amount can be larger to accommodate expressing higher
+/// trust requirements, like 360 for three fully-trusted, orthogonal
+/// paths.
 #[derive(Copy, Clone, Debug)]
 pub enum TrustAmount<T> {
     /// No trust.
