@@ -67,7 +67,7 @@ impl<'a> prompt::Prompt for Prompt<'a> {
         let mut prompt = context.prompt();
 
         if self.cancel {
-            prompt.push_str(" (black to skip)");
+            prompt.push_str(" (blank to skip)");
         } else if context.reason().optional() {
             prompt.push_str(" (press enter to not use a password)");
         }
