@@ -575,22 +575,38 @@ pub fn dispatch(sq: Sq, c: download::Command)
         let (data_file, signature_file) = requests.block_on(&rt, async move {
             let mut data_file = None;
             let mut signature_file = None;
+            let mut errors: Vec<anyhow::Error> = Vec::new();
 
             while let Some(result) = task_set.join_next().await {
                 match result {
                     Ok(Ok((Task::Signature, file))) => signature_file = Some(file),
                     Ok(Ok((Task::Url, file))) => data_file = Some(file),
                     Ok(Err(err)) => {
-                        if data_file.is_none() {
-                            eprintln!();
-                            eprintln!("Aborting download.");
-                        }
-                        return Err(err);
-                    }
+                        // In case of an error abort all other (probably long
+                        // running) tasks.
+                        task_set.abort_all();
+                        errors.push(err)
+                    },
                     Err(err) => {
-                        return Err(err).context("While downloading data");
-                    }
+                        // In case of an error abort all other (probably long
+                        // running) tasks.
+                        task_set.abort_all();
+                        // Ignore errors resulting from aborting tasks.
+                        if ! err.is_cancelled() {
+                            errors.push(err.into());
+                        }
+                    },
                 }
+            }
+
+            let mut errors = errors.into_iter();
+            if let Some(err) = errors.next() {
+                eprintln!("Aborting download.");
+                std::iter::once(&err)
+                    .chain(errors.as_ref())
+                    .for_each(|e| eprintln!("- {:?}", e));
+
+                return Err(err);
             }
 
             let data_file = if let Some(data_file) = data_file {
