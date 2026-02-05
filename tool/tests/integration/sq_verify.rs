@@ -52,6 +52,25 @@ fn sq_verify_bad() -> Result<()> {
     assert_eq!(std::fs::metadata(&output).expect("can stat").len(),
                size);
 
+    #[cfg(unix)]
+    {
+        // Check permissions of the generated file.
+
+        use std::os::unix::fs::PermissionsExt;
+
+        // The permissions should not differ from the dummy file's
+        // permissions as no secrets got exported.
+        let dummy_file_path = sq.scratch_file("dummy.txt");
+        let _dummy_file = std::fs::File::create(&dummy_file_path)?;
+        let dummy_mode = std::fs::metadata(&dummy_file_path)?
+            .permissions()
+            .mode();
+
+        let mode = std::fs::metadata(&output)?.permissions().mode();
+        assert_eq!(mode, dummy_mode,
+                   "Got: {:o}, expected: {:o}", mode, dummy_mode);
+    }
+
     // Modify the data, and make sure verification now fails.
     let mut f = File::options().write(true).open(&sig_file)?;
     f.seek(io::SeekFrom::Start(size / 2)).expect("can seek");

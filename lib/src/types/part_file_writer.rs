@@ -29,6 +29,7 @@ pub struct PartFileWriter {
     sink: Option<NamedTempFile>,
     // If true, copy the temporary file instead of renaming it.
     copy: bool,
+    restricted_permissions: bool,
 }
 
 impl io::Write for PartFileWriter {
@@ -58,6 +59,20 @@ impl PartFileWriter {
     /// [`PartFileWriter::persist`] is called or the object is
     /// dropped.
     pub fn create<P: AsRef<Path>>(path: P) -> Result<PartFileWriter> {
+        Self::create_with_restricted_permissions(path, false)
+    }
+
+    /// Opens a file for writing.
+    ///
+    /// The file will be created under a different name in the target
+    /// directory, and will only be renamed to `path` once
+    /// [`PartFileWriter::persist`] is called or the object is
+    /// dropped. If `restricted` is set to true, the Unix permissions
+    /// will be limited to the user before applying a umask.
+    pub fn create_with_restricted_permissions<P: AsRef<Path>>(
+        path: P, restricted: bool)
+        -> Result<PartFileWriter>
+    {
         let path = path.as_ref().to_path_buf();
         let parent = path.parent()
             .ok_or(anyhow::anyhow!("cannot write to the root"))?;
@@ -66,20 +81,20 @@ impl PartFileWriter {
 
         let mut sink = tempfile::Builder::new();
 
-        // By default, temporary files are 0x600 on Unix.  But, we
-        // rather want created files to respect umask.
-        platform! {
-            unix => {
-                use std::os::unix::fs::PermissionsExt;
-                let all_read_write =
-                    std::fs::Permissions::from_mode(0o666);
-
-                // The permissions will be masked by the user's umask.
-                sink.permissions(all_read_write);
-            },
-            windows => {
-                // We cannot do the same on Windows.
-            },
+        // By default, temporary files are 0o600 on Unix. If
+        // restricted is not true, we want newly created files to
+        // respect umask fully.
+        if ! restricted {
+            platform! {
+                unix => {
+                    use std::os::unix::fs::PermissionsExt;
+                    // The permissions will be masked by the user's umask.
+                    sink.permissions(std::fs::Permissions::from_mode(0o666));
+                },
+                windows => {
+                    // We cannot do the same on Windows.
+                },
+            }
         }
 
         // Try to create tempfile in parent, if that fails use the
@@ -108,6 +123,7 @@ impl PartFileWriter {
             path,
             sink: Some(sink),
             copy,
+            restricted_permissions: restricted,
         })
     }
 
@@ -133,8 +149,41 @@ impl PartFileWriter {
 
                 platform! {
                     unix => {
+                        use std::os::unix::fs::FileTypeExt;
                         use std::os::unix::fs::OpenOptionsExt;
+                        use std::os::unix::fs::PermissionsExt;
 
+                        let mut modify_permissions = true;
+                        let meta_result = std::fs::metadata(&self.path);
+                        if let Ok(meta) = &meta_result {
+                            let ft = meta.file_type();
+                            // Don't modify permissions on special files as
+                            // they (usually) are not owned by a non-privileged
+                            // user and their permissions should stay the same.
+                            if ft.is_char_device()
+                                || ft.is_block_device()
+                                || ft.is_fifo()
+                                || ft.is_socket()
+                            {
+                                modify_permissions = false;
+                            }
+                        }
+
+                        if modify_permissions && self.restricted_permissions {
+                            // If output is an existing regular file, forbid
+                            // group/other access if restricted is true.
+                            if let Ok(meta) = &meta_result {
+                                if meta.file_type().is_file() {
+                                    std::fs::set_permissions(
+                                        &self.path,
+                                        PermissionsExt::from_mode(0o600))?;
+                                }
+                            }
+
+                            // Overwrite default permissions for newly created
+                            // files.
+                            open_options.mode(0o600);
+                        }
                         open_options.custom_flags(libc::O_NOFOLLOW);
                     },
                     windows => {

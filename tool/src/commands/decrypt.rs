@@ -16,7 +16,8 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
     tracer!(TRACE, "decrypt::dispatch");
 
     let mut input = command.input.open("an encrypted message")?;
-    let mut output = command.output.create_safe(&sq)?;
+    let output_path = command.output.for_secrets();
+    let mut output = output_path.create_safe(&sq)?;
 
     let signers =
         sq.resolve_certs_or_fail(&command.signers, TrustThreshold::Full)?;
@@ -52,7 +53,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
     let result = decryptor.decrypt(&mut input, &mut output, prompt, stream);
 
     if result.is_err() {
-        if let Some(path) = command.output.path() {
+        if let Some(path) = output_path.path() {
             // Drop output here so that the file is persisted and
             // can be deleted.
             drop(output);

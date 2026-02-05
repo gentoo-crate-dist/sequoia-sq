@@ -2,6 +2,8 @@ use sequoia::openpgp;
 use openpgp::KeyHandle;
 use openpgp::Result;
 use openpgp::packet::Key;
+use sequoia_openpgp::Cert;
+use sequoia_openpgp::parse::Parse;
 
 use super::common::power_set;
 use super::common::Sq;
@@ -104,6 +106,46 @@ fn sq_key_import_export() -> Result<()>
             assert_eq!(secrets, selection.len());
         }
     }
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+// For newly generated output files containing sensitive data, check if
+// the permissions of the new files forbid access to group and other.
+//
+// Warning: A umask setting of 0o077 renders this test ineffective.
+fn sq_key_export_check_permissions() -> Result<()> {
+    // This test is already limited to Unix.
+    use std::os::unix::fs::PermissionsExt;
+
+    let sq = Sq::new();
+
+    let dir = sq.scratch_dir();
+    let cert_file = dir.join("cert.pgp");
+
+    // Generate and import a key.
+    let (cert, key_pgp, _) = sq.key_generate(&[], &["Alice"]);
+    sq.key_import(key_pgp);
+
+    // Run the command, create the output files.
+    let mut cmd = sq.command();
+    cmd.args([
+        "key", "export",
+        "--cert", cert.fingerprint().to_hex().as_str(),
+        "--overwrite",
+        "--output", &cert_file.display().to_string(),
+    ]);
+    sq.run(cmd, true);
+
+    let _cert = Cert::from_file(&cert_file).expect("Have a cert");
+
+    // Check the permissions of the generated file.  As it contains a
+    // key it should not be accessible to group or other.
+    let permissions = std::fs::metadata(&cert_file)?.permissions();
+    eprintln!("permissions: {:?}", permissions);
+    assert_eq!(permissions.mode() & 0o077, 0);
 
     Ok(())
 }

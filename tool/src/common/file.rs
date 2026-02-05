@@ -109,7 +109,8 @@ impl FileOrStdout {
         if let Some(path) = self.path() {
             if !path.exists() || sq.overwrite || overwrite {
                 Ok(Box::new(
-                    PartFileWriter::create(path)
+                    PartFileWriter::create_with_restricted_permissions(
+                        path, self.is_for_secrets())
                         .context("Failed to create output file")?,
                 ))
             } else {
@@ -124,7 +125,8 @@ impl FileOrStdout {
                         || p.file_type().is_socket()
                     {
                         return Ok(Box::new(
-                            PartFileWriter::create(path)
+                            PartFileWriter::create_with_restricted_permissions(
+                                path, self.is_for_secrets())
                                 .with_context(|| {
                                     format!("Failed to open special file {}",
                                             path.display())

@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::ops::Deref;
 
 use sequoia::openpgp;
+use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::Result;
 use openpgp::cert::prelude::*;
@@ -211,6 +212,50 @@ fn sq_cert_export() -> Result<()>
            "--cert", &bob.cert().fingerprint().to_string(),
            "--cert-email", "carol@sub.example.org",
     ], true, &[alice, bob, carol]);
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn sq_cert_export_check_permissions() -> Result<()> {
+    let sq = Sq::new();
+
+    // Generate and import a key.
+    let (cert, key_pgp, _) = sq.key_generate(&[], &["Alice"]);
+    sq.key_import(key_pgp);
+
+    let cert_file = sq.scratch_file("cert.pgp");
+
+    // Run the command, create the output files.
+    let mut cmd = sq.command();
+    cmd.args([
+        "cert", "export",
+        "--cert", cert.fingerprint().to_hex().as_str(),
+        "--output", &cert_file.display().to_string(),
+    ]);
+    sq.run(cmd, true);
+
+    let _cert = Cert::from_file(&cert_file).expect("Have a cert");
+
+    #[cfg(unix)]
+    {
+        // Check permissions of the generated file.
+
+        use std::os::unix::fs::PermissionsExt;
+
+        // The permissions should not differ from the dummy file's
+        // permissions as no secrets got exported.
+        let dummy_file_path = sq.scratch_file("dummy.txt");
+        let _dummy_file = std::fs::File::create(&dummy_file_path)?;
+        let dummy_mode = std::fs::metadata(&dummy_file_path)?
+            .permissions()
+            .mode();
+
+        let mode = std::fs::metadata(&cert_file)?.permissions().mode();
+        assert_eq!(mode, dummy_mode,
+                   "Got: {:o}, expected: {:o}", mode, dummy_mode);
+    }
 
     Ok(())
 }

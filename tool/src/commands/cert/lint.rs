@@ -242,18 +242,24 @@ pub fn lint(sq: Sq, mut args: Command) -> Result<()> {
     let certs = sq.resolve_certs_or_fail(
         &args.certs, TrustThreshold::Full)?;
 
+    let contains_secrets = certs.iter().any(|c: &Cert| c.is_tsk());
+
     let mut out = if args.output.is_some()
         || args.certs.iter().any(|d| d.from_file() || d.from_stdin())
     {
         let output = if let Some(output) = args.output {
-            output
+            if contains_secrets {
+                output.for_secrets()
+            } else {
+                output
+            }
         } else {
             FileOrStdout::new(None)
         };
 
         Some(output.create_pgp_safe(
             &sq, false,
-            if certs.iter().any(|c| c.is_tsk()) {
+            if contains_secrets {
                 armor::Kind::SecretKey
             } else {
                 armor::Kind::PublicKey

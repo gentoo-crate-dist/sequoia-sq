@@ -99,7 +99,7 @@ pub fn dispatch(sq: Sq, command: Command)
 
         Subcommands::Decrypt(command) => {
             let mut input = command.input.open("an encrypted message")?;
-            let mut output = command.output.create_pgp_safe(
+            let mut output = command.output.for_secrets().create_pgp_safe(
                 &sq,
                 command.binary,
                 openpgp::armor::Kind::Message,
