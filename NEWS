@@ -17,6 +17,10 @@
      these cases, `sq` now writes to a temporary file in the user's
      temporary directory (often under `/tmp`) and then copies the
      file.
+   - If `sq` outputs sensitive content to a regular file like keys or
+     revocation certificates, it restricts the output file's
+     permissions on Unix-like operating systems so that the group
+     permissions and other permissions don't allow access to the data.
    - You can use `sq key generate --encryption-algorithm` and `sq key
      generate --signing-algorithm` to specify the precise algorithm
      that `sq key generate` will use for encryption-capable keys and

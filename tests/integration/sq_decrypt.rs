@@ -69,6 +69,9 @@ fn session_key_wrong_key() -> Result<()> {
 
 // Make sure verifying bad data fails, and removes the intermediate
 // file.
+//
+// Warning: A umask setting of 0o077 renders the permission check in
+// this test ineffective.
 #[test]
 fn sq_decrypt_bad() -> Result<()> {
     let sq = Sq::new();
@@ -118,6 +121,14 @@ fn sq_decrypt_bad() -> Result<()> {
     assert!(output.exists());
     assert_eq!(std::fs::metadata(&output).expect("can stat").len(),
                size);
+    // Check permissions of scratch file, they should not contain permissions
+    // for group and other (unix only).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::metadata(&output)?.permissions();
+        assert_eq!(permissions.mode() & 0o077, 0);
+    }
 
     // Making signing fail and ensure the output is deleted.
     let output2 = sq.scratch_file("output2");

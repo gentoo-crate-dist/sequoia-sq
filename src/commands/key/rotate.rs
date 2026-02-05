@@ -465,7 +465,7 @@ pub fn dispatch(
             .collect();
         headers.insert(0, ("Comment", "Revocation certificate for"));
 
-        let w = rev_path.create_safe(&sq)?;
+        let w = rev_path.for_secrets().create_safe(&sq)?;
         let mut w = Writer::with_headers(w, Kind::PublicKey, headers)?;
         Packet::from(cert.primary_key().key().clone()).serialize(&mut w)?;
         Packet::Signature(rev).serialize(&mut w)?;

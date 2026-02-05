@@ -24,7 +24,7 @@ use super::common::*;
 const P: &StandardPolicy = &StandardPolicy::new();
 
 #[test]
-fn sq_sign() {
+fn sq_sign() -> Result<()> {
     let sq = Sq::new();
     let tmp_dir = TempDir::new().unwrap();
     let sig = tmp_dir.path().join("sig0");
@@ -32,6 +32,25 @@ fn sq_sign() {
     // Sign message.
     sq.sign(artifact("keys/emmelie-dorothea-dina-samantha-awina-ed25519-private.pgp"), None,
             &artifact("messages/a-cypherpunks-manifesto.txt"), sig.as_path());
+
+    #[cfg(unix)]
+    {
+        // Check permissions of the generated file.
+
+        use std::os::unix::fs::PermissionsExt;
+
+        // The permissions should not differ from the dummy file's
+        // permissions as no secrets got exported.
+        let dummy_file_path = sq.scratch_file("dummy.txt");
+        let _dummy_file = std::fs::File::create(&dummy_file_path)?;
+        let dummy_mode = std::fs::metadata(&dummy_file_path)?
+            .permissions()
+            .mode();
+
+        let mode = std::fs::metadata(&sig)?.permissions().mode();
+        assert_eq!(mode, dummy_mode,
+                   "Got: {:o}, expected: {:o}", mode, dummy_mode);
+    }
 
     // Check that the content is sane.
     let packets: Vec<Packet> =
@@ -60,6 +79,8 @@ fn sq_sign() {
     // Verify signed message.
     sq.verify(&["--signer-file", &artifact_s("keys/emmelie-dorothea-dina-samantha-awina-ed25519.pgp")],
               Verify::Message, &sig, None);
+
+    Ok(())
 }
 
 #[test]
