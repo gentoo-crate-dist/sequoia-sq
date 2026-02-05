@@ -102,7 +102,24 @@ where P: cert_designator::ArgumentPrefix,
     // To change the cert's expiration time, create a new direct key
     // signature and new binding signatures for the user IDs.
     if let Some(ka) = primary.get(0) {
-        let template = ka.binding_signature().clone();
+        // If certificate has a direct key signature, use that as the
+        // template.  Otherwise, fallback to the primary user ID's
+        // binding signature.
+        let template = if let Ok(sig) = vc.direct_key_signature() {
+            sig.clone()
+        } else {
+            if ka.key().version() == 6 {
+                // https://www.rfc-editor.org/rfc/rfc9580.html#section-5.2.3.10
+                //
+                // "An implementation MUST ensure that a valid Direct
+                // Key signature is present before using a version 6
+                // key"
+                return Err(anyhow::anyhow!(
+                    "Invalid certificate: Version 6 certificates must have \
+                     a direct key signature"));
+            }
+            ka.binding_signature().clone()
+        };
 
         // Clean the template.
         let template = SignatureBuilder::from(template)

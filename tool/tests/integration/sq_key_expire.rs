@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use sequoia::openpgp;
-use openpgp::parse::Parse;
 use openpgp::Cert;
-use openpgp::cert::amalgamation::ValidAmalgamation;
 use openpgp::Result;
+use openpgp::cert::amalgamation::ValidAmalgamation;
+use openpgp::parse::Parse;
+use openpgp::types::PublicKeyAlgorithm;
 use openpgp::types::RevocationStatus;
 
 use super::common::STANDARD_POLICY;
@@ -291,4 +292,73 @@ fn revoked_userid() {
     } else {
         panic!("User ID should be revoked, but isn't.");
     };
+}
+
+#[test]
+fn direct_key_signature() {
+    // When extending a certificate's expiration time, make sure that
+    // the direct key signature is a copy of the existing direct key
+    // signature (if it exists) and not a copy of the user ID binding
+    // signature.
+
+    let sq = Sq::new();
+    if ! PublicKeyAlgorithm::Ed448.is_supported() {
+        eprintln!("Skipping test: Ed448 not supported");
+        return;
+    }
+
+    let cert_path = sq.test_data()
+        .join("keys")
+        .join("v6-key-information-only-on-direct-signature.pgp");
+
+    let cert = Cert::from_file(&cert_path).expect("can read");
+    let vc = cert.with_policy(STANDARD_POLICY, sq.now())
+        .expect("valid cert");
+
+    // It shouldn't have an expiration.
+    assert!(vc.primary_key().key_expiration_time().is_none());
+
+    // It should have a direct key signature, which includes the key
+    // flags.
+    let direct_key_signature = vc.primary_key().direct_key_signature()
+        .expect("have a direct key signature");
+    assert!(direct_key_signature.key_flags().is_some(),
+            "Current direct key signature missing key flags");
+
+    // The user ID binding signatures shouldn't include the key flags.
+    for ua in vc.userids() {
+        assert!(ua.binding_signature().key_flags().is_none(),
+                "User ID includes key flags");
+    }
+
+    // Set it to expire in a day.
+    let updated_path = sq.scratch_file("updated");
+    let updated = sq.key_expire(cert_path,
+                                "1d",
+                                None,
+                                updated_path.as_path(),
+                                true)
+        .expect("sq key expire should succeed");
+
+    let vc = updated.with_policy(STANDARD_POLICY, sq.now())
+        .expect("valid cert");
+
+    // We should now have an expiration.
+    let expiration = vc.primary_key().key_expiration_time();
+    assert_eq!(expiration,
+               Some(sq.now() + std::time::Duration::new(24 * 60 * 60, 0)));
+
+    // The updated direct key signature should still include the key
+    // flags.
+    let direct_key_signature = vc.primary_key().direct_key_signature()
+        .expect("have a direct key signature");
+    assert!(direct_key_signature.key_flags().is_some(),
+            "New direct key signature missing key flags");
+
+    // And the user ID binding signatures shouldn't include the key
+    // flags.
+    for ua in vc.userids() {
+        assert!(ua.binding_signature().key_flags().is_none(),
+                "User ID includes key flags");
+    }
 }
