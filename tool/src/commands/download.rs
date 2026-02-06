@@ -41,6 +41,7 @@ use sequoia::types::TrustThreshold;
 use crate::Result;
 use crate::Sq;
 use crate::cli::download;
+use crate::cli::types::cert_designator::CertDesignator;
 use crate::commands::network::CONNECT_TIMEOUT;
 use crate::commands::network::USER_AGENT;
 use crate::common::key_handle_dealias;
@@ -183,8 +184,17 @@ pub fn dispatch(sq: Sq, c: download::Command)
     let url = c.url;
     let signature_url = c.detached;
     let signatures = c.signatures;
+
+    let (self_auth_designators, signer_designators, _with_passwords) =
+        c.signers.partition(|signer| {
+            matches!(signer, CertDesignator::Cert(_))
+        });
+
     let signers =
-        sq.resolve_certs_or_fail(&c.signers, TrustThreshold::Full)?;
+        sq.resolve_certs_or_fail(&signer_designators, TrustThreshold::Full)?;
+    let self_auth_signers =
+        sq.resolve_certs_or_fail(&self_auth_designators, TrustThreshold::YOLO)?;
+
     let output = c.output;
 
     if ! sq.quiet() && ! sq.batch {
@@ -323,11 +333,13 @@ pub fn dispatch(sq: Sq, c: download::Command)
             let progress_bar_ = progress_bar.downgrade();
             let sq_ = &sq;
             let signers_ = &signers;
+            let self_auth_signers_ = &self_auth_signers;
             scope.spawn(move || {
                 let result = (|| {
                     let progress_bar = progress_bar_;
                     let sq = sq_;
                     let signers = signers_;
+                    let self_auth_signers = self_auth_signers_;
 
                     let mut sig_file = if let Ok(sig_file)
                         = request_rx.blocking_recv()
@@ -374,7 +386,9 @@ pub fn dispatch(sq: Sq, c: download::Command)
                     for sig in signatures.iter() {
                         for issuer in sig.get_issuers() {
                             if let Some(cert)
-                                = signers.iter().find(|c| c.key_handle().aliases(&issuer))
+                                = signers.iter()
+                                .chain(self_auth_signers.iter())
+                                .find(|c| c.key_handle().aliases(&issuer))
                             {
                                 if seen.contains_key(&cert.fingerprint()) {
                                     // Already saw that certificate.
@@ -401,6 +415,15 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                 }
 
                                 let mut auth = || {
+                                    // Check self authenticated certificates
+                                    // first.
+                                    for self_auth_signer in self_auth_signers {
+                                        if cert.key_handle().aliases(&self_auth_signer.key_handle()) {
+                                            authenticated = true;
+                                            return;
+                                        }
+                                    }
+
                                     let mut authenticate = sq.sequoia.list_builder(
                                         vec![
                                             Query::for_key_handle(
@@ -600,8 +623,12 @@ pub fn dispatch(sq: Sq, c: download::Command)
     verifier.detached_args(None, data_file.path());
 
     verifier.signatures(signatures);
-    if ! signers.is_empty() {
-        verifier.designated_signers(signers);
+
+    let mut self_auth_signers = self_auth_signers;
+    let mut all_signers = signers;
+    all_signers.extend_from_slice(&mut self_auth_signers);
+    if ! all_signers.is_empty() {
+        verifier.designated_signers(all_signers);
     }
 
     let stream = Stream::new(&sq, VerifyContext::Download);

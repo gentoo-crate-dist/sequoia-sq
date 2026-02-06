@@ -593,6 +593,43 @@ impl<Arguments, Prefix, Options, Doc> CertDesignators<Arguments, Prefix, Options
     pub fn with_password_files(&self) -> &[PathBuf] {
         &self.with_password_files[..]
     }
+
+    /// Partitions the designators.
+    ///
+    /// `partition` returns a tuple contain three values.  The first
+    /// one contains `CertDesignators` for which `f` returned `true`.
+    /// The second one contains `CertDesignators` for which `f`
+    /// returned `false`.  The last one contains the values of the
+    /// `with_passwords` and `with_password_files` fields; it contains
+    /// `CertDesignators`.
+    pub fn partition<F>(self, f: F) -> (Self, Self, Self)
+    where
+        Self: Sized,
+        F: FnMut(&CertDesignator) -> bool,
+    {
+        let (left, right) = self.designators.into_iter().partition(f);
+
+        (
+            Self {
+                designators: left,
+                with_passwords: 0,
+                with_password_files: Vec::new(),
+                arguments: self.arguments,
+            },
+            Self {
+                designators: right,
+                with_passwords: 0,
+                with_password_files: Vec::new(),
+                arguments: self.arguments,
+            },
+            Self {
+                designators: Vec::new(),
+                with_passwords: self.with_passwords,
+                with_password_files: self.with_password_files,
+                arguments: self.arguments,
+            },
+        )
+    }
 }
 
 impl<Arguments, Prefix, Options, Doc> clap::Args
