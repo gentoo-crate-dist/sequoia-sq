@@ -20,9 +20,11 @@ use sequoia::inspect::inspect;
 use sequoia::prompt::Prompt as _;
 use sequoia::prompt;
 use sequoia::types::import_stats::ImportStatus;
+use sequoia::userid::lint_emails;
+use sequoia::userid::lint_names;
+use sequoia::userid::lint_userids;
 
 use crate::common::password;
-use crate::common::userid::{lint_userids, lint_names, lint_emails};
 use crate::Sq;
 use crate::cli::{
     self,

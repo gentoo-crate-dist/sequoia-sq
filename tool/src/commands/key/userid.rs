@@ -22,6 +22,9 @@ use sequoia::cert_store;
 use cert_store::StoreUpdate;
 
 use sequoia::types::TrustThreshold;
+use sequoia::userid::lint_emails;
+use sequoia::userid::lint_names;
+use sequoia::userid::lint_userids;
 
 use crate::Sq;
 use crate::cli::key::userid::RevokeCommand;
@@ -30,11 +33,6 @@ use crate::cli;
 use crate::common::RevocationOutput;
 use crate::common::get_secret_signer;
 use crate::common::ui;
-use crate::common::userid::{
-    lint_emails,
-    lint_names,
-    lint_userids,
-};
 
 /// Handle the revocation of a User ID
 struct UserIDRevocation {

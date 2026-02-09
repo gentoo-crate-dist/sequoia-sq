@@ -54,6 +54,7 @@ pub mod pki;
 pub mod provenance;
 pub mod sign;
 pub mod types;
+pub mod userid;
 use types::StateDirectory;
 
 mod best_userid;

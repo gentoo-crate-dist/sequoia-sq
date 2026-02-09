@@ -10,6 +10,10 @@ use openpgp::packet::UserID;
 use openpgp::types::RevocationStatus;
 use openpgp::cert::amalgamation::ValidateAmalgamation;
 
+use sequoia::userid::lint_email;
+use sequoia::userid::lint_name;
+use sequoia::userid::lint_userid;
+
 use crate::Result;
 use crate::cli::types::UserIDDesignators;
 use crate::cli::types::userid_designator::AddArgs;
@@ -18,9 +22,6 @@ use crate::cli::types::userid_designator::ResolvedUserID;
 use crate::cli::types::userid_designator::UserIDDesignator;
 use crate::cli::types::userid_designator::UserIDDesignatorSemantics;
 use crate::common::ui;
-use crate::common::userid::lint_email;
-use crate::common::userid::lint_name;
-use crate::common::userid::lint_userid;
 use crate::sq::NULL_POLICY;
 
 const TRACE: bool = false;

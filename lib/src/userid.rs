@@ -1,4 +1,4 @@
-use sequoia::openpgp;
+use sequoia_openpgp as openpgp;
 use openpgp::packet::UserID;
 
 /// A canonical user ID.
@@ -80,7 +80,7 @@ pub enum UserIDLint {
 }
 
 /// Returns an error if the user ID is not in canonical form.
-pub(crate) fn lint_userid(uid: &UserID)
+pub fn lint_userid(uid: &UserID)
     -> std::result::Result<(), UserIDLint>
 {
     let mut components = Vec::new();
@@ -128,7 +128,7 @@ pub(crate) fn lint_userid(uid: &UserID)
 /// Lints user IDs and displays the lints.
 ///
 /// Returns an error if any of the user IDs have lints.
-pub(crate) fn lint_userids(uids: &[UserID]) -> Result<(), anyhow::Error> {
+pub fn lint_userids(uids: &[UserID]) -> Result<(), anyhow::Error> {
     let mut non_canonical = Vec::new();
     for uid in uids.into_iter() {
         if let Err(err) = lint_userid(&uid) {

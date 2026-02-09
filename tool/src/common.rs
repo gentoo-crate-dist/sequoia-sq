@@ -17,7 +17,6 @@ pub mod key;
 
 pub mod password;
 pub mod pki;
-pub mod userid;
 
 pub mod types;
 pub mod ui;
