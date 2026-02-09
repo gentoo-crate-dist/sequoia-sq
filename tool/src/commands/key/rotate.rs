@@ -33,6 +33,7 @@ use sequoia::cert_store;
 use cert_store::StoreUpdate;
 
 use sequoia::inspect::inspect;
+use sequoia::key::certify_generated;
 use sequoia::prompt::Prompt as _;
 use sequoia::prompt;
 use sequoia::types::TrustThreshold;
@@ -42,7 +43,6 @@ use crate::Sq;
 use crate::cli::types::Expiration;
 use crate::cli::types::FileOrStdout;
 use crate::cli;
-use crate::common::key::certify_generated;
 use crate::common::password::CheckNewPassword;
 use crate::common::password;
 use crate::common::pki::list::summarize_certification;
@@ -521,7 +521,8 @@ pub fn dispatch(
                 // are any user IDs to certify.
                 let have_userids = cert.userids().next().is_some();
                 if have_userids {
-                    cert = certify_generated(&sq, &cert)?;
+                    let prompt = password::Prompt::new(&sq, true);
+                    cert = certify_generated(&sq.sequoia, &cert, prompt)?;
                 }
 
                 match sq.import_key(cert.clone(), &mut Default::default())

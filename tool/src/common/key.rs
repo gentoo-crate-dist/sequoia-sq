@@ -1,12 +1,10 @@
 use sequoia::openpgp;
-use openpgp::Cert;
 use openpgp::Result;
 use openpgp::cert::amalgamation::key::ValidErasedKeyAmalgamation;
 use openpgp::packet::key::KeyParts;
 
 use sequoia::key_store as keystore;
 
-use sequoia::provenance::certify_downloads;
 use sequoia::types::FileStdinOrKeyHandle;
 
 use crate::Sq;
@@ -103,31 +101,4 @@ where
     }
 
     Ok(list)
-}
-
-/// Certifies the newly created key with a per-host shadow CA that
-/// marks the origin.
-///
-/// This also has the benefit that newly created keys also show up in
-/// the cert listing.
-pub fn certify_generated(sq: &Sq,
-                                          cert: &Cert)
-    -> Result<Cert>
-{
-    let hostname =
-        gethostname::gethostname().to_string_lossy().to_string();
-    let certd = sq.certd_or_else()?;
-
-    let (ca, _created) = certd.shadow_ca(
-        &format!("generated_on_{}", hostname),
-        true,
-        format!("Generated on {}", hostname),
-        1,
-        &[])?;
-
-    let prompt = crate::common::password::Prompt::new(sq, true);
-
-    Ok(certify_downloads(&sq.sequoia, false, ca, vec![cert.clone()], None,
-                         prompt)
-       .into_iter().next().expect("exactly one"))
 }

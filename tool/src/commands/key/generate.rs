@@ -17,6 +17,7 @@ use sequoia::wot;
 use wot::FULLY_TRUSTED;
 
 use sequoia::inspect::inspect;
+use sequoia::key::certify_generated;
 use sequoia::prompt::Prompt as _;
 use sequoia::prompt;
 use sequoia::types::import_stats::ImportStatus;
@@ -33,7 +34,6 @@ use crate::cli::{
         FileOrStdout,
     },
 };
-use crate::common::key::certify_generated;
 use crate::common::password::CheckNewPassword;
 
 pub fn generate(
@@ -283,7 +283,8 @@ pub fn generate(
                 // are any user IDs to certify.
                 let have_userids = cert.userids().next().is_some();
                 if have_userids {
-                    cert = certify_generated(&sq, &cert)?;
+                    let prompt = password::Prompt::new(&sq, true);
+                    cert = certify_generated(&sq.sequoia, &cert, prompt)?;
                 }
 
                 match sq.import_key(cert.clone(), &mut Default::default())
