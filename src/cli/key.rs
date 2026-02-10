@@ -98,12 +98,16 @@ pub enum Subcommands {
 }
 
 #[derive(ValueEnum, Clone, Debug, Default)]
+#[allow(non_camel_case_types)]
 pub enum CipherSuite {
     Rsa2k,
     Rsa3k,
     Rsa4k,
     #[default]
-    Cv25519
+    Cv25519,
+    Cv448,
+    MLDSA65_Ed25519,
+    MLDSA87_Ed448,
 }
 
 impl CipherSuite {
@@ -115,6 +119,9 @@ impl CipherSuite {
             CipherSuite::Rsa3k => SqCipherSuite::RSA3k,
             CipherSuite::Rsa4k => SqCipherSuite::RSA4k,
             CipherSuite::Cv25519 => SqCipherSuite::Cv25519,
+            CipherSuite::Cv448 => SqCipherSuite::Cv448,
+            CipherSuite::MLDSA65_Ed25519 => SqCipherSuite::MLDSA65_Ed25519,
+            CipherSuite::MLDSA87_Ed448 => SqCipherSuite::MLDSA87_Ed448,
         }
     }
 }
