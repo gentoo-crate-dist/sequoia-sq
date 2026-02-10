@@ -18,12 +18,16 @@ use openpgp::cert::CipherSuite as SqCipherSuite;
 #[derive(Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[non_exhaustive]
+#[allow(non_camel_case_types)]
 pub enum CipherSuite {
     Rsa2k,
     Rsa3k,
     Rsa4k,
     #[default]
-    Cv25519
+    Cv25519,
+    Cv448,
+    MLDSA65_Ed25519,
+    MLDSA87_Ed448,
 
     // If you add a variant here, be sure to update
     // CipherSuite::variants below.
@@ -34,7 +38,15 @@ impl CipherSuite {
     pub fn variants() -> impl Iterator<Item = Self> {
         use CipherSuite::*;
 
-        [ Rsa2k, Rsa3k, Rsa4k, Cv25519 ].into_iter()
+        [
+            Rsa2k,
+            Rsa3k,
+            Rsa4k,
+            Cv25519,
+            Cv448,
+            MLDSA65_Ed25519,
+            MLDSA87_Ed448,
+        ].into_iter()
     }
 }
 
@@ -45,6 +57,9 @@ impl From<&CipherSuite> for SqCipherSuite {
             CipherSuite::Rsa3k => SqCipherSuite::RSA3k,
             CipherSuite::Rsa4k => SqCipherSuite::RSA4k,
             CipherSuite::Cv25519 => SqCipherSuite::Cv25519,
+            CipherSuite::Cv448 => SqCipherSuite::Cv448,
+            CipherSuite::MLDSA65_Ed25519 => SqCipherSuite::MLDSA65_Ed25519,
+            CipherSuite::MLDSA87_Ed448 => SqCipherSuite::MLDSA87_Ed448,
         }
     }
 }
@@ -59,6 +74,9 @@ const CIPHER_SUITE_MAP: &[(&str, CipherSuite)] = &[
     // This must be sorted so that it can be used with
     // [`slice::binary_search`].
     ("cv25519", CipherSuite::Cv25519),
+    ("cv448", CipherSuite::Cv448),
+    ("mldsa65-ed25519", CipherSuite::MLDSA65_Ed25519),
+    ("mldsa87-ed448", CipherSuite::MLDSA87_Ed448),
     ("rsa2k", CipherSuite::Rsa2k),
     ("rsa3k", CipherSuite::Rsa3k),
     ("rsa4k", CipherSuite::Rsa4k),
@@ -137,9 +155,11 @@ mod tests {
 
         for v in CipherSuite::variants() {
             let s = format!("{}", v);
-            assert!(s.chars().all(|c| {
-                c.is_ascii_lowercase() || c.is_ascii_digit()
-            }));
+            assert!(
+                s.chars().all(|c| {
+                    c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'
+                }),
+                "bad identifier: {}", s);
         }
     }
 }
