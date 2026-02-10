@@ -665,7 +665,7 @@ impl<'sequoia> Builder<'sequoia>
     }
 
     /// Imports the cert into the key store and the cert store.
-    fn import_key(&self, cert: Cert, stats: &mut ImportStats)
+    pub fn import_key(&self, cert: Cert, stats: &mut ImportStats)
         -> Result<output::Imported, Error>
     {
         let &Builder {
