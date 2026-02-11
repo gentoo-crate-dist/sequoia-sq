@@ -20,7 +20,7 @@ pub struct Prompt<'a> {
     // Adds (password n of t) to the message.
     password: RefCell<usize>,
     password_count: usize,
-    // Whether the user can skip this by entering the empty strip.  If
+    // Whether the user can skip this by entering the empty string.  If
     // so, `prompt::Error::Cancelled` is returned instead of
     // `Response::NoPassword`.
     cancel: bool,
