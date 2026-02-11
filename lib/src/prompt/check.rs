@@ -178,7 +178,14 @@ impl CheckNewPassword {
     /// A password is required.
     pub fn required() -> Self {
         Self {
-            allow_skipping: false
+            allow_skipping: false,
+        }
+    }
+
+    /// A password is optional.
+    pub fn optional() -> Self {
+        Self {
+            allow_skipping: true,
         }
     }
 }
