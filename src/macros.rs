@@ -15,15 +15,24 @@ macro_rules! platform {
 
 /// Like `writeln!`, but nicely wraps lines.
 ///
-/// Unlike `writeln` and like `eprintln` panics if it can't write to
-/// the specified stream.
+/// Terminates the process with an error code if writing to the stream
+/// fails.
 macro_rules! wwriteln {
     {
         stream=$stream: expr
     } => {{
         let stream: &mut dyn std::io::Write = $stream;
-        if let Err(err) = writeln!(stream) {
-            panic!("Error writing to output stream: {}", err);
+        if let Err(e) = writeln!(stream) {
+            let mut exit_code = 1;
+            // Handle `BrokenPipe` explicitly.
+            #[cfg(unix)]
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                // The 7th bit indicates an error.
+                exit_code = 128 + libc::SIGPIPE;
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            std::process::exit(exit_code);
         }
     }};
 
