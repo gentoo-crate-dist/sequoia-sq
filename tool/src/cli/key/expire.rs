@@ -58,7 +58,11 @@ pub struct Command {
                               KeyExpireDoc>,
 
     #[clap(
-        help = FileOrStdout::HELP_OPTIONAL,
+        help = "Write to FILE or stdout if FILE is '-'",
+        long_help = "\
+Write to FILE or stdout if FILE is '-'
+
+If --cert-file is used, specifying --output is mandatory",
         long,
         value_name = FileOrStdout::VALUE_NAME,
     )]

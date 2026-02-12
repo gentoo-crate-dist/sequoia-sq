@@ -18,7 +18,7 @@ Change the password protecting secret key material
 Secret key material can be protected by a password.  This subcommand \
 changes or clears the password.
 
-To strip the password either use `--clear` or supply a zero-length \
+To strip the password either use `--clear-password` or supply a zero-length \
 password when prompted for the new password.
 
 If a key is password protected, and the correct password was not \
