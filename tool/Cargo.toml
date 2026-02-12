@@ -45,6 +45,7 @@ terminal_size = ">=0.2.6, <0.5"
 termcolor = "1.2.0"
 textwrap = { version = ">=0.15, <0.17", default-features = false, features = ["smawk", "unicode-width"] }
 typenum = "1"
+libc = "0.2"
 
 # This is for subplot only.  If you don't enable the subplot feature,
 # feel free to patch it out.

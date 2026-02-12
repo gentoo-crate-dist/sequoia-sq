@@ -4,6 +4,8 @@ use std::fmt;
 use std::io::Write;
 use std::sync::OnceLock;
 
+use libc;
+
 /// A non-breaking space.
 pub const NBSP: char = '\u{00A0}';
 
@@ -12,14 +14,22 @@ pub const NBSP: char = '\u{00A0}';
 /// Hint: Use `weprintln!(..)` instead of invoking this function
 /// directly.
 ///
-/// Like [`eprintln!`], panics if writing to the stream fails.
-///
-///   [`eprintln!`]: https://doc.rust-lang.org/stable/std/macro.eprintln.html
+/// Terminates the process with an error code if writing to the stream
+/// fails.
 pub fn wwriteln(stream: &mut dyn Write, msg: fmt::Arguments) {
     let m = format!("{}", msg);
     for l in textwrap::wrap(&m, options()) {
-        if let Err(err) = writeln!(stream, "{}", l) {
-            panic!("Writing to output: {}", err);
+        if let Err(e) = writeln!(stream, "{}", l) {
+            let mut exit_code = 1;
+            // Handle `BrokenPipe` explicitly.
+            #[cfg(unix)]
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                // The 7th bit indicates an error.
+                exit_code = 128 + libc::SIGPIPE;
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            std::process::exit(exit_code);
         }
     }
 }
@@ -31,9 +41,8 @@ pub fn wwriteln(stream: &mut dyn Write, msg: fmt::Arguments) {
 /// `weprintln!(initial_indent="...", subsequent_indent="...", ..)`
 /// instead of invoking this function directly.
 ///
-/// Like [`eprintln!`], panics if writing to the stream fails.
-///
-///   [`eprintln!`]: https://doc.rust-lang.org/stable/std/macro.eprintln.html
+/// Terminates the process with an error code if writing to the stream
+/// fails.
 pub fn iwwriteln(stream: &mut dyn Write,
                  initial_indent: &str,
                  subsequent_indent: &str,
@@ -43,8 +52,17 @@ pub fn iwwriteln(stream: &mut dyn Write,
                             options()
                             .initial_indent(initial_indent)
                             .subsequent_indent(subsequent_indent)) {
-        if let Err(err) = writeln!(stream, "{}", l) {
-            panic!("Writing to output: {}", err);
+        if let Err(e) = writeln!(stream, "{}", l) {
+            let mut exit_code = 1;
+            // Handle `BrokenPipe` explicitly.
+            #[cfg(unix)]
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                // The 7th bit indicates an error.
+                exit_code = 128 + libc::SIGPIPE;
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            std::process::exit(exit_code);
         }
     }
 }
