@@ -1,44 +1,18 @@
-use chrono::DateTime;
-use chrono::Utc;
-
 use anyhow::Context;
 
 use sequoia::openpgp;
-use openpgp::armor::Kind;
-use openpgp::armor::Writer;
-use openpgp::cert::CertBuilder;
-use openpgp::serialize::Serialize;
-use openpgp::types::KeyFlags;
-use openpgp::Packet;
-use openpgp::packet::UserID;
 use openpgp::Result;
 
-use sequoia::wot;
-use wot::FULLY_TRUSTED;
+use sequoia::key::generate::PasswordPolicy;
+use sequoia::types::EncryptPurpose;
 
-use sequoia::inspect::inspect;
-use sequoia::key::certify_generated;
-use sequoia::prompt::Prompt as _;
-use sequoia::prompt;
-use sequoia::types::import_stats::ImportStatus;
-use sequoia::userid::lint_emails;
-use sequoia::userid::lint_names;
-use sequoia::userid::lint_userids;
-
-use crate::common::password;
 use crate::Sq;
-use crate::cli::{
-    self,
-    types::{
-        Expiration,
-        FileOrStdout,
-    },
-};
-use crate::common::password::CheckNewPassword;
+use crate::cli;
+use crate::common::password;
 
 pub fn generate(
     sq: Sq,
-    mut command: cli::key::generate::Command,
+    command: cli::key::generate::Command,
 ) -> Result<()> {
     if command.output.as_ref().map(|s| s.is_stdout()).unwrap_or(false)
         && command.rev_cert.as_ref().map(|s| s.is_stdout()).unwrap_or(false)
@@ -54,386 +28,58 @@ pub fn generate(
         sq.key_store_or_else()?;
     }
 
-    // Common key flags.  If this is a shared key, mark it as such.
-    assert!(command.own_key ^ command.shared_key);
-    let key_flags_template = if command.own_key {
-        KeyFlags::empty()
+    let password_policy = if let Some(path) = command.new_password_file {
+        let password = std::fs::read(&path)
+             .with_context(|| {
+                 format!("Reading {}", path.display())
+             })?;
+        PasswordPolicy::Password(password.into())
+    } else if command.without_password {
+        PasswordPolicy::None
     } else {
-        KeyFlags::empty().set_group_key()
+        PasswordPolicy::Prompt
     };
 
-    let mut builder = CertBuilder::new()
-        .set_profile(command.profile.clone().into())?;
-
-    // Names, email addresses, and user IDs.
-    lint_names(&command.names)?;
-    for n in &command.names {
-        command.userid.push(UserID::from(n.as_str()));
-    }
-
-    lint_emails(&command.emails)?;
-    for n in &command.emails {
-        command.userid.push(UserID::from_address(None, None, n)?);
-    }
-
-    if command.userid.is_empty() {
-        weprintln!("No user ID given, using direct key signature");
+    let mut output_;
+    let output_path_;
+    let mut rev_;
+    let output = if let (Some(output_path), Some(rev_path))
+        = (command.output, command.rev_cert)
+    {
+        // Don't import; save to a file.
+        output_ = output_path.clone().for_secrets().create_safe(&sq)?;
+        output_path_ = output_path.clone();
+        rev_ = rev_path.for_secrets().create_safe(&sq)?;
+        Some((&mut output_ as &mut dyn std::io::Write,
+              output_path_.path().map(|p| p.as_path()),
+              &mut rev_ as &mut dyn std::io::Write))
     } else {
-        // Make sure the user IDs are in canonical form.  If not, and
-        // `--allow-non-canonical-userids` is not set, error out.
-        if ! command.allow_non_canonical_userids {
-            lint_userids(&command.userid)?;
-        }
-
-        for uid in &command.userid {
-            builder = builder.add_userid(uid.clone());
-        }
-    }
-
-    // Creation time.
-    builder = builder.set_creation_time(sq.time());
-
-    // Expiration.
-    builder = builder.set_validity_period(
-        command
-        .expiration
-        .as_duration(DateTime::<Utc>::from(sq.time()))?
-    );
-
-    // Cipher Suite
-    builder = builder.set_cipher_suite(
-        sq.config().resolve_cipher_suite(&command.cipher_suite,
-                                         command.cipher_suite_source)
-            .as_ciphersuite());
-
-    // Profile.  XXX: Currently, this is not actionable.
-    let _profile = sq.config().resolve_key_generate_profile(
-        &command.profile, command.profile_source);
-
-    // Primary key capabilities.
-    builder = builder.set_primary_key_flags(
-        key_flags_template.clone().set_certification());
-
-    // Signing Capability
-    match (command.can_sign, command.cannot_sign) {
-        (false, false) | (true, false) => {
-            builder = builder.add_subkey(
-                key_flags_template.clone().set_signing(),
-                None, None);
-        }
-        (false, true) => { /* no signing subkey */ }
-        (true, true) => {
-            return Err(anyhow::anyhow!(
-                "Conflicting arguments --can-sign and --cannot-sign"
-            ));
-        }
-    }
-
-    // Authentication Capability
-    match (command.can_authenticate, command.cannot_authenticate) {
-        (false, false) | (true, false) => {
-            builder = builder.add_subkey(
-                key_flags_template.clone().set_authentication(),
-                None, None);
-        }
-        (false, true) => { /* no authentication subkey */ }
-        (true, true) => {
-            return Err(anyhow::anyhow!(
-                "Conflicting arguments --can-authenticate and \
-                 --cannot-authenticate"
-            ));
-        }
-    }
-
-    // Encryption Capability
-    use sequoia::types::EncryptPurpose::*;
-    match (command.can_encrypt, command.cannot_encrypt) {
-        (Some(Universal), false) | (None, false) => {
-            builder = builder.add_subkey(
-                key_flags_template.clone()
-                    .set_transport_encryption()
-                    .set_storage_encryption(),
-                None, None);
-        }
-        (Some(Storage), false) => {
-            builder = builder.add_subkey(
-                key_flags_template.clone().set_storage_encryption(),
-                None, None);
-        }
-        (Some(Transport), false) => {
-            builder = builder.add_subkey(
-                key_flags_template.clone().set_transport_encryption(),
-                None, None);
-        }
-        (None, true) => { /* no encryption subkey */ }
-        (Some(_), true) => {
-            return Err(anyhow::anyhow!(
-                "Conflicting arguments --can-encrypt and \
-                             --cannot-encrypt"
-            ));
-        }
-    }
-
-    if let Some(password_file) = command.new_password_file {
-        let password = std::fs::read(&password_file)
-            .with_context(|| {
-                format!("Reading {}", password_file.display())
-            })?;
-        builder = builder.set_password(Some(password.into()));
-    } else if ! command.without_password {
-        let prompt = password::Prompt::new(&sq, false);
-
-        let mut checker = CheckNewPassword::new();
-
-        let mut context = prompt::ContextBuilder::password(
-            prompt::Reason::LockNewCert)
-            .sequoia(&sq.sequoia)
-            .build();
-
-        let password = match prompt.prompt(&mut context, &mut checker)? {
-            prompt::Response::Password(password) => Some(password),
-            prompt::Response::NoPassword => None,
-            unknown => {
-                unreachable!("Internal error: LockCert should return \
-                              a password, but got: {:?}",
-                             unknown);
-            }
-        };
-        builder = builder.set_password(password);
-    }
-
-    let on_keystore = command.output.is_none();
-
-    // Generate the key
-    let gen = || {
-        builder.generate()
+        // Save to the key store.
+        None
     };
 
-    let (mut cert, rev);
+    let prompt = password::Prompt::new(&sq, false);
 
-    let rev_path = if let Some(rev_cert) = command.rev_cert {
-        (cert, rev) = gen()?;
-
-        rev_cert
-    } else if on_keystore {
-        if let Some(home) = sq.sequoia.home() {
-            let dir = home.data_dir(sequoia::directories::Component::Other(
-                "revocation-certificates".into()));
-            std::fs::create_dir_all(&dir)
-                .with_context(|| {
-                    format!("While creating {}", dir.display())
-                })?;
-
-            (cert, rev) = gen()?;
-            FileOrStdout::new(
-                Some(dir.join(format!("{}-revocation.pgp",
-                                      cert.fingerprint()))))
-        } else {
-            return Err(anyhow::anyhow!(
-                "Missing arguments: --rev-cert is mandatory if --home=none is \
-                 given."
-            ));
-        }
-    } else {
-        return Err(anyhow::anyhow!(
-            "Missing arguments: --rev-cert is mandatory if --output is \
-             given."
-        ));
-    };
-
-    let headers = cert.armor_headers();
-
-    // write out rev cert
-    {
-        let mut headers: Vec<_> = headers
-            .iter()
-            .map(|value| ("Comment", value.as_str()))
-            .collect();
-        headers.insert(0, ("Comment", "Revocation certificate for"));
-
-        let w = rev_path
-            .for_secrets()
-            .create_safe(&sq)?;
-        let mut w = Writer::with_headers(w, Kind::PublicKey, headers)?;
-        Packet::from(cert.primary_key().key().clone()).serialize(&mut w)?;
-        Packet::Signature(rev).serialize(&mut w)?;
-        w.finalize()?;
-    }
-
-    // write out key
-    {
-        let headers: Vec<_> = headers
-            .iter()
-            .map(|value| ("Comment", value.as_str()))
-            .collect();
-
-        match command.output {
-            Some(ref output_file) => {
-                // Write the key to a file or to stdout.
-                let w = output_file.clone().for_secrets()
-                    .create_safe(&sq)?;
-                let mut w = Writer::with_headers(w, Kind::SecretKey, headers)?;
-                cert.as_tsk().serialize(&mut w)?;
-                w.finalize()?;
-            }
-            None => {
-                // write the key to the key store
-
-                // Certify the key with a per-host shadow CA if there
-                // are any user IDs to certify.
-                let have_userids = cert.userids().next().is_some();
-                if have_userids {
-                    let prompt = password::Prompt::new(&sq, true);
-                    cert = certify_generated(&sq.sequoia, &cert, prompt)?;
-                }
-
-                match sq.import_key(cert.clone(), &mut Default::default())
-                    .map(|(key_status, _cert_status)| key_status)
-                {
-                    Ok(ImportStatus::New) => { /* success */ }
-                    Ok(ImportStatus::Unchanged) => {
-                        panic!(
-                            "The new key is identical to an existing one; this \
-                             should never happen");
-                    }
-                    Ok(ImportStatus::Updated) => {
-                        panic!(
-                            "The new key collides with an existing one; this \
-                             should never happen")
-                    }
-                    Err(err) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed saving to the store: {}", err))
-                    }
-                }
-
-                // Now certify the user IDs, and if this is our own
-                // key, mark it as trusted introducer.
-                let trust_root = sq.local_trust_root()?;
-                let trust_root = trust_root.to_cert()?;
-
-                let prompt = password::Prompt::new(&sq, true);
-
-                if command.own_key && have_userids {
-                    // Mark all user IDs as authenticated, and mark
-                    // the key as a trusted introducer.
-                    sq.sequoia.pki_certify()
-                        .recreate(false)
-                        .user_supplied_userids(true)
-                        .trust_amount(FULLY_TRUSTED as u8)
-                        .trust_depth(u8::MAX)
-                        .expiration(Expiration::Never)
-                        .exportable(false)
-                        .certify(
-                            &trust_root,
-                            &cert,
-                            &command.userid.into_iter().map(Into::into)
-                                .collect::<Vec<_>>(),
-                            None, // Output.
-                            &mut std::io::stderr(),
-                            prompt)?;
-                } else if command.shared_key && have_userids {
-                    // Mark all user IDs as authenticated.
-                    sq.sequoia.pki_certify()
-                        .recreate(false)
-                        .user_supplied_userids(true)
-                        .trust_amount(FULLY_TRUSTED as u8)
-                        // Not a trusted introducer.
-                        .trust_depth(0)
-                        .expiration(Expiration::Never)
-                        .exportable(false)
-                        .certify(
-                            &trust_root,
-                            &cert,
-                            &command.userid.into_iter().map(Into::into)
-                                .collect::<Vec<_>>(),
-                            None, // Output.
-                            &mut std::io::stderr(),
-                            prompt)?;
-                }
-            }
-        }
-    }
-
-    {
-        let mut bytes = Vec::new();
-        cert.as_tsk().serialize(&mut bytes)
-            .expect("serializing to a vector is infallible");
-
-        if let Err(err) = inspect(
-            &sq.sequoia,
-            sequoia::openpgp::parse::buffered_reader::Memory::with_cookie(&bytes, Default::default()),
-            command.output
-                .as_ref()
-                .and_then(|output| {
-                    output.path().map(|p| p.display().to_string())
-                })
-                .as_deref(),
-            &mut (Box::new(std::io::stderr()) as Box<dyn std::io::Write + Send + Sync>),
-            false, false)
-        {
-            weprintln!("Failed to display key: {}", err);
-            weprintln!("This is probably a bug in sq, please report it to \
-                        https://gitlab.com/sequoia-pgp/sequoia-sq/-/issues/new .");
-        }
-    }
-
-    // If we are writing to key store, provide some guidance.
-    if on_keystore && command.own_key {
-        sq.hint(format_args!("Because you supplied the `--own-key` flag, \
-                              the user IDs on this key have been marked as \
-                              authenticated, and this key has been marked \
-                              as a fully trusted introducer.  \
-                              If that was a mistake, you can undo that \
-                              with:"))
-            .sq().arg("pki").arg("link").arg("retract")
-            .arg_value("--cert", cert.fingerprint())
-            .arg("--all")
-            .done();
-    }
-
-    if on_keystore && command.shared_key {
-        sq.hint(format_args!("The user IDs on the key have been marked as \
-                              authenticated.  \
-                              If that was a mistake, you can undo that \
-                              with:"))
-            .sq().arg("pki").arg("link").arg("retract")
-            .arg_value("--cert", cert.fingerprint())
-            .arg("--all")
-            .done();
-    }
-
-    if on_keystore {
-        sq.hint(format_args!("You can export your certificate as follows:"))
-            .sq().arg("cert").arg("export")
-            .arg_value("--cert", cert.fingerprint())
-            .done();
-
-        sq.hint(format_args!("Once you are happy you can upload it to public \
-                              directories using:"))
-            .sq().arg("network").arg("keyserver").arg("publish")
-            .arg_value("--cert", cert.fingerprint())
-            .done();
-    } else {
-        let mut shown = false;
-        if let Some(ref output) = command.output {
-            if let Some(output_path) = output.path() {
-                sq.hint(format_args!("You can extract the certificate from the \
-                                      generated key by running:"))
-                    .sq().arg("key").arg("delete")
-                    .arg_value("--cert-file", output_path.display())
-                    .arg_value("--output", output_path.with_extension("cert").display())
-                    .done();
-                shown = true;
-            }
-        }
-
-        if ! shown {
-            sq.hint(format_args!("You can extract the certificate from the \
-                                  generated key using:"))
-                .sq().arg("key").arg("delete").done();
-        }
-    }
-
-    Ok(())
+    sq.sequoia.key_generate()
+        .profile(command.profile.into())
+        .cipher_suite(command.cipher_suite.into())
+        .password_policy(password_policy)
+        .expiration(command.expiration.value())
+        .own_key(command.own_key)
+        .can_sign(! command.cannot_sign)
+        .can_authenticate(! command.cannot_authenticate)
+        .can_encrypt(
+            if command.cannot_encrypt {
+                None
+            } else {
+                Some(command
+                     .can_encrypt
+                     .unwrap_or(EncryptPurpose::Universal))
+            })
+        .names(command.names)
+        .emails(command.emails)
+        .userids(command.userid)
+        .allow_non_canonical_userids(command.allow_non_canonical_userids)
+        .generate(prompt,
+                  output)
 }

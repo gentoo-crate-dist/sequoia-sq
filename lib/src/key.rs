@@ -8,7 +8,7 @@ use crate::prompt;
 use crate::provenance::certify_downloads;
 
 pub mod import;
-
+pub mod generate;
 
 /// Certifies the newly created key with a per-host shadow CA that
 /// marks the origin.
