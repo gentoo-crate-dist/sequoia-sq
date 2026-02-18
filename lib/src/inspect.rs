@@ -347,7 +347,40 @@ fn inspect_cert(
     )?;
     writeln!(output)?;
 
-    for skb in cert.keys().subkeys() {
+    // Sort the subkeys by their key flags.
+    // Extract the keyflags (if they are available) to avoid multiple
+    // `KeyAmalgamation` -> `ValidKeyAmalgamation` transitions, which
+    // would otherwise happen in the sorting step.
+    let mut subkeys = cert.keys()
+        .subkeys()
+        .map(|subkey| {
+            match subkey.with_policy(sq.policy(), sq.time()) {
+                Ok(vk) => (vk.key_flags().unwrap_or(KeyFlags::empty()), subkey),
+                Err(_) => (KeyFlags::empty(), subkey)
+            }
+        })
+        .collect::<Vec<_>>();
+    // Sort by KeyFlags C, S, Et, Er, A, rest. Within each group, move the
+    // group keys to the end.
+    subkeys.sort_by(|(a_flags, a_key), (b_flags, b_key)| {
+            b_flags.for_certification()
+                .cmp(&a_flags.for_certification())
+            .then_with(|| b_flags.for_signing()
+                .cmp(&a_flags.for_signing()))
+            .then_with(|| b_flags.for_transport_encryption()
+                .cmp(&a_flags.for_transport_encryption()))
+            .then_with(|| b_flags.for_storage_encryption()
+                .cmp(&a_flags.for_storage_encryption()))
+            .then_with(|| b_flags.for_authentication()
+                .cmp(&a_flags.for_authentication()))
+            .then_with(|| a_flags.is_group_key()
+                .cmp(&b_flags.is_group_key()))
+            .then_with(|| b_flags.cmp(&a_flags))
+            .then_with(|| a_key.key().fingerprint()
+                .cmp(&b_key.key().fingerprint()))
+        });
+
+    for (_, skb) in subkeys {
         writeln!(output, "{:>WIDTH$}: {}", "Subkey", skb.key().fingerprint())?;
         inspect_revocation(output, skb.revocation_status(sq.policy(), sq.time()))?;
         match skb.binding_signature(sq.policy(), sq.time()) {
