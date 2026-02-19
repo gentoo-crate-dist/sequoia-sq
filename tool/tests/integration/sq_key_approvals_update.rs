@@ -320,6 +320,81 @@ fn ignore_unexportable_certifications() {
 }
 
 #[test]
+fn ignore_revoked_userids() {
+    // Test that revoked userids do not get approvals added
+    // when using --add-authenticated
+    let now = std::time::SystemTime::now()
+        - std::time::Duration::new(60 * 60, 0);
+
+    let mut sq = Sq::at(now);
+    let (alice, bob) = make_keys(&mut sq).unwrap();
+
+    // Have Alice certify Bob's certificate.
+    sq.tick(1);
+    let bob2 = sq.pki_vouch_add(&[],
+                                alice.key_handle(),
+                                bob.key_handle(),
+                                &[BOB_USERID],
+                                None);
+    assert_eq!(bob2.fingerprint(), bob.fingerprint());
+
+    sq.tick(1);
+    let approval = sq.key_approvals_update(
+        &["--add-all"],
+        bob.key_handle(),
+        NO_USERIDS,
+        None
+    );
+
+    assert_eq!(approval.bad_signatures().count(), 0);
+
+    let approvals_pre = approval.userids()
+        .map(|ua| {
+            ua.approvals().count()
+        })
+        .sum::<usize>();
+
+    // Have Alice certify Bob's certificate again.
+    sq.tick(1);
+    let bob2 = sq.pki_vouch_add(&["--amount=60"],
+                                alice.key_handle(),
+                                bob.key_handle(),
+                                &[BOB_USERID],
+                                None);
+    assert_eq!(bob2.fingerprint(), bob.fingerprint());
+
+    // Revoke Bob's userid
+    sq.tick(1);
+    sq.key_userid_revoke(
+        &[],
+        bob.key_handle(),
+        BOB_USERID,
+        "retired",
+        "Left example.org.",
+        None
+    );
+
+    sq.tick(1);
+    let approval = sq.key_approvals_update(
+        &["--add-all"],
+        bob.key_handle(),
+        NO_USERIDS,
+        None
+    );
+
+    sq.tick(1);
+    let approvals_post = approval.userids()
+        .map(|ua| {
+            ua.approvals().count()
+        })
+        .sum();
+
+    assert_eq!(approvals_pre, approvals_post,
+        "revoked user ID should not get approval signatures");
+}
+
+
+#[test]
 fn userid_designators() {
     let self_signed_email = "alice@example.org";
     let self_signed_userid

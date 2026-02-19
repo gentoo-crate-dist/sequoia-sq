@@ -4,7 +4,9 @@ use std::{
 
 use sequoia::openpgp::{
     Result,
+    cert::amalgamation::ValidAmalgamation,
     serialize::Serialize,
+    types::RevocationStatus,
 };
 
 use sequoia::cert_store::Store;
@@ -201,7 +203,13 @@ fn update(
             continue;
         }
 
-        weprintln!(initial_indent = " - ", "{}",
+        // Skip revoked user IDs.
+        match uid.revocation_status() {
+            RevocationStatus::Revoked(_) => continue,
+            _ => (),
+        }
+
+       weprintln!(initial_indent = " - ", "{}",
                    ui::Safe(uid.userid()));
 
         let previously_approved =
