@@ -29,6 +29,7 @@ use crate::Sequoia;
 use crate::config::DEFAULT_KEY_VALIDITY_DURATION;
 use crate::config::Expiration;
 use crate::inspect::inspect;
+use crate::key::PasswordPolicy;
 use crate::key::certify_generated;
 use crate::prompt::check::CheckNewPassword;
 use crate::prompt;
@@ -73,18 +74,7 @@ impl Sequoia {
     }
 }
 
-/// The password that will be used to protect the secret key material.
-#[derive(Debug, Clone)]
-pub enum PasswordPolicy {
-    /// Don't use a password.
-    None,
-    /// Use the specified password.
-    Password(crypto::Password),
-    /// Prompt for a password.
-    Prompt,
-}
-
-/// The certificate import parameters.
+/// Key generation parameters.
 ///
 /// These parameters are used by [`generate`](Builder::generate).
 #[derive(Clone)]

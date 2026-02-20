@@ -3,7 +3,7 @@ use anyhow::Context;
 use sequoia::openpgp;
 use openpgp::Result;
 
-use sequoia::key::generate::PasswordPolicy;
+use sequoia::key::PasswordPolicy;
 use sequoia::types::EncryptPurpose;
 
 use crate::Sq;

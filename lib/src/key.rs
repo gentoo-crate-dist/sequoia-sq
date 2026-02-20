@@ -1,6 +1,7 @@
 //! Manage secret key material.
 use sequoia_openpgp as openpgp;
 use openpgp::Cert;
+use openpgp::crypto;
 
 use crate::Result;
 use crate::Sequoia;
@@ -9,6 +10,17 @@ use crate::provenance::certify_downloads;
 
 pub mod import;
 pub mod generate;
+
+/// The password that will be used to protect the secret key material.
+#[derive(Debug, Clone)]
+pub enum PasswordPolicy {
+    /// Don't use a password.
+    None,
+    /// Use the specified password.
+    Password(crypto::Password),
+    /// Prompt for a password.
+    Prompt,
+}
 
 /// Certifies the newly created key with a per-host shadow CA that
 /// marks the origin.
