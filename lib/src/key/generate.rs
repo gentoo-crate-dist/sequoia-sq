@@ -248,9 +248,9 @@ impl KeyTemplate {
     }
 }
 
-/// Imports certificates.
+/// Generates keys.
 ///
-/// A builder providing control over how to import certificates.
+/// A builder providing control over how to generate a new key.
 pub struct Builder<'sequoia> {
     params: Params<'sequoia>,
 }
