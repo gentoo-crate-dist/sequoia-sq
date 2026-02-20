@@ -1,22 +1,13 @@
 use anyhow::Context;
 
-use chrono::DateTime;
-use chrono::Utc;
-
 use sequoia::openpgp;
 use openpgp::Result;
-use openpgp::cert::KeyBuilder;
-use openpgp::serialize::Serialize;
-use openpgp::types::KeyFlags;
+use sequoia::key::PasswordPolicy;
 
-use sequoia::prompt::Prompt as _;
-use sequoia::prompt;
-use sequoia::types::EncryptPurpose;
 use sequoia::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::key::subkey::add::Command;
-use crate::common::password::CheckNewPassword;
 use crate::common::password;
 
 /// Add a new Subkey for an existing primary key
@@ -29,86 +20,43 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
     let cert =
         sq.resolve_cert(&command.cert, TrustThreshold::Full)?.0;
 
-    let valid_cert = cert.with_policy(sq.policy(), sq.time())?;
+    let ciphersuite = sq.config().resolve_cipher_suite(
+        &command.cipher_suite, command.cipher_suite_source)
+        .as_ciphersuite();
 
-    let validity = command
-        .expiration
-        .as_duration(DateTime::<Utc>::from(sq.time()))?;
-
-    let keyflags = KeyFlags::empty()
-        .set_authentication_to(command.can_authenticate)
-        .set_signing_to(command.can_sign)
-        .set_storage_encryption_to(matches!(
-            command.can_encrypt,
-            Some(EncryptPurpose::Storage) | Some(EncryptPurpose::Universal)
-        ))
-        .set_transport_encryption_to(matches!(
-            command.can_encrypt,
-            Some(EncryptPurpose::Transport) | Some(EncryptPurpose::Universal)
-        ));
-
-    // If a password is needed to use the key, the user will be prompted.
-    let (primary_key, password) =
-        match sq.get_primary_key(&cert, None) {
-            Ok(key) => {
-                // Don't use a password, or prompt for one.
-                if let Some(password_file) = command.new_password_file {
-                    let password = std::fs::read(&password_file)
-                        .with_context(|| {
-                            format!("Reading {}", password_file.display())
-                        })?;
-                    (key, Some(password.into()))
-                } else if command.without_password {
-                    (key, None)
-                } else {
-                    let prompt = password::Prompt::new(&sq, false);
-
-                    let mut checker = CheckNewPassword::new();
-
-                    let mut context = prompt::ContextBuilder::password(
-                        prompt::Reason::LockNewKey)
-                        .sequoia(&sq.sequoia)
-                        .build();
-
-                    let password = match prompt.prompt(&mut context, &mut checker)? {
-                        prompt::Response::Password(password) => Some(password),
-                        prompt::Response::NoPassword => None,
-                        unknown => {
-                            unreachable!("Internal error: LockNewKey should \
-                                          return a password, but got: {:?}",
-                                         unknown);
-                        }
-                    };
-                    (key, password)
-                }
-            }
-            Err(error) => {
-                return Err(error.into())
-            }
-        };
-
-    let new_cert = KeyBuilder::new(keyflags)
-        .set_creation_time(sq.time())
-        .set_cipher_suite(
-            sq.config().resolve_cipher_suite(&command.cipher_suite,
-                                             command.cipher_suite_source)
-                .as_ciphersuite())
-        .set_password(password)
-        .subkey(valid_cert)?
-        .set_key_validity_period(validity)?
-        .set_primary_key_signer(primary_key)
-        .attach_cert()?;
-
-    if let Some(output) = command.output {
-        let mut sink = output.for_secrets().create_safe(&sq)?;
-        if false {
-            new_cert.as_tsk().serialize(&mut sink)?;
-        } else {
-            new_cert.as_tsk().armored().serialize(&mut sink)?;
-        }
+    let password_policy = if let Some(path) = command.new_password_file {
+        let password = std::fs::read(&path)
+             .with_context(|| {
+                 format!("Reading {}", path.display())
+             })?;
+        PasswordPolicy::Password(password.into())
+    } else if command.without_password {
+        PasswordPolicy::None
     } else {
-        sq.import_key(new_cert, &mut Default::default())?;
-    }
+        PasswordPolicy::Prompt
+    };
 
-    Ok(())
+    let prompt = password::Prompt::new(&sq, false);
+
+    let mut output_;
+    let output = if let Some(output_path) = command.output {
+        // Don't import; save to a file.
+        output_ = output_path.for_secrets().create_safe(&sq)?;
+        Some(&mut output_ as &mut dyn std::io::Write)
+    } else {
+        // Save to the key store.
+        None
+    };
+
+    sequoia::key::subkey::add::add(
+        &sq.sequoia,
+        &cert,
+        ciphersuite,
+        command.expiration.value(),
+        command.can_sign,
+        command.can_authenticate,
+        command.can_encrypt,
+        password_policy,
+        prompt,
+        output)
 }
