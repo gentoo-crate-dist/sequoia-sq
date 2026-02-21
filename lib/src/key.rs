@@ -11,6 +11,7 @@ use crate::provenance::certify_downloads;
 pub mod import;
 pub mod generate;
 pub mod subkey;
+pub mod userid;
 
 /// The password that will be used to protect the secret key material.
 #[derive(Debug, Clone)]
