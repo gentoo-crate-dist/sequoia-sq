@@ -48,15 +48,15 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
         None
     };
 
-    sequoia::key::subkey::add::add(
-        &sq.sequoia,
-        &cert,
-        ciphersuite,
-        command.expiration.value(),
-        command.can_sign,
-        command.can_authenticate,
-        command.can_encrypt,
-        password_policy,
-        prompt,
-        output)
+    sq.sequoia.key_subkey_add()
+        .password_policy(password_policy)
+        .cipher_suite(ciphersuite)
+        .expiration(command.expiration.value())
+        .can_sign(command.can_sign)
+        .can_authenticate(command.can_authenticate)
+        .can_encrypt(command.can_encrypt)
+        .add(
+            &cert,
+            prompt,
+            output)
 }
