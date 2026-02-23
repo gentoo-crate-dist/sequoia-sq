@@ -127,15 +127,15 @@ fn userid_add(
 
     let prompt = password::Prompt::new(&sq, false);
 
-    sequoia::key::userid::add::add(
-        &sq.sequoia,
-        &cert,
-        &command.names,
-        &command.emails,
-        command.userid.into_iter(),
-        command.allow_non_canonical_userids,
-        prompt,
-        output)
+    sq.sequoia.key_userid_add()
+        .names(&command.names)
+        .emails(&command.emails)
+        .userids(command.userid.into_iter())
+        .allow_non_canonical_userids(command.allow_non_canonical_userids)
+        .add(
+            &cert,
+            prompt,
+            output)
 }
 
 /// Revoke a UserID of an existing primary key
