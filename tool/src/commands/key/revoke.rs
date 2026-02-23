@@ -6,12 +6,14 @@ use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::Result;
 
+use sequoia::key::RevocationOutput;
+use sequoia::key::get_secret_signer;
+use sequoia::prompt;
 use sequoia::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::key::revoke::Command;
-use crate::common::get_secret_signer;
-use crate::common::RevocationOutput;
+use crate::common::password;
 
 /// Handle the revocation of a certificate
 struct CertificateRevocation {
@@ -22,18 +24,23 @@ struct CertificateRevocation {
 
 impl CertificateRevocation {
     /// Create a new CertificateRevocation
-    pub fn new(
+    pub fn new<P>(
         sq: &Sq,
         cert: Cert,
         revoker: Option<Cert>,
         reason: ReasonForRevocation,
         message: &str,
         notations: &[(bool, NotationData)],
-    ) -> Result<Self> {
+        prompt: P,
+    ) -> Result<Self>
+    where
+        P: prompt::Prompt
+    {
         let (revoker, mut signer) = get_secret_signer(
-            sq,
+            &sq.sequoia,
             &cert,
             revoker.as_ref(),
+            prompt,
         )?;
 
         let revocation_packet = {
@@ -98,6 +105,18 @@ pub fn certificate_revoke(
 
     let notations = command.signature_notations.parse()?;
 
+    let mut output_;
+    let output = if let Some(output_path) = command.output {
+        // Don't import; save to a file.
+        output_ = output_path.for_secrets().create_safe(&sq)?;
+        Some(&mut output_ as &mut dyn std::io::Write)
+    } else {
+        // Save to the key store.
+        None
+    };
+
+    let prompt = password::Prompt::new(&sq, false);
+
     let revocation = CertificateRevocation::new(
         &sq,
         cert,
@@ -105,8 +124,9 @@ pub fn certificate_revoke(
         command.reason.into(),
         &command.message,
         &notations,
+        prompt,
     )?;
-    revocation.write(&sq, command.output, false)?;
+    revocation.write(&sq.sequoia, output, false)?;
 
     Ok(())
 }

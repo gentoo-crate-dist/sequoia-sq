@@ -9,14 +9,15 @@ use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::Result;
 
+use sequoia::key::RevocationOutput;
+use sequoia::key::get_secret_signer;
+use sequoia::prompt;
 use sequoia::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::key::userid::RevokeCommand;
 use crate::cli::types::userid_designator::ResolvedUserID;
 use crate::cli;
-use crate::common::RevocationOutput;
-use crate::common::get_secret_signer;
 use crate::common::password;
 use crate::common::ui;
 
@@ -30,7 +31,7 @@ struct UserIDRevocation {
 
 impl UserIDRevocation {
     /// Create a new UserIDRevocation
-    pub fn new(
+    pub fn new<P>(
         sq: &Sq,
         uid: ResolvedUserID,
         cert: Cert,
@@ -38,9 +39,13 @@ impl UserIDRevocation {
         reason: ReasonForRevocation,
         message: &str,
         notations: &[(bool, NotationData)],
-    ) -> Result<Self> {
+        prompt: P
+    ) -> Result<Self>
+    where
+        P: prompt::Prompt,
+    {
         let (revoker, mut signer)
-            = get_secret_signer(sq, &cert, revoker.as_ref())?;
+            = get_secret_signer(&sq.sequoia, &cert, revoker.as_ref(), prompt)?;
 
         let revocation_packet = {
             // Create a revocation for a User ID.
@@ -173,6 +178,18 @@ pub fn userid_revoke(
 
     let notations = command.signature_notations.parse()?;
 
+    let mut output_;
+    let output = if let Some(output_path) = command.output {
+        // Don't import; save to a file.
+        output_ = output_path.for_secrets().create_safe(&sq)?;
+        Some(&mut output_ as &mut dyn std::io::Write)
+    } else {
+        // Save to the key store.
+        None
+    };
+
+    let prompt = password::Prompt::new(&sq, false);
+
     let revocation = UserIDRevocation::new(
         &sq,
         userid,
@@ -181,9 +198,10 @@ pub fn userid_revoke(
         command.reason.into(),
         &command.message,
         &notations,
+        prompt,
     )?;
 
-    revocation.write(&sq, command.output, false)?;
+    revocation.write(&sq.sequoia, output, false)?;
 
     Ok(())
 }

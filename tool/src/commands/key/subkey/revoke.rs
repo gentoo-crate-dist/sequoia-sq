@@ -11,13 +11,15 @@ use openpgp::packet::signature::subpacket::NotationData;
 use openpgp::packet::{Key, Signature, key};
 use openpgp::types::ReasonForRevocation;
 
+use sequoia::key::RevocationOutput;
+use sequoia::key::get_secret_signer;
+use sequoia::prompt;
 use sequoia::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;
 use crate::common::NULL_POLICY;
-use crate::common::RevocationOutput;
-use crate::common::get_secret_signer;
+use crate::common::password;
 
 /// Handle the revocation of a subkey
 struct SubkeyRevocation {
@@ -28,7 +30,7 @@ struct SubkeyRevocation {
 
 impl SubkeyRevocation {
     /// Create a new SubkeyRevocation
-    pub fn new(
+    pub fn new<P>(
         sq: &Sq,
         kas: &[ValidErasedKeyAmalgamation<key::PublicParts>],
         cert: &Cert,
@@ -36,9 +38,13 @@ impl SubkeyRevocation {
         reason: ReasonForRevocation,
         message: &str,
         notations: &[(bool, NotationData)],
-    ) -> Result<Self> {
+        prompt: P
+    ) -> Result<Self>
+    where
+        P: prompt::Prompt
+    {
         let (revoker, mut signer)
-            = get_secret_signer(sq, &cert, revoker.as_ref())?;
+            = get_secret_signer(&sq.sequoia, &cert, revoker.as_ref(), prompt)?;
 
         let mut revocations = Vec::new();
         let mut revoked = BTreeSet::new();
@@ -134,6 +140,18 @@ pub fn dispatch(sq: Sq, command: crate::cli::key::subkey::revoke::Command)
 
     let notations = command.signature_notations.parse()?;
 
+    let mut output_;
+    let output = if let Some(output_path) = command.output {
+        // Don't import; save to a file.
+        output_ = output_path.for_secrets().create_safe(&sq)?;
+        Some(&mut output_ as &mut dyn std::io::Write)
+    } else {
+        // Save to the key store.
+        None
+    };
+
+    let prompt = password::Prompt::new(&sq, false);
+
     let revocation = SubkeyRevocation::new(
         &sq,
         &keys[..],
@@ -142,8 +160,9 @@ pub fn dispatch(sq: Sq, command: crate::cli::key::subkey::revoke::Command)
         command.reason.into(),
         &command.message,
         &notations,
+        prompt,
     )?;
-    revocation.write(&sq, command.output, false)?;
+    revocation.write(&sq.sequoia, output, false)?;
 
     Ok(())
 }

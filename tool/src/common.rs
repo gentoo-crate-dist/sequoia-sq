@@ -9,10 +9,6 @@ use openpgp::policy::NullPolicy;
 pub mod cert_designator;
 pub mod file;
 
-mod revoke;
-pub use revoke::get_secret_signer;
-pub use revoke::RevocationOutput;
-
 pub mod key;
 
 pub mod password;
