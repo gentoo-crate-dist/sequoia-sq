@@ -53,14 +53,14 @@ pub fn dispatch(sq: Sq, command: crate::cli::key::subkey::revoke::Command)
 
     let prompt = password::Prompt::new(&sq, false);
 
-    sequoia::key::subkey::revoke::revoke(
-        &sq.sequoia,
-        revoker.as_ref(),
-        &cert,
-        &keys,
-        command.reason.into(),
-        &command.message,
-        &notations,
-        output,
-        prompt)
+    sq.sequoia.key_subkey_revoke()
+        .add_notations(notations.into_iter())
+        .revoke(
+            revoker.as_ref(),
+            &cert,
+            &keys,
+            command.reason.into(),
+            &command.message,
+            output,
+            prompt)
 }

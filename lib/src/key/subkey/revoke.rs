@@ -109,124 +109,212 @@ impl RevocationOutput for SubkeyRevocation {
     }
 }
 
-/// Revoke a Subkey of an existing primary key
+impl Sequoia {
+    /// Returns a builder providing control over how to revoke
+    /// subkeys.
+    ///
+    /// See [`Builder`] for details.
+    pub fn key_subkey_revoke(&self) -> Builder<'_>
+    {
+        Builder {
+            params: Params {
+                sequoia: self,
+                notations: Vec::new(),
+            },
+        }
+    }
+}
+
+/// Subkey revocation parameters.
 ///
-/// ## Errors
+/// These parameters are used by [`revoke`](Builder::revoke).
+#[derive(Clone)]
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
+    notations: Vec<(bool, NotationData)>,
+}
+
+impl<'sequoia> Params<'sequoia> {
+    /// Returns the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        &self.sequoia
+    }
+
+    /// Returns the notations that will be added to the revocation
+    /// certificate.
+    pub fn notations(&self) -> impl Iterator<Item=&(bool, NotationData)> {
+        self.notations.iter()
+    }
+}
+
+/// Revokes subkeys.
 ///
-/// Returns an error if parsing of the [`KeyHandle`] fails, if reading of the
-/// [`Cert`] fails, if retrieval of [`NotationData`] fails or if the eventual
-/// revocation fails.
-pub fn revoke<P>(sequoia: &Sequoia,
-                 revoker: Option<&Cert>,
-                 cert: &Cert,
-                 keys: &[KeyHandle],
-                 reason: ReasonForRevocation,
-                 message: &str,
-                 notations: &[(bool, NotationData)],
-                 output: Option<&mut dyn std::io::Write>,
-                 prompt: P)
-    -> Result<()>
-where
-    P: prompt::Prompt
+/// A builder providing control over how to revoke subkeys.
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
+}
+
+impl<'sequoia> Builder<'sequoia>
 {
-    let vc = Cert::with_policy(&cert, NULL_POLICY, sequoia.time())
-        .with_context(|| {
-            format!("The certificate {} is not valid under the \
-                     null policy.",
-                    cert.fingerprint())
-        })?;
-
-    let mut fprs = BTreeMap::from_iter(
-        keys
-            .iter()
-            .filter_map(|kh| {
-                match kh {
-                    KeyHandle::Fingerprint(fpr) => Some((fpr.clone(), false)),
-                    KeyHandle::KeyID(_keyid) => None,
-                }
-            }));
-    let mut keyids = BTreeMap::from_iter(
-        keys
-            .iter()
-            .filter_map(|kh| {
-                match kh {
-                    KeyHandle::Fingerprint(_fpr) => None,
-                    KeyHandle::KeyID(keyid) => Some((keyid.clone(), false)),
-                }
-            }));
-
-    let mut kas = Vec::new();
-    for ka in vc.keys() {
-        // Don't short-circuit the or.
-        let by_fpr = if let Some(saw) = fprs.get_mut(&ka.key().fingerprint()) {
-            *saw = true;
-            true
-        } else {
-            false
-        };
-
-        let by_keyid = if let Some(saw) = keyids.get_mut(&ka.key().keyid()) {
-            *saw = true;
-            true
-        } else {
-            false
-        };
-
-        if by_fpr || by_keyid {
-            kas.push(ka);
-        }
+    /// Returns the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia> {
+        &self.params
     }
 
-    // Return an error if there are any unknown keys.
-    let missed = fprs
-        .into_iter()
-        .filter_map(|(fpr, saw)| {
-            if saw {
-                None
+    /// Adds a notation to the new revocation signatures.
+    ///
+    /// See [RFC 9580 for details].
+    ///
+    ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
+    pub fn add_notation(mut self, critical: bool, notation: NotationData)
+                        -> Self
+    {
+        self.params.notations.push((critical, notation));
+        self
+    }
+
+    /// Adds notations to the new revocation signatures.
+    ///
+    /// The first value of the tuple is the notation's criticality.
+    ///
+    /// See [RFC 9580 for details].
+    ///
+    ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
+    pub fn add_notations(mut self,
+                         notations: impl Iterator<Item=(bool, NotationData)>)
+                         -> Self
+    {
+        self.params.notations.extend(notations);
+        self
+    }
+
+    /// Revoke a subkey.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if parsing of the [`KeyHandle`] fails, if reading of the
+    /// [`Cert`] fails, if retrieval of [`NotationData`] fails or if the eventual
+    /// revocation fails.
+    pub fn revoke<P>(&self,
+                     revoker: Option<&Cert>,
+                     cert: &Cert,
+                     keys: &[KeyHandle],
+                     reason: ReasonForRevocation,
+                     message: &str,
+                     output: Option<&mut dyn std::io::Write>,
+                     prompt: P)
+                     -> Result<()>
+    where
+        P: prompt::Prompt
+    {
+        let &Builder {
+            params: Params {
+                sequoia,
+                ref notations,
+            },
+        } = self;
+
+        let vc = Cert::with_policy(&cert, NULL_POLICY, sequoia.time())
+            .with_context(|| {
+                format!("The certificate {} is not valid under the \
+                         null policy.",
+                        cert.fingerprint())
+            })?;
+
+        let mut fprs = BTreeMap::from_iter(
+            keys
+                .iter()
+                .filter_map(|kh| {
+                    match kh {
+                        KeyHandle::Fingerprint(fpr) => Some((fpr.clone(), false)),
+                        KeyHandle::KeyID(_keyid) => None,
+                    }
+                }));
+        let mut keyids = BTreeMap::from_iter(
+            keys
+                .iter()
+                .filter_map(|kh| {
+                    match kh {
+                        KeyHandle::Fingerprint(_fpr) => None,
+                        KeyHandle::KeyID(keyid) => Some((keyid.clone(), false)),
+                    }
+                }));
+
+        let mut kas = Vec::new();
+        for ka in vc.keys() {
+            // Don't short-circuit the or.
+            let by_fpr = if let Some(saw) = fprs.get_mut(&ka.key().fingerprint()) {
+                *saw = true;
+                true
             } else {
-                Some(KeyHandle::from(fpr))
+                false
+            };
+
+            let by_keyid = if let Some(saw) = keyids.get_mut(&ka.key().keyid()) {
+                *saw = true;
+                true
+            } else {
+                false
+            };
+
+            if by_fpr || by_keyid {
+                kas.push(ka);
             }
-        })
-        .chain(keyids
-               .into_iter()
-               .filter_map(|(keyid, saw)| {
-                   if saw {
-                       None
-                   } else {
-                       Some(KeyHandle::from(keyid))
-                   }
-               }))
-        .collect::<Vec<_>>();
-
-    if let Some(first) = missed.get(0) {
-        if missed.len() == 1 {
-            return Err(anyhow::anyhow!(
-                "{} is not part of the certificate",
-                first));
-        } else {
-            return Err(anyhow::anyhow!(
-                "{} are not part of the certificate",
-                missed.iter()
-                    .map(|k| k.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")));
         }
+
+        // Return an error if there are any unknown keys.
+        let missed = fprs
+            .into_iter()
+            .filter_map(|(fpr, saw)| {
+                if saw {
+                    None
+                } else {
+                    Some(KeyHandle::from(fpr))
+                }
+            })
+            .chain(keyids
+                   .into_iter()
+                   .filter_map(|(keyid, saw)| {
+                       if saw {
+                           None
+                       } else {
+                           Some(KeyHandle::from(keyid))
+                       }
+                   }))
+            .collect::<Vec<_>>();
+
+        if let Some(first) = missed.get(0) {
+            if missed.len() == 1 {
+                return Err(anyhow::anyhow!(
+                    "{} is not part of the certificate",
+                    first));
+            } else {
+                return Err(anyhow::anyhow!(
+                    "{} are not part of the certificate",
+                    missed.iter()
+                        .map(|k| k.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")));
+            }
+        }
+
+        if kas.is_empty() {
+            return Err(anyhow::anyhow!("Nothing to revoke"));
+        }
+
+        let revocation = SubkeyRevocation::new(
+            &sequoia,
+            &kas[..],
+            &cert,
+            revoker.map(Clone::clone),
+            reason.into(),
+            &message,
+            &notations,
+            prompt)?;
+        revocation.write(&sequoia, output, false)?;
+
+        Ok(())
     }
-
-    if kas.is_empty() {
-        return Err(anyhow::anyhow!("Nothing to revoke"));
-    }
-
-    let revocation = SubkeyRevocation::new(
-        &sequoia,
-        &kas[..],
-        &cert,
-        revoker.map(Clone::clone),
-        reason.into(),
-        &message,
-        &notations,
-        prompt)?;
-    revocation.write(&sequoia, output, false)?;
-
-    Ok(())
 }
