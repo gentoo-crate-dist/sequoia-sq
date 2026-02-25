@@ -772,54 +772,67 @@ pub fn lint(sq: Sq, mut args: Command) -> Result<()> {
                  certs_valid + certs_invalid,
                  certs_with_issues * 100 / (certs_valid + certs_invalid),
                  pl(certs_with_issues, "has", "have"));
+
             weprintln!("{} of the linted certificates {} revoked.",
                        certs_revoked,
                        pl(certs_revoked, "was", "were"));
-            err!(certs_with_inadequota_revocations,
-                 "  {} of the {} certificates has revocation certificates \
-                  that are weaker than the certificate and should be \
-                  recreated.",
-                 certs_with_inadequota_revocations,
-                 certs_revoked);
+            if sq.verbose() || certs_revoked > 0 {
+                err!(certs_with_inadequota_revocations,
+                    "  {} of the {} certificates has revocation certificates \
+                    that are weaker than the certificate and should be \
+                    recreated.",
+                    certs_with_inadequota_revocations,
+                    certs_revoked);
+            }
+
             weprintln!("{} of the linted certificates {} expired.",
                        certs_expired,
                        pl(certs_expired, "was", "were"));
-            weprintln!("{} of the non-revoked linted {} at least one non-revoked User ID:",
+
+            weprintln!("{} of the non-revoked linted {} at least one non-revoked User ID.",
                        certs_sp_sha1_userids,
                        pl(certs_sp_sha1_userids,
                           "certificate has", "certificates have"));
-            err!(certs_with_a_sha1_protected_userid,
-                 "  {} {} at least one User ID protected by SHA-1.",
-                 certs_with_a_sha1_protected_userid,
-                 pl(certs_with_a_sha1_protected_userid, "has", "have"));
-            err!(certs_with_only_sha1_protected_userids,
-                 "  {} {} all User IDs protected by SHA-1.",
-                 certs_with_only_sha1_protected_userids,
-                 pl(certs_with_only_sha1_protected_userids,
-                    "has", "have"));
+            if sq.verbose() || certs_sp_sha1_userids > 0 {
+                err!(certs_with_a_sha1_protected_userid,
+                    "  {} {} at least one User ID protected by SHA-1.",
+                    certs_with_a_sha1_protected_userid,
+                    pl(certs_with_a_sha1_protected_userid, "has", "have"));
+                err!(certs_with_only_sha1_protected_userids,
+                    "  {} {} all User IDs protected by SHA-1.",
+                    certs_with_only_sha1_protected_userids,
+                    pl(certs_with_only_sha1_protected_userids,
+                        "has", "have"));
+            }
+
             weprintln!("{} of the non-revoked linted certificates {} at least one \
                         non-revoked, live subkey:",
                        certs_with_subkeys,
                        pl(certs_with_subkeys,
                           "has", "have"));
-            err!(certs_with_a_sha1_protected_binding_sig,
-                 "  {} {} at least one non-revoked, live subkey with \
-                  a binding signature that uses SHA-1.",
-                 certs_with_a_sha1_protected_binding_sig,
-                 pl(certs_with_a_sha1_protected_binding_sig,
-                    "has", "have"));
+            if sq.verbose() || certs_with_subkeys > 0 {
+                err!(certs_with_a_sha1_protected_binding_sig,
+                    "  {} {} at least one non-revoked, live subkey with \
+                    a binding signature that uses SHA-1.",
+                    certs_with_a_sha1_protected_binding_sig,
+                    pl(certs_with_a_sha1_protected_binding_sig,
+                        "has", "have"));
+            }
+
             weprintln!("{} of the non-revoked linted certificates {} at least one non-revoked, live, \
-                        signing-capable subkey:",
+                        signing-capable subkey.",
                        certs_with_signing_subkeys,
                        pl(certs_with_signing_subkeys,
                           "has", "have"));
-            err!(certs_with_sha1_protected_backsig,
-                 "  {} {} at least one non-revoked, live, signing-capable subkey \
-                  with a strong binding signature, but a backsig \
-                  that uses SHA-1.",
-                 certs_with_sha1_protected_backsig,
-                 pl(certs_with_sha1_protected_backsig,
-                    "certificate has", "certificates have"));
+            if sq.verbose() || certs_with_signing_subkeys > 0 {
+                err!(certs_with_sha1_protected_backsig,
+                    "  {} {} at least one non-revoked, live, signing-capable subkey \
+                    with a strong binding signature, but a backsig \
+                    that uses SHA-1.",
+                    certs_with_sha1_protected_backsig,
+                    pl(certs_with_sha1_protected_backsig,
+                        "certificate has", "certificates have"));
+            }
         }
     }
 
