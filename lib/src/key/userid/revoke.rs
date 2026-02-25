@@ -94,40 +94,128 @@ impl RevocationOutput for UserIDRevocation
     }
 }
 
-/// Revoke UserIDs.
+impl Sequoia {
+    /// Returns a builder providing control over how to revoke
+    /// user IDs.
+    ///
+    /// See [`Builder`] for details.
+    pub fn key_userid_revoke(&self) -> Builder<'_>
+    {
+        Builder {
+            params: Params {
+                sequoia: self,
+                notations: Vec::new(),
+            },
+        }
+    }
+}
+
+/// User ID revocation parameters.
 ///
-/// This function does not check that the user IDs are self-signed.
+/// These parameters are used by [`revoke`](Builder::revoke).
+#[derive(Clone)]
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
+    notations: Vec<(bool, NotationData)>,
+}
+
+impl<'sequoia> Params<'sequoia> {
+    /// Returns the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        &self.sequoia
+    }
+
+    /// Returns the notations that will be added to the revocation
+    /// certificate.
+    pub fn notations(&self) -> impl Iterator<Item=&(bool, NotationData)> {
+        self.notations.iter()
+    }
+}
+
+/// Revokes user IDs.
 ///
-/// ## Errors
-///
-/// Returns an error if reading of the [`Cert`] fails, if retrieval of
-/// [`NotationData`] fails or if the eventual revocation fails.
-pub fn revoke<P>(
-    sequoia: &Sequoia,
-    revoker: Option<&Cert>,
-    cert: &Cert,
-    userid: &UserID,
-    reason: ReasonForRevocation,
-    message: &str,
-    notations: &[(bool, NotationData)],
-    output: Option<&mut dyn std::io::Write>,
-    prompt: P)
-    -> Result<()>
-where
-    P: prompt::Prompt
+/// A builder providing control over how to revoke user IDs.
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
+}
+
+impl<'sequoia> Builder<'sequoia>
 {
-    let revocation = UserIDRevocation::new(
-        &sequoia,
-        revoker.map(|c| c.clone()),
-        cert.clone(),
-        userid,
-        reason,
-        message,
-        &notations,
-        prompt,
-    )?;
+    /// Returns the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia> {
+        &self.params
+    }
 
-    revocation.write(&sequoia, output, false)?;
+    /// Adds a notation to the new revocation signatures.
+    ///
+    /// See [RFC 9580 for details].
+    ///
+    ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
+    pub fn add_notation(mut self, critical: bool, notation: NotationData)
+                        -> Self
+    {
+        self.params.notations.push((critical, notation));
+        self
+    }
 
-    Ok(())
+    /// Adds notations to the new revocation signatures.
+    ///
+    /// The first value of the tuple is the notation's criticality.
+    ///
+    /// See [RFC 9580 for details].
+    ///
+    ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
+    pub fn add_notations(mut self,
+                         notations: impl Iterator<Item=(bool, NotationData)>)
+                         -> Self
+    {
+        self.params.notations.extend(notations);
+        self
+    }
+
+    /// Revoke a user ID.
+    ///
+    /// This function does not check that the user ID is
+    /// self-signed.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if reading of the [`Cert`] fails, if retrieval of
+    /// [`NotationData`] fails or if the eventual revocation fails.
+    pub fn revoke<P>(&self,
+                     revoker: Option<&Cert>,
+                     cert: &Cert,
+                     userid: &UserID,
+                     reason: ReasonForRevocation,
+                     message: &str,
+                     output: Option<&mut dyn std::io::Write>,
+                     prompt: P)
+                     -> Result<()>
+    where
+        P: prompt::Prompt
+    {
+        let &Builder {
+            params: Params {
+                sequoia,
+                ref notations,
+            },
+        } = self;
+
+        let revocation = UserIDRevocation::new(
+            &sequoia,
+            revoker.map(|c| c.clone()),
+            cert.clone(),
+            userid,
+            reason,
+            message,
+            &notations,
+            prompt,
+        )?;
+
+        revocation.write(sequoia, output, false)?;
+
+        Ok(())
+    }
 }

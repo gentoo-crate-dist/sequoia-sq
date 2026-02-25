@@ -96,16 +96,16 @@ pub fn userid_revoke(
 
     let prompt = password::Prompt::new(&sq, false);
 
-    sequoia::key::userid::revoke::revoke(
-        &sq.sequoia,
-        revoker.as_ref(),
-        &cert,
-        userid.userid(),
-        command.reason.into(),
-        &command.message,
-        &notations,
-        output,
-        prompt)?;
+    sq.sequoia.key_userid_revoke()
+        .add_notations(notations.into_iter())
+        .revoke(
+            revoker.as_ref(),
+            &cert,
+            userid.userid(),
+            command.reason.into(),
+            &command.message,
+            output,
+            prompt)?;
 
     Ok(())
 }
