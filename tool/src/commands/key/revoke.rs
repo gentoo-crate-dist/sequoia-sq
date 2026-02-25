@@ -8,7 +8,7 @@ use crate::cli::key::revoke::Command;
 use crate::common::password;
 
 /// Revoke a certificate
-pub fn certificate_revoke(
+pub fn dispatch(
     sq: Sq,
     command: Command,
 ) -> Result<()> {
