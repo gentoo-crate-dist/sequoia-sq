@@ -1,106 +1,12 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
-use openpgp::cert::UserIDRevocationBuilder;
-use openpgp::packet::signature::subpacket::NotationData;
-use openpgp::packet::UserID;
-use openpgp::types::ReasonForRevocation;
-use openpgp::Cert;
-use openpgp::Packet;
-use openpgp::Result;
-
-use sequoia::key::RevocationOutput;
-use sequoia::key::get_secret_signer;
-use sequoia::prompt;
 use sequoia::types::TrustThreshold;
 
+use crate::Result;
 use crate::Sq;
 use crate::cli::key::userid::RevokeCommand;
-use crate::cli::types::userid_designator::ResolvedUserID;
 use crate::cli;
 use crate::common::password;
-use crate::common::ui;
-
-/// Handle the revocation of a User ID
-struct UserIDRevocation {
-    cert: Cert,
-    revoker: Cert,
-    revocation_packet: Packet,
-    uid: UserID,
-}
-
-impl UserIDRevocation {
-    /// Create a new UserIDRevocation
-    pub fn new<P>(
-        sq: &Sq,
-        uid: ResolvedUserID,
-        cert: Cert,
-        revoker: Option<Cert>,
-        reason: ReasonForRevocation,
-        message: &str,
-        notations: &[(bool, NotationData)],
-        prompt: P
-    ) -> Result<Self>
-    where
-        P: prompt::Prompt,
-    {
-        let (revoker, mut signer)
-            = get_secret_signer(&sq.sequoia, &cert, revoker.as_ref(), prompt)?;
-
-        let revocation_packet = {
-            // Create a revocation for a User ID.
-            let mut rev = UserIDRevocationBuilder::new()
-                .set_reason_for_revocation(reason, message.as_bytes())?;
-            rev = rev.set_signature_creation_time(sq.time())?;
-            for (critical, notation) in notations {
-                rev = rev.add_notation(
-                    notation.name(),
-                    notation.value(),
-                    Some(notation.flags().clone()),
-                    *critical,
-                )?;
-            }
-            let rev = rev.build(
-                &mut signer,
-                &cert,
-                uid.userid(),
-                None,
-            )?;
-            Packet::Signature(rev)
-        };
-
-        Ok(UserIDRevocation {
-            cert,
-            revoker,
-            revocation_packet,
-            uid: uid.userid().clone(),
-        })
-    }
-}
-
-impl RevocationOutput for UserIDRevocation
-{
-    fn cert(&self) -> Result<Cert> {
-        let cert = Cert::from_packets(vec![
-            self.cert.primary_key().key().clone().into(),
-            self.uid.clone().into(),
-            self.revocation_packet.clone(),
-        ].into_iter())?;
-
-        Ok(cert)
-    }
-
-    fn comment(&self) -> String {
-        format!("This is a revocation certificate for \
-                 the User ID {} of cert {}.",
-                ui::Safe(&self.uid),
-                self.cert.fingerprint())
-    }
-
-    fn revoker(&self) -> &Cert {
-        &self.revoker
-    }
-}
 
 pub fn dispatch(
     sq: Sq,
@@ -190,18 +96,16 @@ pub fn userid_revoke(
 
     let prompt = password::Prompt::new(&sq, false);
 
-    let revocation = UserIDRevocation::new(
-        &sq,
-        userid,
-        cert,
-        revoker,
+    sequoia::key::userid::revoke::revoke(
+        &sq.sequoia,
+        revoker.as_ref(),
+        &cert,
+        userid.userid(),
         command.reason.into(),
         &command.message,
         &notations,
-        prompt,
-    )?;
-
-    revocation.write(&sq.sequoia, output, false)?;
+        output,
+        prompt)?;
 
     Ok(())
 }
