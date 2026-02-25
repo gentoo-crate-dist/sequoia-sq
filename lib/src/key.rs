@@ -74,7 +74,7 @@ where
 }
 
 /// A trait for unifying the approach of writing a revocation to an output
-pub trait RevocationOutput {
+trait RevocationOutput {
     /// Returns a minimal version of the certificate including the
     /// revocation certificate.
     fn cert(&self) -> Result<Cert>;
@@ -162,7 +162,7 @@ pub trait RevocationOutput {
 /// can be derived from it.
 /// - Returns an `Error` if `secret` is `None` and no suitable certification key
 /// can be derived from `cert`.
-pub fn get_secret_signer<'a, P>(
+fn get_secret_signer<'a, P>(
     sequoia: &'a Sequoia,
     cert: &'a Cert,
     secret: Option<&'a Cert>,
