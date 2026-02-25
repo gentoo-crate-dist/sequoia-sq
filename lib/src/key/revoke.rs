@@ -85,29 +85,116 @@ impl RevocationOutput for CertificateRevocation
     }
 }
 
-/// Revoke a certificate
-pub fn revoke<P>(
-    sequoia: &Sequoia,
-    revoker: Option<&Cert>,
-    cert: &Cert,
-    reason: ReasonForRevocation,
-    message: &str,
-    signature_notations: &[(bool, NotationData)],
-    output: Option<&mut dyn std::io::Write>,
-    prompt: P)
-    -> Result<()>
-where
-    P: prompt::Prompt
-{
-    let revocation = CertificateRevocation::new(
-        &sequoia,
-        cert,
-        revoker,
-        reason,
-        message,
-        signature_notations,
-        prompt)?;
-    revocation.write(sequoia, output, false)?;
+impl Sequoia {
+    /// Returns a builder providing control over how to revoke
+    /// a certificate.
+    ///
+    /// See [`Builder`] for details.
+    pub fn key_revoke(&self) -> Builder<'_>
+    {
+        Builder {
+            params: Params {
+                sequoia: self,
+                notations: Vec::new(),
+            },
+        }
+    }
+}
 
-    Ok(())
+/// Certificate revocation parameters.
+///
+/// These parameters are used by [`revoke`](Builder::revoke).
+#[derive(Clone)]
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
+    notations: Vec<(bool, NotationData)>,
+}
+
+impl<'sequoia> Params<'sequoia> {
+    /// Returns the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        &self.sequoia
+    }
+
+    /// Returns the notations that will be added to the revocation
+    /// certificate.
+    pub fn notations(&self) -> impl Iterator<Item=&(bool, NotationData)> {
+        self.notations.iter()
+    }
+}
+
+/// Revokes certificates.
+///
+/// A builder providing control over how to revoke certificates.
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
+}
+
+impl<'sequoia> Builder<'sequoia>
+{
+    /// Returns the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia> {
+        &self.params
+    }
+
+    /// Adds a notation to the new revocation signatures.
+    ///
+    /// See [RFC 9580 for details].
+    ///
+    ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
+    pub fn add_notation(mut self, critical: bool, notation: NotationData)
+                        -> Self
+    {
+        self.params.notations.push((critical, notation));
+        self
+    }
+
+    /// Adds notations to the new revocation signatures.
+    ///
+    /// The first value of the tuple is the notation's criticality.
+    ///
+    /// See [RFC 9580 for details].
+    ///
+    ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
+    pub fn add_notations(mut self,
+                         notations: impl Iterator<Item=(bool, NotationData)>)
+                         -> Self
+    {
+        self.params.notations.extend(notations);
+        self
+    }
+
+    /// Revokes a certificate.
+    pub fn revoke<P>(&self,
+                     revoker: Option<&Cert>,
+                     cert: &Cert,
+                     reason: ReasonForRevocation,
+                     message: &str,
+                     output: Option<&mut dyn std::io::Write>,
+                     prompt: P)
+                     -> Result<()>
+    where
+        P: prompt::Prompt
+    {
+        let &Builder {
+            params: Params {
+                sequoia,
+                ref notations,
+            },
+        } = self;
+
+        let revocation = CertificateRevocation::new(
+            &sequoia,
+            cert,
+            revoker,
+            reason,
+            message,
+            notations,
+            prompt)?;
+        revocation.write(sequoia, output, false)?;
+
+        Ok(())
+    }
 }

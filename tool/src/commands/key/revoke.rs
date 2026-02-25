@@ -35,15 +35,15 @@ pub fn dispatch(
 
     let prompt = password::Prompt::new(&sq, false);
 
-    sequoia::key::revoke::revoke(
-        &sq.sequoia,
-        revoker.as_ref(),
-        &cert,
-        command.reason.into(),
-        &command.message,
-        &notations,
-        output,
-        prompt)?;
+    sq.sequoia.key_revoke()
+        .add_notations(notations.into_iter())
+        .revoke(
+            revoker.as_ref(),
+            &cert,
+            command.reason.into(),
+            &command.message,
+            output,
+            prompt)?;
 
     Ok(())
 }
