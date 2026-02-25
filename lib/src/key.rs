@@ -26,8 +26,9 @@ use crate::Sequoia;
 use crate::prompt;
 use crate::provenance::certify_downloads;
 
-pub mod import;
 pub mod generate;
+pub mod import;
+pub mod revoke;
 pub mod subkey;
 pub mod userid;
 
