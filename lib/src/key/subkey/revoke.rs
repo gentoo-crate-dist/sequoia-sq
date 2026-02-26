@@ -223,7 +223,7 @@ impl<'sequoia> Builder<'sequoia>
                         cert.fingerprint())
             })?;
 
-        let kas = get_subkeys(&vc, keys)?;
+        let kas = get_subkeys(&vc, true, keys)?;
 
         let revocation = SubkeyRevocation::new(
             &sequoia,

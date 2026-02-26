@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use sequoia_openpgp as openpgp;
 use openpgp::KeyHandle;
 use openpgp::cert::ValidCert;
+use openpgp::cert::amalgamation::key::PrimaryKey;
 use openpgp::cert::prelude::ValidErasedKeyAmalgamation;
 use openpgp::packet::key::PublicParts;
 
@@ -10,9 +11,13 @@ use crate::Result;
 
 /// Returns the specified key amalgamations.
 ///
+/// If `match_primary` is true, also considers the primary key.
+/// Otherwise, the primary key is ignored.
+///
 /// An error is returned if a key cannot be found.  An error is
 /// returned if `keys` is empty.
-pub fn get_subkeys<'a>(vc: &ValidCert<'a>, keys: &[KeyHandle])
+pub fn get_subkeys<'a>(vc: &ValidCert<'a>, match_primary: bool,
+                       keys: &[KeyHandle])
     -> Result<Vec<ValidErasedKeyAmalgamation<'a, PublicParts>>>
 {
     let mut fprs = BTreeMap::from_iter(
@@ -36,6 +41,10 @@ pub fn get_subkeys<'a>(vc: &ValidCert<'a>, keys: &[KeyHandle])
 
     let mut kas = Vec::new();
     for ka in vc.keys() {
+        if ! match_primary && ka.primary() {
+            continue;
+        }
+
         // Don't short-circuit the or.
         let by_fpr = if let Some(saw) = fprs.get_mut(&ka.key().fingerprint()) {
             *saw = true;
