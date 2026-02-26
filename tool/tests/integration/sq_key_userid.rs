@@ -398,3 +398,80 @@ fn sq_key_userid_add() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn sq_key_from_file_userid_add() -> Result<()> {
+    use super::common::artifact;
+
+    use openpgp::Fingerprint;
+    use openpgp::KeyHandle;
+
+    let sq = Sq::new();
+
+    let alice_fpr = "5CCBBA0674EA5162615E36E980E5ADE943CA0DC3";
+    let alice_handle: KeyHandle = Fingerprint::from_hex(alice_fpr)?.into();
+    let alice_uid = "Alice Lovelace <alice@example.org>";
+    let alice_path = artifact("keys")
+        .join("alice-lovelace-encryption-subkey-signing-subkey-priv.pgp");
+    let output_path = sq.scratch_file(None);
+
+    // Import alice's key and link it.
+    sq.key_import(&alice_path);
+
+    sq.pki_link_add(&[],
+        alice_handle.clone().into(),
+        &[alice_uid]);
+
+    // Add a new User ID to alice's key, but use the stateless interface
+    // (no interaction with the cert store).
+    let mut cmd = sq.command();
+    cmd.args([
+        "key",
+        "userid",
+        "add",
+        "--home", "none",
+        "--cert-file", alice_path.to_str().unwrap(),
+        "--email", "alice@other.org",
+        "--output", output_path.to_str().unwrap(),
+    ]);
+    let _output = sq.run(cmd, Some(true));
+
+    // Import the result so that we can check the authentication of the 2
+    // User IDs.
+    sq.inspect(&output_path);
+    sq.key_import(output_path);
+
+    // The User ID which was linked should still be authenticated.
+    assert!(sq.pki_authenticate(&[],
+        alice_fpr,
+        alice_uid).is_ok());
+
+    // The added User ID should not be authenticated.
+    assert!(sq.pki_authenticate(&[],
+        alice_fpr,
+        "<alice@other.org>").is_err());
+
+    // Add new User IDs to alice's key, this time operate on the
+    // cert store.
+    let mut cmd = sq.command();
+    cmd.args([
+        "key",
+        "userid",
+        "add",
+        "--cert", alice_fpr,
+        "--email", "alice@this.org",
+        "--email", "alice@that.org",
+    ]);
+    let _output = sq.run(cmd, Some(true));
+    sq.inspect(&alice_handle);
+
+    // The added user IDs should be authenticated.
+    assert!(sq.pki_authenticate(&[],
+        alice_fpr,
+        "<alice@this.org>").is_ok());
+    assert!(sq.pki_authenticate(&[],
+        alice_fpr,
+        "<alice@that.org>").is_ok());
+
+    Ok(())
+}

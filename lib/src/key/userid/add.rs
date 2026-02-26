@@ -19,8 +19,10 @@ use sequoia_cert_store as cert_store;
 use cert_store::StoreUpdate;
 
 use crate::Sequoia;
+use crate::config::Expiration;
 use crate::prompt;
 use crate::types::Safe;
+use crate::types::TrustAmount;
 use crate::userid::lint_emails;
 use crate::userid::lint_names;
 use crate::userid::lint_userids;
@@ -193,7 +195,7 @@ impl<'sequoia> Builder<'sequoia>
             },
         } = self;
 
-        let mut signer = sequoia.get_primary_key(cert, None, prompt)?;
+        let mut signer = sequoia.get_primary_key(cert, None, &prompt)?;
 
         // Make sure the user IDs are in canonical form.  If not, and
         // `--allow-non-canonical-userids` is not set, error out.
@@ -321,8 +323,8 @@ impl<'sequoia> Builder<'sequoia>
         let mut add: Vec<Packet> = vec![];
 
         // Make new User IDs and binding signatures
-        for uid in userids {
-            let uid: UserID = uid.into();
+        for uid in &userids {
+            let uid: UserID = uid.clone().into();
             add.push(uid.clone().into());
 
             // Creation time.
@@ -330,6 +332,28 @@ impl<'sequoia> Builder<'sequoia>
 
             let binding = uid.bind(&mut signer, &cert, sb.clone())?;
             add.push(binding.into());
+        }
+
+        // Mark the new user IDs as authenticated when saving the
+        // certificate to the cert store (a local trust root is
+        // available).
+        if let Ok(trust_root) = sequoia.local_trust_root() {
+            let trust_root = trust_root.to_cert()?;
+
+            sequoia.pki_certify()
+                .recreate(false)
+                .user_supplied_userids(true)
+                .trust_depth(0)
+                .trust_amount(TrustAmount::Full.amount())
+                .expiration(Expiration::Never)
+                .exportable(false)
+                .certify(
+                    &trust_root,
+                    &cert,
+                    &userids,
+                    None, // Output file.
+                    &mut std::io::stderr(), // Output
+                    &prompt)?
         }
 
         // Merge the new User IDs into cert.
