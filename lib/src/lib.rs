@@ -75,6 +75,7 @@ pub mod prompt;
 mod password_cache;
 mod time;
 pub use time::Time;
+mod utils;
 pub mod verify;
 
 // XXX transitional: Switch to our own Error type.
