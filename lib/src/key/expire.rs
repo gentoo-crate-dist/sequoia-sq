@@ -19,212 +19,284 @@ use cert_store::StoreUpdate;
 
 use crate::GetKeysOptions;
 use crate::Sequoia;
+use crate::config::DEFAULT_KEY_VALIDITY_DURATION;
 use crate::config::Expiration;
 use crate::prompt;
 use crate::utils::get_subkeys;
 
-/// If `keys` is `None`, the primary key's expiration is changed.
-/// Otherwise the expiration of each of the specified keys is
-/// extended.
-pub fn expire<P>(sequoia: &Sequoia,
-                 cert: &Cert,
-                 keys: &[KeyHandle],
-                 expiration: Expiration,
-                 output: Option<(&mut dyn std::io::Write, Option<&std::path::Path>)>,
-                 binary: bool,
-                 prompt: P)
-    -> Result<()>
-where
-    P: prompt::Prompt
-{
-    let vc = cert.with_policy(sequoia.policy(), sequoia.time())?;
+impl Sequoia {
+    /// Returns a builder providing control over how to change a
+    /// certificate or a key's expiration.
+    ///
+    /// See [`Builder`] for details.
+    pub fn key_expire(&self) -> Builder<'_>
+    {
+        Builder {
+            params: Params {
+                sequoia: self,
+                expiration: Expiration::from_duration(
+                    DEFAULT_KEY_VALIDITY_DURATION),
+            },
+        }
+    }
+}
 
-    let keys = get_subkeys(&vc, true, keys)?;
+/// Key expiration parameters.
+///
+/// These parameters are used by [`generate`](Builder::generate).
+#[derive(Clone)]
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
+    expiration: Expiration,
+}
 
-    let (primary, subkeys): (Vec<_>, Vec<_>)
-        = keys.into_iter().partition(|ka| ka.primary());
-    assert!(primary.len() <= 1);
-
-    let mut primary_signer
-        = sequoia.get_primary_key(cert,
-                                  Some(&[GetKeysOptions::AllowNotAlive]),
-                                  &prompt)?;
-
-    // Fix the new expiration time.
-    let expiration_time = expiration.to_system_time(sequoia.time())?;
-
-    // Collect new signatures here, then canonicalize once.
-    let mut acc = Vec::<Packet>::new();
-
-    // To update subkey expiration times, create new binding
-    // signatures.
-    for ka in subkeys {
-        // Use the binding signature under our policy as the template.
-        let template = ka.binding_signature();
-
-        // Push a copy of the key to make reordering easier.
-        acc.push(Packet::from(ka.key().clone().role_into_subordinate()));
-        acc.push(ka.key().role_as_subordinate().bind(
-            &mut primary_signer,
-            &cert,
-            SignatureBuilder::from(template.clone())
-                .set_signature_creation_time(sequoia.time())?
-                .set_key_expiration_time(ka.key(), expiration_time)?)?
-                 .into());
+impl<'sequoia> Params<'sequoia> {
+    /// Returns the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        &self.sequoia
     }
 
-    // To change the cert's expiration time, create a new direct key
-    // signature and new binding signatures for the user IDs.
-    if let Some(ka) = primary.get(0) {
-        let template = ka.binding_signature().clone();
+    /// When the certificate or key expires.
+    pub fn expiration(&self) -> &Expiration {
+        &self.expiration
+    }
+}
 
-        // Clean the template.
-        let template = SignatureBuilder::from(template)
-            .modify_unhashed_area(|mut a| {
-                a.clear();
-                Ok(a)
-            })?
-            .modify_hashed_area(|mut a| {
-                // XXX: Rework once
-                // https://gitlab.com/sequoia-pgp/sequoia/-/issues/1127
-                // is available.
-                let mut strip_tags: std::collections::BTreeSet<_> =
-                    a.iter().map(|s| s.tag()).collect();
+/// Changes the expiration time.
+///
+/// A builder providing control over how to change a certificate or
+/// key's expiration time.
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
+}
 
-                // Symbolic names for the policy below.
-                let strip = true;
-                let keep = false;
+impl<'sequoia> Builder<'sequoia>
+{
+    /// Returns the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia> {
+        &self.params
+    }
 
-                use openpgp::packet::signature::subpacket::SubpacketTag::*;
-                #[allow(deprecated)]
-                strip_tags.retain(|t| match t {
-                    // These we keep.
-                    PreferredSymmetricAlgorithms => keep,
-                    RevocationKey => keep,
-                    NotationData => keep,
-                    PreferredHashAlgorithms => keep,
-                    PreferredCompressionAlgorithms => keep,
-                    KeyServerPreferences => keep,
-                    PreferredKeyServer => keep,
-                    PolicyURI => keep,
-                    KeyFlags => keep,
-                    Features => keep,
-                    PreferredAEADCiphersuites => keep,
+    /// When the certificate expires.
+    pub fn expiration(mut self, expiration: Expiration) -> Self
+    {
+        self.params.expiration = expiration;
+        self
+    }
 
-                    // Oddballs, keep them.
-                    Reserved(_) => keep,
-                    Private(_) => keep,
-                    Unknown(_) => keep,
+    /// Changes a key's expiration time.
+    ///
+    /// If `keys` is `None`, the primary key's expiration is changed.
+    /// Otherwise the expiration of each of the specified keys is
+    /// extended.
+    pub fn expire<P>(&self,
+                     cert: &Cert,
+                     keys: &[KeyHandle],
+                     output: Option<(&mut dyn std::io::Write, Option<&std::path::Path>)>,
+                     binary: bool,
+                     prompt: P)
+        -> Result<()>
+    where
+        P: prompt::Prompt
+    {
+        let &Builder {
+            params: Params {
+                sequoia,
+                ref expiration,
+            },
+        } = self;
 
-                    // These we want to strip.
-                    SignatureCreationTime => strip,
-                    SignatureExpirationTime => strip,
-                    ExportableCertification => strip,
-                    TrustSignature => strip,
-                    RegularExpression => strip,
-                    Revocable => strip,
-                    KeyExpirationTime => strip,
-                    PlaceholderForBackwardCompatibility => strip,
-                    Issuer => strip,
-                    PrimaryUserID => strip,
-                    SignersUserID => strip,
-                    ReasonForRevocation => strip,
-                    SignatureTarget => strip,
-                    EmbeddedSignature => strip,
-                    IssuerFingerprint => strip,
-                    PreferredAEADAlgorithms => strip, // Note, "v5".
-                    IntendedRecipient => strip,
-                    ApprovedCertifications => strip,
+        let vc = cert.with_policy(sequoia.policy(), sequoia.time())?;
 
-                    // Enum is non-exhaustive, conservative choice is
-                    // to keep unknown subpackets.
-                    _ => keep,
-                });
+        let keys = get_subkeys(&vc, true, keys)?;
 
-                for t in strip_tags {
-                    a.remove_all(t);
-                }
+        let (primary, subkeys): (Vec<_>, Vec<_>)
+            = keys.into_iter().partition(|ka| ka.primary());
+        assert!(primary.len() <= 1);
 
-                Ok(a)
-            })?;
+        let mut primary_signer
+            = sequoia.get_primary_key(cert,
+                                      Some(&[GetKeysOptions::AllowNotAlive]),
+                                      &prompt)?;
 
-        // We can't add a copy of the primary key, as that's not
-        // allowed by `Cert::insert_packets`.  But it's easy to
-        // reorder direct key signatures as there is only a single
-        // possible component, the primary key.
-        acc.push(template
-                 .set_type(SignatureType::DirectKey)
-                 .set_signature_creation_time(sequoia.time())?
-                 .set_key_expiration_time(cert.primary_key().key(),
-                                          expiration_time)?
-                 .sign_direct_key(&mut primary_signer, None)?
-                 .into());
+        // Fix the new expiration time.
+        let expiration_time = expiration.to_system_time(sequoia.time())?;
 
-        for uidb in vc.userids() {
-            if let RevocationStatus::Revoked(_) = uidb.revocation_status() {
-                // The user ID is revoked.  Skip it.  (Adding a new
-                // self signature would actually "unrevoke it"!)
-                continue;
-            }
+        // Collect new signatures here, then canonicalize once.
+        let mut acc = Vec::<Packet>::new();
 
-            // Use the binding signature that is valid under our
-            // policy as of the reference time.
-            let template = uidb.binding_signature().clone();
+        // To update subkey expiration times, create new binding
+        // signatures.
+        for ka in subkeys {
+            // Use the binding signature under our policy as the template.
+            let template = ka.binding_signature();
 
-            // Push a copy of the user ID to make reordering easier.
-            acc.push(Packet::from(uidb.userid().clone()));
-            acc.push(uidb.userid().bind(
+            // Push a copy of the key to make reordering easier.
+            acc.push(Packet::from(ka.key().clone().role_into_subordinate()));
+            acc.push(ka.key().role_as_subordinate().bind(
                 &mut primary_signer,
                 &cert,
-                SignatureBuilder::from(template)
+                SignatureBuilder::from(template.clone())
                     .set_signature_creation_time(sequoia.time())?
-                    .set_key_expiration_time(cert.primary_key().key(),
-                                             expiration_time)?)?
+                    .set_key_expiration_time(ka.key(), expiration_time)?)?
                      .into());
         }
+
+        // To change the cert's expiration time, create a new direct key
+        // signature and new binding signatures for the user IDs.
+        if let Some(ka) = primary.get(0) {
+            let template = ka.binding_signature().clone();
+
+            // Clean the template.
+            let template = SignatureBuilder::from(template)
+                .modify_unhashed_area(|mut a| {
+                    a.clear();
+                    Ok(a)
+                })?
+                .modify_hashed_area(|mut a| {
+                    // XXX: Rework once
+                    // https://gitlab.com/sequoia-pgp/sequoia/-/issues/1127
+                    // is available.
+                    let mut strip_tags: std::collections::BTreeSet<_> =
+                        a.iter().map(|s| s.tag()).collect();
+
+                    // Symbolic names for the policy below.
+                    let strip = true;
+                    let keep = false;
+
+                    use openpgp::packet::signature::subpacket::SubpacketTag::*;
+                    #[allow(deprecated)]
+                    strip_tags.retain(|t| match t {
+                        // These we keep.
+                        PreferredSymmetricAlgorithms => keep,
+                        RevocationKey => keep,
+                        NotationData => keep,
+                        PreferredHashAlgorithms => keep,
+                        PreferredCompressionAlgorithms => keep,
+                        KeyServerPreferences => keep,
+                        PreferredKeyServer => keep,
+                        PolicyURI => keep,
+                        KeyFlags => keep,
+                        Features => keep,
+                        PreferredAEADCiphersuites => keep,
+
+                        // Oddballs, keep them.
+                        Reserved(_) => keep,
+                        Private(_) => keep,
+                        Unknown(_) => keep,
+
+                        // These we want to strip.
+                        SignatureCreationTime => strip,
+                        SignatureExpirationTime => strip,
+                        ExportableCertification => strip,
+                        TrustSignature => strip,
+                        RegularExpression => strip,
+                        Revocable => strip,
+                        KeyExpirationTime => strip,
+                        PlaceholderForBackwardCompatibility => strip,
+                        Issuer => strip,
+                        PrimaryUserID => strip,
+                        SignersUserID => strip,
+                        ReasonForRevocation => strip,
+                        SignatureTarget => strip,
+                        EmbeddedSignature => strip,
+                        IssuerFingerprint => strip,
+                        PreferredAEADAlgorithms => strip, // Note, "v5".
+                        IntendedRecipient => strip,
+                        ApprovedCertifications => strip,
+
+                        // Enum is non-exhaustive, conservative choice is
+                        // to keep unknown subpackets.
+                        _ => keep,
+                    });
+
+                    for t in strip_tags {
+                        a.remove_all(t);
+                    }
+
+                    Ok(a)
+                })?;
+
+            // We can't add a copy of the primary key, as that's not
+            // allowed by `Cert::insert_packets`.  But it's easy to
+            // reorder direct key signatures as there is only a single
+            // possible component, the primary key.
+            acc.push(template
+                     .set_type(SignatureType::DirectKey)
+                     .set_signature_creation_time(sequoia.time())?
+                     .set_key_expiration_time(cert.primary_key().key(),
+                                              expiration_time)?
+                     .sign_direct_key(&mut primary_signer, None)?
+                     .into());
+
+            for uidb in vc.userids() {
+                if let RevocationStatus::Revoked(_) = uidb.revocation_status() {
+                    // The user ID is revoked.  Skip it.  (Adding a new
+                    // self signature would actually "unrevoke it"!)
+                    continue;
+                }
+
+                // Use the binding signature that is valid under our
+                // policy as of the reference time.
+                let template = uidb.binding_signature().clone();
+
+                // Push a copy of the user ID to make reordering easier.
+                acc.push(Packet::from(uidb.userid().clone()));
+                acc.push(uidb.userid().bind(
+                    &mut primary_signer,
+                    &cert,
+                    SignatureBuilder::from(template)
+                        .set_signature_creation_time(sequoia.time())?
+                        .set_key_expiration_time(cert.primary_key().key(),
+                                                 expiration_time)?)?
+                         .into());
+            }
+        }
+
+        // Merge and canonicalize.
+        let cert = cert.clone().insert_packets(acc)?.0;
+
+        if let Some((output, path)) = output {
+            if binary {
+                cert.as_tsk().serialize(output)?;
+            } else {
+                cert.as_tsk().armored().serialize(output)?;
+            }
+
+            if let Some(path) = path {
+                sequoia.hint(format_args!(
+                    "Updated certificate written to {}.  \
+                     To make the update effective, it has to be published \
+                     so that others can find it, for example using:",
+                    path.display()))
+                    .sq().arg("network").arg("keyserver").arg("publish")
+                    .arg_value("--cert-file", path.display())
+                    .done();
+            } else {
+                sequoia.hint(format_args!(
+                    "To make the update effective, it has to be published \
+                     so that others can find it."));
+            }
+        } else {
+            let cert_store = sequoia.cert_store_or_else()?;
+
+            let fipr = cert.fingerprint();
+            if let Err(err) = cert_store.update(Arc::new(cert.into())) {
+                weprintln!("Error importing updated cert: {}", err);
+                return Err(err);
+            } else {
+                sequoia.hint(format_args!(
+                    "Imported updated cert into the cert store.  \
+                     To make the update effective, it has to be published \
+                     so that others can find it, for example using:"))
+                    .sq().arg("network").arg("keyserver").arg("publish")
+                    .arg_value("--cert", fipr)
+                    .done();
+            }
+        }
+
+        Ok(())
     }
-
-    // Merge and canonicalize.
-    let cert = cert.clone().insert_packets(acc)?.0;
-
-    if let Some((output, path)) = output {
-        if binary {
-            cert.as_tsk().serialize(output)?;
-        } else {
-            cert.as_tsk().armored().serialize(output)?;
-        }
-
-        if let Some(path) = path {
-            sequoia.hint(format_args!(
-                "Updated certificate written to {}.  \
-                 To make the update effective, it has to be published \
-                 so that others can find it, for example using:",
-                path.display()))
-                .sq().arg("network").arg("keyserver").arg("publish")
-                .arg_value("--cert-file", path.display())
-                .done();
-        } else {
-            sequoia.hint(format_args!(
-                "To make the update effective, it has to be published \
-                 so that others can find it."));
-        }
-    } else {
-        let cert_store = sequoia.cert_store_or_else()?;
-
-        let fipr = cert.fingerprint();
-        if let Err(err) = cert_store.update(Arc::new(cert.into())) {
-            weprintln!("Error importing updated cert: {}", err);
-            return Err(err);
-        } else {
-            sequoia.hint(format_args!(
-                "Imported updated cert into the cert store.  \
-                 To make the update effective, it has to be published \
-                 so that others can find it, for example using:"))
-                .sq().arg("network").arg("keyserver").arg("publish")
-                .arg_value("--cert", fipr)
-                .done();
-        }
-    }
-
-    Ok(())
 }

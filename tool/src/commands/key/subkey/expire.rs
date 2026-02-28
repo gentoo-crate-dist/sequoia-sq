@@ -35,12 +35,12 @@ pub fn dispatch(sq: Sq, command: crate::cli::key::subkey::expire::Command)
 
     let prompt = password::Prompt::new(&sq, false);
 
-    sequoia::key::expire::expire(
-        &sq.sequoia,
-        &cert,
-        &keys,
-        command.expiration.value(),
-        output,
-        false,
-        prompt)
+    sq.sequoia.key_expire()
+        .expiration(command.expiration.value())
+        .expire(
+            &cert,
+            &keys,
+            output,
+            false,
+            prompt)
 }
