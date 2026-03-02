@@ -1,6 +1,5 @@
 use std::{
     collections::btree_map::{BTreeMap, Entry},
-    fs::File,
     io,
     path::PathBuf,
 };
@@ -39,6 +38,7 @@ use crate::{
     Sq,
     Model,
     cli::types::FileOrStdout,
+    common::file::PartFileWriter,
     output::KeyringListItem,
 };
 
@@ -258,14 +258,15 @@ fn list(sq: Sq,
 fn split(input: &mut (dyn io::Read + Sync + Send), prefix: &str, binary: bool)
          -> Result<()> {
     for (i, cert) in CertParser::from_reader(input)?.enumerate() {
-        let (filename, cert) = match cert {
+        let (filename, cert, has_secrets) = match cert {
             Ok(cert) => {
                 let filename = format!(
                     "{}{}-{:X}",
                     prefix,
                     i,
                     cert.fingerprint());
-                (filename, Ok(cert))
+                let has_secrets = cert.is_tsk();
+                (filename, Ok(cert), has_secrets)
             },
             Err(mut e) => if let Some(openpgp::Error::UnsupportedCert(m, p)) =
                 e.downcast_mut::<openpgp::Error>()
@@ -277,7 +278,10 @@ fn split(input: &mut (dyn io::Read + Sync + Send), prefix: &str, binary: bool)
                     prefix,
                     i,
                     to_filename_fragment(m).unwrap_or_else(|| "unknown".to_string()));
-                (filename, Err(std::mem::take(p)))
+                let has_secrets = p.iter()
+                    .any(|p|
+                        p.tag() == Tag::SecretKey || p.tag() == Tag::SecretSubkey);
+                (filename, Err(std::mem::take(p)), has_secrets)
             } else {
                 return Err(e.context("Malformed certificate in keyring"));
             },
@@ -291,16 +295,19 @@ fn split(input: &mut (dyn io::Read + Sync + Send), prefix: &str, binary: bool)
             .and_then(to_filename_fragment)
         {
             let filename_email = format!("{}-{}", filename, f);
-            if let Ok(s) = File::create(filename_email) {
+            if let Ok(s) = PartFileWriter::create_with_restricted_permissions(
+                filename_email, has_secrets) {
                 s
             } else {
                 // Degrade gracefully in case our sanitization
                 // produced an invalid filename on this system.
-                File::create(&filename)
+                PartFileWriter::create_with_restricted_permissions(
+                    &filename, has_secrets)
                     .context(format!("Writing cert to {:?} failed", filename))?
             }
         } else {
-            File::create(&filename)
+            PartFileWriter::create_with_restricted_permissions(
+                &filename, has_secrets)
                 .context(format!("Writing cert to {:?} failed", filename))?
         };
 
@@ -312,16 +319,10 @@ fn split(input: &mut (dyn io::Read + Sync + Send), prefix: &str, binary: bool)
                 },
             }
         } else {
-            let is_tsk = match &cert {
-                Ok(cert) => cert.is_tsk(),
-                Err(packets) => packets.iter().any(
-                    |p| p.tag() == Tag::SecretKey || p.tag() == Tag::SecretSubkey),
-            };
-
             use sequoia_openpgp::serialize::stream::{Message, Armorer};
             let message = Message::new(sink);
             let mut message = Armorer::new(message)
-                .kind(if is_tsk {
+                .kind(if has_secrets {
                     armor::Kind::SecretKey
                 } else {
                     armor::Kind::PublicKey

@@ -145,7 +145,7 @@ impl FileOrStdout {
 /// Second, we guarantee not to overwrite the file until the operation
 /// is finished.  Therefore, it is safe to use the same file as input
 /// and output.
-struct PartFileWriter {
+pub struct PartFileWriter {
     path: PathBuf,
     sink: Option<NamedTempFile>,
     // If true, copy the temporary file instead of renaming it.

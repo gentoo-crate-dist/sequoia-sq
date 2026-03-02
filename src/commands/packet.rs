@@ -1,5 +1,4 @@
 use std::{
-    fs::File,
     io::{self, Write},
 };
 
@@ -37,6 +36,7 @@ use crate::cli::packet::{
 use crate::cli::types::FileOrStdout;
 use crate::cli::types::StdinWarning;
 use crate::commands;
+use crate::common::file::PartFileWriter;
 use crate::common::ui;
 use crate::load_keys;
 use crate::sq::TrustThreshold;
@@ -185,7 +185,14 @@ pub fn split(sq: Sq, c: SplitCommand) -> Result<()>
                     filename.push(
                         pp.packet.tag().to_string().replace(" ", "-"));
 
-                    let sink = File::create(filename)
+                    let has_secrets = match &pp.packet {
+                        Packet::SecretKey(_)
+                        | Packet::SecretSubkey(_)
+                        | Packet::Literal(_) => true,
+                        _ => false
+                    };
+
+                    let sink = PartFileWriter::create_with_restricted_permissions(filename, has_secrets)
                         .context("Failed to create output file")?;
                     Box::new(sink)
                 }
