@@ -685,7 +685,6 @@ impl<'sequoia> Builder<'sequoia>
                         // the key as a trusted introducer.
                         sequoia.pki_certify()
                             .recreate(false)
-                            .user_supplied_userids(true)
                             .trust_amount(FULLY_TRUSTED as u8)
                             .trust_depth(u8::MAX)
                             .expiration(Expiration::Never)
@@ -694,14 +693,14 @@ impl<'sequoia> Builder<'sequoia>
                                 &trust_root,
                                 &cert,
                                 &userids,
+                                (), // stream: don't show anything.
+                                prompt,
                                 None, // Output.
-                                &mut std::io::stderr(),
-                                prompt)?;
+                            )?;
                     } else if ! own_key /* shared key */ && have_userids {
                         // Mark all user IDs as authenticated.
                         sequoia.pki_certify()
                             .recreate(false)
-                            .user_supplied_userids(true)
                             .trust_amount(FULLY_TRUSTED as u8)
                             // Not a trusted introducer.
                             .trust_depth(0)
@@ -711,9 +710,10 @@ impl<'sequoia> Builder<'sequoia>
                                 &trust_root,
                                 &cert,
                                 &userids,
+                                (), // stream: don't show anything.
+                                prompt,
                                 None, // Output.
-                                &mut std::io::stderr(),
-                                prompt)?;
+                            )?;
                     }
                 }
             }

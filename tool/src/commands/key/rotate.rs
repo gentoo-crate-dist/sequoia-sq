@@ -48,6 +48,7 @@ use crate::common::password;
 use crate::common::pki::list::summarize_certification;
 use crate::common::pki::replay::replay;
 use crate::common::ui;
+use crate::output::pki::certify::Stream;
 
 pub fn dispatch(
     sq: Sq,
@@ -545,6 +546,20 @@ pub fn dispatch(
                     }
                 }
 
+                let userids = userids
+                    .into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>();
+
+                let mut output = std::io::stderr();
+                let stream = Stream::new(
+                    &sq,
+                    &cert,
+                    &userids,
+                    true, // user supplied user IDs.
+                    None, // Output file.
+                    &mut output);
+
                 let prompt = password::Prompt::new(&sq, true);
 
                 // If the user provided `--own-key` or `--shared-key`,
@@ -556,7 +571,6 @@ pub fn dispatch(
                     // the key as a trusted introducer.
                     sq.sequoia.pki_certify()
                         .recreate(false)
-                        .user_supplied_userids(true)
                         .trust_amount(FULLY_TRUSTED as u8)
                         // Make it an unconstrained trusted introducer.
                         .trust_depth(u8::MAX)
@@ -565,16 +579,15 @@ pub fn dispatch(
                         .certify(
                             &trust_root,
                             &cert,
-                            &userids.into_iter().map(Into::into)
-                                .collect::<Vec<_>>(),
+                            &userids,
+                            stream,
+                            prompt,
                             None, // Output.
-                            o,
-                            prompt)?;
+                        )?;
                 } else if command.shared_key && have_userids {
                     // Mark all user IDs as authenticated.
                     sq.sequoia.pki_certify()
                         .recreate(false)
-                        .user_supplied_userids(true)
                         .trust_amount(FULLY_TRUSTED as u8)
                         // Not a trusted introducer.
                         .trust_depth(0)
@@ -583,11 +596,11 @@ pub fn dispatch(
                         .certify(
                             &trust_root,
                             &cert,
-                            &userids.into_iter().map(Into::into)
-                                .collect::<Vec<_>>(),
+                            &userids,
+                            stream,
+                            prompt,
                             None, // Output.
-                            o,
-                            prompt)?;
+                        )?;
                 }
 
                 // And save any updates.

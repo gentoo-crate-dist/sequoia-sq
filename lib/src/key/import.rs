@@ -477,7 +477,7 @@ impl Sequoia {
 
 /// The key import parameters.
 ///
-/// These parameters are used by [`import`](Builder::import).
+/// These parameters are used by [`key_import`](Builder::key_import).
 #[derive(Clone)]
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,

@@ -7,6 +7,7 @@ use crate::Sq;
 use crate::cli::pki::vouch::add;
 use crate::commands::FileOrStdout;
 use crate::common::password;
+use crate::output::pki::certify::Stream;
 
 pub fn add(sq: Sq, mut c: add::Command)
     -> Result<()>
@@ -47,17 +48,29 @@ pub fn add(sq: Sq, mut c: add::Command)
         .into_iter()
         .map(|u| u.userid().clone())
         .collect::<Vec<_>>();
+    let user_supplied_userids = ! c.userids.all().unwrap_or(false);
 
     let notations = c.signature_notations.parse()?;
     let expiration = sq.config()
         .resolve_pki_vouch_expiration(&c.expiration, c.expiration_source);
 
+    let mut stderr = std::io::stderr();
+    let stream = Stream::new(
+        &sq,
+        &cert,
+        &userids,
+        user_supplied_userids,
+        output.as_ref().and_then(|(p, _)| p.clone()),
+        &mut stderr);
+
     let prompt = password::Prompt::new(&sq, true);
+
+    // XXX: Skip revoked user IDs.
 
     sq.sequoia.pki_certify()
         // Always recreate.
         .recreate(true)
-        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
         .expiration(expiration)
         .exportable(! c.local)
@@ -66,10 +79,11 @@ pub fn add(sq: Sq, mut c: add::Command)
         .certify(
             &certifier,
             &cert,
-            &userids[..],
-            output,
-            &mut std::io::stderr(),
-            prompt)?;
+            &userids,
+            stream,
+            prompt,
+            output.map(|(_, f)| f),
+        )?;
 
     if let Some(message) = message_ {
         message.finalize()?;

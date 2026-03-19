@@ -342,7 +342,6 @@ impl<'sequoia> Builder<'sequoia>
 
             sequoia.pki_certify()
                 .recreate(false)
-                .user_supplied_userids(true)
                 .trust_depth(0)
                 .trust_amount(TrustAmount::Full.amount())
                 .expiration(Expiration::Never)
@@ -351,9 +350,10 @@ impl<'sequoia> Builder<'sequoia>
                     &trust_root,
                     &cert,
                     &userids,
+                    (), // stream: don't show anything.
+                    &prompt,
                     None, // Output file.
-                    &mut std::io::stderr(), // Output
-                    &prompt)?
+                )?
         }
 
         // Merge the new User IDs into cert.

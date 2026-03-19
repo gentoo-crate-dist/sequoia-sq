@@ -277,6 +277,7 @@ pub enum CertProblem {
                                .collect::<Vec<String>>()
                                .join("; ")))
         })]
+// UsableCertError?
 pub struct CertError {
     /// The certificate.
     pub cert: Cert,

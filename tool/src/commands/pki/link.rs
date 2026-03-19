@@ -13,6 +13,7 @@ use crate::common::NULL_POLICY;
 use crate::cli::pki::link;
 use crate::cli::types::Expiration;
 use crate::common::password;
+use crate::output::pki::certify::Stream;
 
 mod list;
 
@@ -41,6 +42,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
         .into_iter()
         .map(|u| u.userid().clone())
         .collect::<Vec<_>>();
+    let user_supplied_userids = ! c.userids.all().unwrap_or(false);
 
     let notations = c.signature_notations.parse()?;
 
@@ -70,12 +72,20 @@ pub fn add(sq: Sq, c: link::AddCommand)
         primary_expiration = c.expiration.value();
     };
 
+    let mut output = std::io::stdout();
+    let stream = Stream::new(
+        &sq,
+        &cert,
+        &userids,
+        user_supplied_userids,
+        None, // Output file.
+        &mut output);
+
     let prompt = password::Prompt::new(&sq, true);
 
     sq.sequoia.pki_certify()
         .recreate(c.recreate)
-        .user_supplied_userids(
-            ! c.userids.all().unwrap_or(false))
+        .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
         // Not a trusted introducer.
         .trust_depth(0)
@@ -86,10 +96,11 @@ pub fn add(sq: Sq, c: link::AddCommand)
         .certify(
             &trust_root,
             &cert,
-            &userids[..],
+            &userids,
+            stream,
+            prompt,
             None, // Output.
-            &mut std::io::stdout(),
-            prompt)?;
+        )?;
 
     Ok(())
 }
@@ -108,14 +119,24 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
         .into_iter()
         .map(|u| u.userid().clone())
         .collect::<Vec<_>>();
+    let user_supplied_userids = ! c.userids.all().unwrap_or(false);
 
     let notations = c.signature_notations.parse()?;
+
+    let mut output = std::io::stdout();
+    let stream = Stream::new(
+        &sq,
+        &cert,
+        &userids,
+        user_supplied_userids,
+        None, // Output file.
+        &mut output);
 
     let prompt = password::Prompt::new(&sq, true);
 
     sq.sequoia.pki_certify()
         .recreate(c.recreate)
-        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
         .trust_depth(c.depth)
         .expiration(c.expiration.value())
@@ -126,10 +147,13 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
         .certify(
             &trust_root,
             &cert,
-            &userids[..],
+            &userids,
+            stream,
+            prompt,
             None, // Output.
-            &mut std::io::stdout(),
-            prompt)
+        )?;
+
+    Ok(())
 }
 
 pub fn retract(sq: Sq, c: link::RetractCommand)
@@ -146,14 +170,24 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
         .into_iter()
         .map(|u| u.userid().clone())
         .collect::<Vec<_>>();
+    let user_supplied_userids = ! c.userids.all().unwrap_or(false);
 
     let notations = c.signature_notations.parse()?;
+
+    let mut output = std::io::stdout();
+    let stream = Stream::new(
+        &sq,
+        &cert,
+        &userids,
+        user_supplied_userids,
+        None, // Output file.
+        &mut output);
 
     let prompt = password::Prompt::new(&sq, true);
 
     sq.sequoia.pki_certify()
         .recreate(c.recreate)
-        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(0)
         .expiration(Expiration::Never)
         .exportable(false)
@@ -161,8 +195,11 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
         .certify(
             &trust_root,
             &cert,
-            &userids[..],
+            &userids,
+            stream,
+            prompt,
             None, // Output.
-            &mut std::io::stdout(),
-            prompt)
+        )?;
+
+    Ok(())
 }

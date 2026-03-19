@@ -7,6 +7,7 @@ use crate::Sq;
 use crate::cli::pki::vouch::authorize;
 use crate::commands::FileOrStdout;
 use crate::common::password;
+use crate::output::pki::certify::Stream;
 
 pub fn authorize(sq: Sq, mut c: authorize::Command)
     -> Result<()>
@@ -46,6 +47,7 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
         .into_iter()
         .map(|u| u.userid().clone())
         .collect::<Vec<_>>();
+    let user_supplied_userids = ! c.userids.all().unwrap_or(false);
 
     let notations = c.signature_notations.parse()?;
     let expiration = sq.config()
@@ -53,10 +55,19 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
 
     let prompt = password::Prompt::new(&sq, true);
 
+    let mut stderr = std::io::stderr();
+    let stream = Stream::new(
+        &sq,
+        &cert,
+        &userids,
+        user_supplied_userids,
+        output.as_ref().and_then(|(p, _)| p.clone()),
+        &mut stderr);
+
     sq.sequoia.pki_certify()
         // Always recreate.
         .recreate(true)
-        .user_supplied_userids(! c.userids.all().unwrap_or(false))
+        .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
         .trust_depth(c.depth)
         .expiration(expiration)
@@ -68,10 +79,11 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
         .certify(
             &certifier,
             &cert,
-            &userids[..],
-            output,
-            &mut std::io::stderr(),
-            prompt)?;
+            &userids,
+            stream,
+            prompt,
+            output.map(|(_, f)| f),
+        )?;
 
     if let Some(message) = message_ {
         message.finalize()?;
