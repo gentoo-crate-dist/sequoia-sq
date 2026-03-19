@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -48,9 +49,30 @@ where
     Changed(T, T),
 }
 
+impl<T> Debug for CertificationDiffValue<T>
+where
+    T: PartialEq + Eq + Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        match self {
+            Self::Unchanged(value) => {
+                write!(f,
+                       "Unchanged({:?})",
+                       value)
+            }
+            Self::Changed(old, new) => {
+                write!(f,
+                       "Changed({:?}, {:?})",
+                       old, new)
+            }
+        }
+    }
+}
+
 impl<T> CertificationDiffValue<T>
 where
-    T: PartialEq + Eq
+    T: PartialEq + Eq + Debug
 {
     fn compute(old: T, new: T) -> Self {
         if old == new {
@@ -82,6 +104,7 @@ where
 ///   - Regular expressions
 ///   - Notations
 ///   - Exportable flag
+#[derive(Debug)]
 pub struct CertificationDiff {
     expiration: CertificationDiffValue<Option<SystemTime>>,
     trust_depth: CertificationDiffValue<u8>,
