@@ -6,19 +6,20 @@ use chrono::Utc;
 use anyhow::Context;
 
 use sequoia_openpgp as openpgp;
-use openpgp::packet::signature::SignatureBuilder;
+use openpgp::Cert;
+use openpgp::Packet;
 use openpgp::Profile;
+use openpgp::armor::Kind;
+use openpgp::armor::Writer;
+use openpgp::cert::CertBuilder;
 use openpgp::cert::CipherSuite;
 use openpgp::crypto;
-use openpgp::cert::CertBuilder;
 use openpgp::packet::UserID;
-use openpgp::Packet;
+use openpgp::packet::signature::SignatureBuilder;
 use openpgp::packet::signature::subpacket::NotationData;
 use openpgp::serialize::Serialize;
 use openpgp::types::KeyFlags;
 use openpgp::types::SignatureType;
-use openpgp::armor::Writer;
-use openpgp::armor::Kind;
 
 use sequoia_openpgp::parse::buffered_reader;
 
@@ -312,8 +313,11 @@ impl<'sequoia> Builder<'sequoia>
     /// Sets whether the certificate is for the creator, or is a
     /// shared key.
     ///
-    /// When the certificate is the creator's own key, it will be
-    /// marked as a fully trusted introducer.
+    /// When the certificate is saved to the key store, and is the
+    /// creator's own key, it will be marked as a fully trusted
+    /// introducer.  When the certificate is saved to the key store,
+    /// and is not creator's own key, the user IDs will be marked as
+    /// authenticated.
     pub fn own_key(mut self, own_key: bool) -> Self {
         self.params.own_key = own_key;
         self
@@ -432,7 +436,7 @@ impl<'sequoia> Builder<'sequoia>
                            output: Option<(&mut dyn std::io::Write,
                                            Option<&Path>,
                                            &mut dyn std::io::Write)>)
-        -> Result<()>
+        -> Result<Cert>
     where
         P: prompt::Prompt + 'a,
     {
@@ -789,6 +793,6 @@ impl<'sequoia> Builder<'sequoia>
             }
         }
 
-        Ok(())
+        Ok(cert)
     }
 }

@@ -81,5 +81,7 @@ pub fn generate(
         .userids(command.userid)
         .allow_non_canonical_userids(command.allow_non_canonical_userids)
         .generate(prompt,
-                  output)
+                  output)?;
+
+    Ok(())
 }
