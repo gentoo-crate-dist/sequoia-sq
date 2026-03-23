@@ -180,7 +180,7 @@ pub fn lint_userids(uids: &[UserID]) -> Result<(), anyhow::Error> {
 }
 
 /// Returns an error if the given name is anything but a name.
-pub fn lint_name(n: &str) -> Result<(), UserIDLint> {
+pub fn lint_name(n: &str) -> Result<UserID, UserIDLint> {
     let u = UserID::from(n);
 
     // Check for various problems for which we can give concrete
@@ -205,11 +205,13 @@ pub fn lint_name(n: &str) -> Result<(), UserIDLint> {
 
     // This is the only acceptable path, really.
     if u.name().ok().flatten() == Some(n) {
-        return Ok(());
+        return Ok(u);
     }
 
     // For a final sanity check, defer to lint_userid.
-    lint_userid(&u)
+    lint_userid(&u)?;
+
+    Ok(u)
 }
 
 /// Lints names and displays the lints.
@@ -239,7 +241,7 @@ pub fn lint_names(names: &[String]) -> Result<(), anyhow::Error> {
 }
 
 /// Returns an error if the given email is anything but a email.
-pub fn lint_email(n: &str) -> Result<(), UserIDLint> {
+pub fn lint_email(n: &str) -> Result<UserID, UserIDLint> {
     let u = UserID::from(format!("<{}>", n));
 
     // Check for various problems for which we can give concrete
@@ -264,11 +266,13 @@ pub fn lint_email(n: &str) -> Result<(), UserIDLint> {
 
     // This is the only acceptable path, really.
     if u.email().ok().flatten() == Some(n) {
-        return Ok(());
+        return Ok(u);
     }
 
     // For a final sanity check, defer to lint_userid.
-    lint_userid(&u)
+    lint_userid(&u)?;
+
+    Ok(u)
 }
 
 /// Lints email addresses and displays the lints.
@@ -351,7 +355,7 @@ mod test {
     fn name_lint() {
         use UserIDLint::*;
         // XXX: Use assert_matches! once available.
-        assert!(matches!(dbg!(lint_name("Foo Bar")), Ok(())));
+        assert!(matches!(dbg!(lint_name("Foo Bar")), Ok(_)));
         assert!(matches!(dbg!(lint_name("Foo Bar ")),
                          Err(NameHasExcessSpaces(..))));
         assert!(matches!(dbg!(lint_name(" Foo Bar")),
@@ -374,7 +378,7 @@ mod test {
     fn email_lint() {
         use UserIDLint::*;
         // XXX: Use assert_matches! once available.
-        assert!(matches!(dbg!(lint_email("foo@bar.example.org")), Ok(())));
+        assert!(matches!(dbg!(lint_email("foo@bar.example.org")), Ok(_)));
         assert!(matches!(dbg!(lint_email("foo@bar.example.org ")),
                          Err(EmailHasExcessSpaces(..))));
         assert!(matches!(dbg!(lint_email(" foo@bar.example.org")),
