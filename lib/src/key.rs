@@ -32,6 +32,7 @@ pub mod import;
 pub mod revoke;
 pub mod subkey;
 pub mod userid;
+pub mod approvals;
 
 /// The password that will be used to protect the secret key material.
 #[derive(Debug, Clone)]
