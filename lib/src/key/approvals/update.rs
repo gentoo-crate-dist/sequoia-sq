@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Context;
 
 use sequoia_openpgp as openpgp;
+use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::Result;
 use openpgp::cert::ValidCert;
@@ -23,15 +24,174 @@ use crate::cert_store::Store;
 use crate::prompt::Prompt;
 use crate::types::Safe;
 
+impl Sequoia {
+    pub fn key_approvals_update(&self) -> Builder<'_> {
+        Builder {
+            params: Params {
+                sequoia: self,
+                userids: Vec::new(),
+                add_by: Vec::new(),
+                remove_by: Vec::new(),
+                add_all: true,
+                add_authenticated: true,
+                remove_all: false
+            }
+        }
+    }
+}
+
+/// Parameters for the update of approvals.
+///
+/// These parameters are used by [`update`](Builder::update).
+#[derive(Clone)]
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
+    userids: Vec<UserID>,
+    add_by: Vec<KeyHandle>,
+    remove_by: Vec<KeyHandle>,
+    add_all: bool,
+    add_authenticated: bool,
+    remove_all: bool,
+}
+
+impl<'sequoia> Params<'sequoia> {
+    /// Return the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        self.sequoia
+    }
+
+    /// Return the list of user IDs
+    pub fn userids(&self) -> Vec<UserID> {
+        self.userids.clone()
+    }
+
+    /// Return the list of `KeyHandle`s which identify adding certificates.
+    ///
+    /// Only certifications made by a certificate designated by a `KeyHandle`
+    /// in this list will be considered for an update.
+    pub fn add_by(&self) -> Vec<KeyHandle> {
+        self.add_by.clone()
+    }
+
+    /// Return the list of `KeyHandle`s which identify removing certificates.
+    ///
+    /// Only certifications made by a certificate designated by a `KeyHandle`
+    /// in this list will be considered for an update.
+    pub fn remove_by(&self) -> Vec<KeyHandle> {
+        self.remove_by.clone()
+    }
+
+    /// Returns whether to approve all user IDs of the certificate.
+    pub fn add_all(&self) -> bool {
+        self.add_all
+    }
+
+    /// Returns whether to consider only certifications of authenticated
+    /// certificates.
+    pub fn add_authenticated(&self) -> bool {
+        self.add_authenticated
+    }
+
+    /// Returns whether to remove all matching certifications.
+    pub fn remove_all(&self) -> bool {
+        self.remove_all
+    }
+}
+
+#[derive(Clone)]
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
+}
+
+impl<'sequoia> Builder<'sequoia> {
+    /// Return the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia> {
+        &self.params
+    }
+
+    /// Sets the user IDs.
+    ///
+    /// Update approvals only for these user IDs of the certificate.
+    pub fn userids(mut self, userids: Vec<UserID>) -> Self {
+        self.params.userids = userids;
+        self
+    }
+
+    /// Sets the list of `KeyHandle`s which identify adding certificates.
+    ///
+    /// Only certifications made by a certificate designated by a `KeyHandle`
+    /// in this list will be considered for an update.
+    pub fn add_by(mut self, handles: Vec<KeyHandle>) -> Self {
+        self.params.add_by = handles;
+        self
+    }
+
+    /// Sets the list of `KeyHandle`s which identify removing certificates.
+    ///
+    /// Only certifications made by a certificate designated by a `KeyHandle`
+    /// in this list will be considered for an update.
+    pub fn remove_by(mut self, handles: Vec<KeyHandle>) -> Self {
+        self.params.remove_by = handles;
+        self
+    }
+
+    /// Sets whether to approve all user IDs of the certificate.
+    pub fn add_all(mut self, value: bool) -> Self {
+        self.params.add_all = value;
+        self
+    }
+
+    /// Sets whether to consider only certifications of authenticated
+    /// certificates.
+    pub fn add_authenticated(mut self, value: bool) -> Self {
+        self.params.add_authenticated = value;
+        self
+    }
+
+    /// Sets whether to remove all matching certifications.
+    pub fn remove_all(mut self, value: bool) -> Self {
+        self.params.remove_all = value;
+        self
+    }
+
+    pub fn update<P>(&self,
+        cert: Cert,
+        prompt: P,
+        output: Option<(Box<dyn std::io::Write + Send + Sync>,
+                        Option<std::path::PathBuf>)>)
+        -> Result<()>
+    where
+        P: Prompt
+    {
+        let sequoia = self.params.sequoia;
+        let vcert = cert.with_policy(sequoia.policy(), sequoia.time())?;
+
+        update_internal(
+            sequoia,
+            &vcert,
+            &self.params.userids,
+            &self.params.add_by,
+            self.params.add_authenticated,
+            self.params.remove_all,
+            &self.params.remove_by,
+            self.params.add_all,
+            prompt,
+            output)
+
+    }
+}
+
 // output must be created with .for_secrets().create_safe()
-pub fn update<P>(
+fn update_internal<P>(
         sequoia: &Sequoia,
         vcert: &ValidCert,
-        userids: Vec<UserID>,
-        cmd_add_by: Vec<KeyHandle>,
+        userids: &Vec<UserID>,
+        cmd_add_by: &Vec<KeyHandle>,
         cmd_add_authenticated: bool,
         cmd_remove_all: bool,
-        cmd_remove_by: Vec<KeyHandle>,
+        cmd_remove_by: &Vec<KeyHandle>,
         cmd_add_all: bool,
         prompt: P,
         output: Option<(Box<dyn std::io::Write + Send + Sync>, Option<std::path::PathBuf>)>)
@@ -46,7 +206,7 @@ where
     // Lookup any explicitly goodlisted certifiers.  We need these to
     // verify the certifications.
     let mut add_by = Vec::new();
-    for i in &cmd_add_by {
+    for i in cmd_add_by {
         add_by.append(&mut store.lookup_by_cert(i)?);
     }
 
