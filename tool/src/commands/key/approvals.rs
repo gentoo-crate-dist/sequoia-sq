@@ -35,17 +35,15 @@ fn list(sq: Sq, cmd: approvals::ListCommand) -> Result<()> {
     let cert =
         sq.resolve_cert(&cmd.cert, TrustThreshold::Full)?.0;
     let vcert = cert.with_policy(sq.policy(), sq.time())?;
-    let userids = cmd.userids.resolve(&vcert)?;
+    let userids = cmd.userids.resolve(&vcert)?
+        .iter()
+        .map(|u| u.userid().clone())
+        .collect::<Vec<_>>();
 
-    sequoia::key::approvals::list::list(
-        &sq.sequoia,
-        &vcert,
-        userids.into_iter()
-            .map(|u| u.userid().clone())
-            .collect::<Vec<_>>(),
-        cmd.pending,
-        o)
-
+    sq.sequoia.key_approvals_list()
+        .userids(userids)
+        .pending(cmd.pending)
+        .list(cert, o)
 }
 
 fn update(
