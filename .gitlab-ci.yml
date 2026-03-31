@@ -47,7 +47,7 @@ container-build-push:
 
 pages:
   stage: build
-  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie-pandoc:latest
+  image: registry.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie-pandoc:latest
   script:
     - ASSET_OUT_DIR=/tmp/assets cargo doc --no-deps -p sequoia-sq
     - mkdir public
@@ -73,7 +73,7 @@ pages:
 
 pages-deploy:
   stage: deploy
-  image: jampot.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie-pandoc:latest
+  image: registry.sequoia-pgp.org/sequoia-pgp/build-docker-image/trixie-pandoc:latest
   script: echo "publishing"
   artifacts:
     paths:
