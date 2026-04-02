@@ -37,9 +37,126 @@ use crate::prompt;
 use crate::types::EncryptPurpose;
 use crate::types::PartFileWriter;
 use crate::types::import_stats::ImportStats;
-use crate::userid::lint_emails;
-use crate::userid::lint_names;
-use crate::userid::lint_userids;
+use crate::userid::UserIDLint;
+use crate::userid::lint_email;
+use crate::userid::lint_name;
+use crate::userid::lint_userid;
+
+/// Data structures related to [`Error`].
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+pub mod error {
+    use super::*;
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    pub enum ArgumentError {
+        /// A user ID is not in canonical form.
+        ///
+        /// Non-canonical user IDs can be accepted using
+        /// [`Builder::allow_non_canonical_userids`].
+        #[error(transparent)]
+        InvalidUserIDs(#[from] InvalidUserIDs),
+
+        #[error(transparent)]
+        Other(anyhow::Error),
+    }
+
+    /// Some user IDs are invalid or not in canonical form.
+    ///
+    /// Non-canonical user IDs can be accepted using
+    /// [`Builder::allow_non_canonical_userids`].
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    #[error("Invalid user IDs{}{}",
+              if .lints.is_empty() {
+                  ""
+              } else {
+                  ": "
+              },
+              .lints
+                  .iter()
+                  .map(|l| l.to_string())
+                  .collect::<Vec<_>>()
+                  .join("; "))]
+    pub struct InvalidUserIDs {
+        pub lints: Vec<UserIDLint>,
+    }
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    pub enum SystemError {
+        #[error("Home disabled: can't save certificate")]
+        HomeDisabled,
+
+        #[error(transparent)]
+        Other(anyhow::Error),
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        Other(anyhow::Error),
+    }
+}
+
+/// Errors related to generating a certificate.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] error::SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// Errors returned by the prompt.
+    #[error(transparent)]
+    PromptError(#[from] prompt::Error),
+}
 
 impl Sequoia {
     /// Returns a builder providing control over how to generate a
@@ -129,8 +246,8 @@ impl<'sequoia> Params<'sequoia> {
         &self.expiration
     }
 
-    /// Whether the certificate is for the creator, or is a shared
-    /// key.
+    /// Whether the certificate is for the creator, or will be shared
+    /// with someone else.
     ///
     /// When the certificate is the creator's own key, it will be
     /// marked as a fully trusted introducer.
@@ -436,7 +553,7 @@ impl<'sequoia> Builder<'sequoia>
                            output: Option<(&mut dyn std::io::Write,
                                            Option<&Path>,
                                            &mut dyn std::io::Write)>)
-        -> Result<Cert>
+        -> Result<Cert, Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -459,6 +576,38 @@ impl<'sequoia> Builder<'sequoia>
             },
         } = self;
 
+        macro_rules! arg {
+            () => {
+                |err| {
+                    Error::ArgumentError(
+                        error::ArgumentError::Other(err.into()))
+                }
+            }
+        }
+        macro_rules! sys {
+            () => {
+                |err| {
+                    Error::SystemError(
+                        error::SystemError::Other(err.into()))
+                }
+            }
+        }
+        macro_rules! op {
+            () => {
+                |err| {
+                    Error::OperationalError(
+                        error::OperationalError::Other(err.into()))
+                }
+            }
+        }
+
+        if output.is_none() {
+            // We're going to write to the key store and cert store.
+            // Fail early if they are not available.
+            sequoia.key_store_or_else().map_err(sys!())?;
+            sequoia.cert_store_or_else().map_err(sys!())?;
+        }
+
         let key_flags_template = if own_key {
             KeyFlags::empty()
         } else {
@@ -466,19 +615,29 @@ impl<'sequoia> Builder<'sequoia>
         };
 
         let mut builder = CertBuilder::new()
-            .set_profile(profile.clone().into())?;
+            .set_profile(profile.clone().into()).map_err(arg!())?;
 
         // Names, email addresses, and user IDs.
         let mut userids = userids.to_vec();
 
-        lint_names(names)?;
+        let mut lints = Vec::new();
         for n in names {
-            userids.push(UserID::from(n.as_str()));
+            if let Err(lint) = lint_name(n) {
+                lints.push(lint);
+            } else if lints.is_empty() {
+                userids.push(UserID::from(n.as_str()));
+            }
         }
 
-        lint_emails(emails)?;
-        for n in emails {
-            userids.push(UserID::from_address(None, None, n)?);
+        for e in emails {
+            match lint_email(e) {
+                Ok(userid) => {
+                    userids.push(userid)
+                }
+                Err(lint) => {
+                    lints.push(lint);
+                }
+            }
         }
 
         if userids.is_empty() {
@@ -487,7 +646,19 @@ impl<'sequoia> Builder<'sequoia>
             // Make sure the user IDs are in canonical form.  If not, and
             // `--allow-non-canonical-userids` is not set, error out.
             if ! allow_non_canonical_userids {
-                lint_userids(&userids)?;
+                for userid in userids.iter() {
+                    if let Err(lint) = lint_userid(userid) {
+                        lints.push(lint);
+                    }
+                }
+            }
+
+            if ! lints.is_empty() {
+                return Err(Error::ArgumentError(
+                    error::ArgumentError::InvalidUserIDs(
+                        error::InvalidUserIDs {
+                            lints
+                        })));
             }
 
             for userid in userids.iter() {
@@ -501,7 +672,8 @@ impl<'sequoia> Builder<'sequoia>
         // Expiration.
         builder = builder.set_validity_period(
             expiration
-                .as_duration(DateTime::<Utc>::from(sequoia.time()))?);
+                .as_duration(DateTime::<Utc>::from(sequoia.time()))
+                .map_err(arg!())?);
 
         // Cipher Suite
         builder = builder.set_cipher_suite(cipher_suite);
@@ -547,13 +719,15 @@ impl<'sequoia> Builder<'sequoia>
             for (critical, notation) in k.notations.iter() {
                 sig = sig.set_notation(
                     notation.name(), notation.value(),
-                    Some(notation.flags().clone()), *critical)?;
+                    Some(notation.flags().clone()), *critical)
+                    .map_err(arg!())?;
             }
 
             builder = builder.add_subkey_with(
                 &key_flags_template | &k.key_flags,
                 None, None,
-                sig)?;
+                sig)
+                .map_err(arg!())?;
         }
 
         match password_policy {
@@ -569,7 +743,9 @@ impl<'sequoia> Builder<'sequoia>
                     .sequoia(sequoia)
                     .build();
 
-                let password = match prompt.prompt(&mut context, &mut checker)? {
+                let password = match prompt.prompt(&mut context, &mut checker)
+                    .map_err(|err| Error::PromptError(err))?
+                {
                     prompt::Response::Password(password) => Some(password),
                     prompt::Response::NoPassword => None,
                 };
@@ -583,7 +759,7 @@ impl<'sequoia> Builder<'sequoia>
         // This is a closure.  We want to generate the key as late as
         // possible so we detect any latent errors first.
         let gen = || {
-            builder.generate()
+            builder.generate().map_err(op!())
         };
 
         let (mut cert, rev);
@@ -604,7 +780,8 @@ impl<'sequoia> Builder<'sequoia>
                 std::fs::create_dir_all(&dir)
                     .with_context(|| {
                         format!("While creating {}", dir.display())
-                    })?;
+                    })
+                    .map_err(sys!())?;
 
                 (cert, rev) = gen()?;
 
@@ -615,12 +792,13 @@ impl<'sequoia> Builder<'sequoia>
                     &rev_path, true)
                     .with_context(|| {
                         format!("Failed to create {}", rev_path.display())
-                    })?;
+                    })
+                    .map_err(sys!())?;
 
                 (None, None, &mut rev_writer_ as &mut dyn std::io::Write)
             } else {
-                return Err(anyhow::anyhow!(
-                    "Home disabled: can't save certificate"));
+                return Err(Error::SystemError(
+                    error::SystemError::HomeDisabled));
             }
         };
 
@@ -635,10 +813,14 @@ impl<'sequoia> Builder<'sequoia>
             headers.insert(0, ("Comment", "Revocation certificate for"));
 
             let mut w = Writer::with_headers(
-                rev_writer, Kind::PublicKey, headers)?;
-            Packet::from(cert.primary_key().key().clone()).serialize(&mut w)?;
-            Packet::Signature(rev).serialize(&mut w)?;
-            w.finalize()?;
+                rev_writer, Kind::PublicKey, headers)
+                .map_err(op!())?;
+            Packet::from(cert.primary_key().key().clone()).serialize(&mut w)
+                .map_err(op!())?;
+            Packet::Signature(rev).serialize(&mut w)
+                .map_err(op!())?;
+            w.finalize()
+                .map_err(op!())?;
         }
 
         // Write out the key.
@@ -652,9 +834,10 @@ impl<'sequoia> Builder<'sequoia>
                 Some(output_writer) => {
                     //// Write the key to a file or to stdout.
                     let mut w = Writer::with_headers(
-                        output_writer, Kind::SecretKey, headers)?;
-                    cert.as_tsk().serialize(&mut w)?;
-                    w.finalize()?;
+                        output_writer, Kind::SecretKey, headers)
+                        .map_err(op!())?;
+                    cert.as_tsk().serialize(&mut w).map_err(op!())?;
+                    w.finalize().map_err(op!())?;
                 }
                 None => {
                     // write the key to the key store
@@ -663,12 +846,14 @@ impl<'sequoia> Builder<'sequoia>
                     // are any user IDs to certify.
                     let have_userids = cert.userids().next().is_some();
                     if have_userids {
-                        cert = certify_generated(&sequoia, &cert, &prompt)?;
+                        cert = certify_generated(&sequoia, &cert, &prompt)
+                            .map_err(op!())?;
                     }
 
                     let mut stats = ImportStats::default();
                     let result = sequoia.key_import()
-                        .import_key(cert.clone(), &mut stats)?;
+                        .import_key(cert.clone(), &mut stats)
+                        .map_err(op!())?;
                     for (fpr, status) in result.key_import_status.iter() {
                         sequoia.info(format_args!(
                             "Importing {} into key store: {:?}",
@@ -677,8 +862,10 @@ impl<'sequoia> Builder<'sequoia>
 
                     // Now certify the user IDs, and if this is our own
                     // key, mark it as trusted introducer.
-                    let trust_root = sequoia.local_trust_root()?;
-                    let trust_root = trust_root.to_cert()?;
+                    let trust_root = sequoia.local_trust_root()
+                        .map_err(sys!())?;
+                    let trust_root = trust_root.to_cert()
+                        .map_err(sys!())?;
 
                     if own_key && have_userids {
                         // Mark all user IDs as authenticated, and mark
@@ -696,7 +883,8 @@ impl<'sequoia> Builder<'sequoia>
                                 (), // stream: don't show anything.
                                 prompt,
                                 None, // Output.
-                            )?;
+                            )
+                            .map_err(op!())?;
                     } else if ! own_key /* shared key */ && have_userids {
                         // Mark all user IDs as authenticated.
                         sequoia.pki_certify()
@@ -713,7 +901,8 @@ impl<'sequoia> Builder<'sequoia>
                                 (), // stream: don't show anything.
                                 prompt,
                                 None, // Output.
-                            )?;
+                            )
+                            .map_err(op!())?;
                     }
                 }
             }
