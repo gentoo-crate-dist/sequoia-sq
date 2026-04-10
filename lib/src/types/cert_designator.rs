@@ -98,7 +98,7 @@ impl Default for FileOrStdin {
 
 impl From<PathBuf> for FileOrStdin {
     fn from(value: PathBuf) -> Self {
-        if value == PathBuf::from("-") {
+        if value == Path::new("-") {
             FileOrStdin::default()
         } else {
             FileOrStdin::new(Some(value))
