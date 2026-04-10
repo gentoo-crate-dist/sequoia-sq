@@ -38,7 +38,7 @@ fn t(base: &str, prv: Option<&str>, passwords: &[&str],
             eprintln!("Linting {}", filename);
 
             let cert = Cert::from_file(dir.join(filename))
-                .expect(&format!("Can parse {}", filename));
+                .unwrap_or_else(|_| panic!("Could not parse {}", filename));
 
             if keystore {
                 // When using the keystore, we need to import the key.
@@ -195,7 +195,7 @@ fn t(base: &str, prv: Option<&str>, passwords: &[&str],
                                     "--cert", &cert.fingerprint().to_string(),
                                 ]);
                             let output = cmd.output()
-                                .expect(&format!("Can run sq cert export"));
+                                .unwrap_or_else(|_| panic!("Could not run sq cert export"));
                             if !output.status.success() {
                                 panic!(
                                     "sq exited with non-zero status code: {}",
