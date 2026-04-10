@@ -766,6 +766,10 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
             converged = false;
 
             if let Some(query) = query.as_keyserver_query() {
+                #[expect(
+                    clippy::unnecessary_to_owned,
+                    reason = "false positive: needs to be cloned to be used in the spawned task"
+                )]
                 for ks in servers.iter().cloned() {
                     pb.inc_length(1);
                     let query = query.clone();
@@ -931,6 +935,10 @@ pub fn dispatch_keyserver(
 
             let mut requests = tokio::task::JoinSet::new();
             queries.into_iter().for_each(|query| {
+                #[expect(
+                    clippy::unnecessary_to_owned,
+                    reason = "false positive: needs to be cloned to be used in the spawned task"
+                )]
                 for ks in servers.iter().cloned() {
                     let query = query.clone();
                     pb.inc_length(1);
