@@ -1,4 +1,4 @@
-/// Common file handling support.
+//! Common file handling support.
 
 use std::fs::OpenOptions;
 use std::io::Read;
