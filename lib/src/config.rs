@@ -1252,7 +1252,7 @@ example#certifier-self = \"fingerprint of your key\"
 
     /// Writes the configuration to the given writer.
     pub fn dump(&self, sink: &mut dyn io::Write) -> Result<()> {
-        write!(sink, "{}", self.doc.to_string())?;
+        write!(sink, "{}", self.doc)?;
         Ok(())
     }
 
@@ -1287,7 +1287,7 @@ example#certifier-self = \"fingerprint of your key\"
                     .into_iter().collect()));
         }
 
-        write!(&mut raw, "{}", doc.to_string())?;
+        write!(&mut raw, "{}", doc)?;
 
         // Then, augment the configuration with the effective policy.
         let mut default_policy_inline = Vec::new();

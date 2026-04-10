@@ -151,14 +151,14 @@ pub mod problem {
             if let Some(expiration) = .expiration_time {
                 if expiration <= .reference_time {
                     format!("expired on {}",
-                            expiration.convert().to_string())
+                            expiration.convert())
                 } else {
                     format!("not yet live (creation time: {})",
-                            .creation_time.convert().to_string())
+                            .creation_time.convert())
                 }
             } else {
                 format!("not yet live (creation time: {})",
-                        .creation_time.convert().to_string())
+                        .creation_time.convert())
             })]
     pub struct NotLive {
         pub cert: Fingerprint,
