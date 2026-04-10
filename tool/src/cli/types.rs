@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::io::Read;
 use std::io::stdin;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
@@ -254,7 +254,7 @@ impl Default for FileOrStdout {
 
 impl From<PathBuf> for FileOrStdout {
     fn from(value: PathBuf) -> Self {
-        if value == PathBuf::from("-") {
+        if value == Path::new("-") {
             FileOrStdout::default()
         } else {
             FileOrStdout::new(Some(value))
