@@ -148,7 +148,7 @@ fn sq_key_subkey_password_mod(modulus: usize) -> Result<()>
         eprintln!("Test #{}, by {}, from {}:",
                   i + 1,
                   if by_fpr { "fingerprint" } else { "key ID" },
-                  cert_file.display().to_string());
+                  cert_file.display());
         eprintln!("  Changing the password for:");
         for k in to_change.iter() {
             eprintln!("    {}", k);
