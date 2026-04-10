@@ -20,8 +20,8 @@ use crate::Result;
 /// A signed offset (in seconds).
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Offset {
-    /// Whether the offset is positive.
-    positive: bool,
+    /// Whether the offset is negative (strictly less than and not equal to 0).
+    negative: bool,
     /// The number of seconds.
     seconds: u64,
 }
@@ -80,7 +80,7 @@ impl Time {
     /// Returns a relative time in the future.
     pub const fn from_duration(duration: Duration) -> Self {
         Time::Offset(Offset {
-            positive: true,
+            negative: false,
             seconds: duration.as_secs(),
         })
     }
@@ -145,15 +145,11 @@ impl Time {
             ));
         }
 
-        let (positive, seconds) = match offset.strip_suffix(Self::OFFSET_SUFFIXES) {
+        let (negative, seconds) = match offset.strip_suffix(Self::OFFSET_SUFFIXES) {
             Some(digits) => {
-                let (positive, count) = match digits.parse::<i64>() {
+                let (negative, count) = match digits.parse::<i64>() {
                     Ok(count) => {
-                        if count < 0 {
-                            (false, count.abs() as u64)
-                        } else {
-                            (true, count as u64)
-                        }
+                        (count.is_negative(), count.unsigned_abs())
                     }
                     Err(err) => return Err(err).context(
                         format!("Value '{}' is out of range", digits)
@@ -172,7 +168,7 @@ impl Time {
                     ),
                 };
 
-                (positive, count * factor)
+                (negative, count * factor)
             }
             None => {
                 return Err(anyhow::anyhow!(
@@ -199,7 +195,7 @@ impl Time {
         };
 
         Ok(Time::Offset(Offset {
-            positive,
+            negative,
             seconds,
         }))
     }
@@ -209,10 +205,10 @@ impl Time {
         match self {
             Time::Timestamp(ts) => Ok(ts.clone().try_into()?),
             Time::Offset(offset) => {
-                if offset.positive {
-                    Ok(now + Duration::new(offset.seconds, 0))
-                } else {
+                if offset.negative {
                     Ok(now - Duration::new(offset.seconds, 0))
+                } else {
+                    Ok(now + Duration::new(offset.seconds, 0))
                 }
             }
         }
@@ -232,7 +228,7 @@ impl Display for Time {
         match self {
             Time::Timestamp(time) => write!(f, "{}", time),
             Time::Offset(offset) => {
-                if ! offset.positive {
+                if offset.negative {
                     write!(f, "-")?;
                 }
 
@@ -296,7 +292,7 @@ mod test {
         );
         assert_eq!(
             Time::parse_offset("-1y").unwrap(),
-            Time::Offset(Offset { positive: false, seconds: SECONDS_IN_YEAR }),
+            Time::Offset(Offset { negative: true, seconds: SECONDS_IN_YEAR }),
         );
         assert!(Time::parse_offset("f").is_err());
         assert!(Time::parse_offset("foo").is_err());
