@@ -403,7 +403,7 @@ impl Method {
                 Method::WKD => certd.shadow_ca_wkd()?,
                 Method::DANE => certd.shadow_ca_dane()?,
                 Method::Http(url) =>
-                    if let Some(r) = certd.shadow_ca_for_url(&url.to_string())? {
+                    if let Some(r) = certd.shadow_ca_for_url(url.as_ref())? {
                         r
                     } else {
                         return Ok(None);
