@@ -128,6 +128,13 @@ subplot = ["culpa", "subplot-build", "subplotlib"]
 [profile.release]
 debug = true
 
+[workspace.lints.clippy]
+# default clippy lint levels matching the common-ci environment:
+# https://gitlab.com/sequoia-pgp/common-ci/-/blob/main/templates/precheck.yml
+suspicious = { level = "deny", priority = -1 }
+style = { level = "allow", priority = -1 }
+complexity = { level = "allow", priority = -1 }
+
 # The Rust Crypto crates are *very* slow when compiled without any
 # optimizations.  Turn on some optimizations.
 [profile.dev.package.aes]
