@@ -74,7 +74,7 @@ pub type PlainAddAndByArgs
 pub type AllPlainAddAndByArgs
     = <AllUserIDsArg as std::ops::BitOr<PlainAddAndByArgs>>::Output;
 
-/// Argument parser options.
+// Argument parser options.
 
 /// Normally it is possible to designate multiple certificates.  This
 /// errors out if there is more than one value.

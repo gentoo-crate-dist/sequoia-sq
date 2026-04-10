@@ -7,7 +7,7 @@ use typenum::Unsigned;
 use sequoia::openpgp;
 use openpgp::KeyHandle;
 
-/// Argument parser options.
+// Argument parser options.
 
 pub type DefaultOptions = typenum::U0;
 

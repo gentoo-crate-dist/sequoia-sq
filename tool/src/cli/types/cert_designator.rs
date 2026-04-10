@@ -236,7 +236,7 @@ pub type CertFileArgs = <CertArg as std::ops::BitOr<FileArg>>::Output;
 /// --domain, --grep, --with-password, or --with-password-file).
 pub type CertSpecialArgs = <CertArg as std::ops::BitOr<SpecialArg>>::Output;
 
-/// Argument parser options.
+// Argument parser options.
 
 /// Default options, no flag selected.
 pub type NoOptions = typenum::U0;
