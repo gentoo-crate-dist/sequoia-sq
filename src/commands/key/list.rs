@@ -62,22 +62,22 @@ impl Association {
 
 impl PartialOrd for Association {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (Association::Bound(a), Association::Bound(b)) =>
-                a.fingerprint().partial_cmp(&b.fingerprint()),
-            (Association::Bound(_), Association::Bare(_)) =>
-                Some(Ordering::Less),
-            (Association::Bare(_), Association::Bound(_)) =>
-                Some(Ordering::Greater),
-            (Association::Bare(a), Association::Bare(b)) =>
-                a.fingerprint().partial_cmp(&b.fingerprint()),
-        }
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for Association {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).expect("total")
+        match (self, other) {
+            (Association::Bound(a), Association::Bound(b)) =>
+                a.fingerprint().cmp(&b.fingerprint()),
+            (Association::Bound(_), Association::Bare(_)) =>
+                Ordering::Less,
+            (Association::Bare(_), Association::Bound(_)) =>
+                Ordering::Greater,
+            (Association::Bare(a), Association::Bare(b)) =>
+                a.fingerprint().cmp(&b.fingerprint()),
+        }
     }
 }
 
