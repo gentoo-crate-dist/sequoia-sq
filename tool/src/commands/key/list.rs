@@ -294,6 +294,10 @@ pub fn list(sq: Sq, mut cmd: cli::key::list::Command) -> Result<()> {
     //
     // We want to display the information later grouped by OpenPGP
     // certificate, and the key store doesn't provide that view.
+    #[expect(
+        clippy::mutable_key_type,
+        reason = "the Ord impl for Association is not affected by its interior mutability"
+    )]
     let mut the_keys: BTreeMap<Association, BTreeMap<Fingerprint, KeyInfo>> =
         Default::default();
 
