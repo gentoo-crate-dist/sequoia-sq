@@ -85,7 +85,7 @@ pub fn dispatch(sq: Sq, command: cli::packet::armor::Command)
     let want_kind = want_kind.expect("given or detected");
 
     let mut output =
-        command.output.create_pgp_safe(&sq, false, want_kind)?;
+        command.output.create_pgp_safe(&sq, false, want_kind, &[])?;
 
     if already_armored {
         // Dearmor and copy to change the type.

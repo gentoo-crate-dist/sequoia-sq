@@ -33,6 +33,7 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
             &sq,
             false, // Binary.
             openpgp::armor::Kind::PublicKey,
+            &[],
         )?;
 
         message_ = Some(message);

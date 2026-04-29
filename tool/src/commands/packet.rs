@@ -103,6 +103,7 @@ pub fn dispatch(sq: Sq, command: Command)
                 &sq,
                 command.binary,
                 openpgp::armor::Kind::Message,
+                &[],
             )?;
 
             let secrets =
@@ -146,7 +147,7 @@ pub fn split(sq: Sq, c: SplitCommand) -> Result<()>
         None => Ok(
             c.output
                 .unwrap_or_default()
-                .create_pgp_safe(&sq, true, Kind::SecretKey)?),
+                .create_pgp_safe(&sq, true, Kind::SecretKey, &[])?),
     };
 
     // We (ab)use the mapping feature to create byte-accurate dumps of
@@ -290,9 +291,9 @@ pub fn join(sq: Sq, c: JoinCommand) -> Result<()> {
     let mut sink = if c.binary {
         // No need for any auto-detection.
         Some(output.create_pgp_safe(
-            &sq, true, openpgp::armor::Kind::File)?)
+            &sq, true, openpgp::armor::Kind::File, &[])?)
     } else if let Some(kind) = kind {
-        Some(output.create_pgp_safe(&sq, false, kind)?)
+        Some(output.create_pgp_safe(&sq, false, kind, &[])?)
     } else {
         None // Defer.
     };
@@ -317,7 +318,7 @@ pub fn join(sq: Sq, c: JoinCommand) -> Result<()> {
                 };
 
                 *sink = Some(
-                    output.create_pgp_safe(&sq, false, kind)?
+                    output.create_pgp_safe(&sq, false, kind, &[])?
                 );
             }
 
@@ -403,7 +404,7 @@ pub fn join(sq: Sq, c: JoinCommand) -> Result<()> {
     if sink.is_none() {
         // We haven't written anything.
         sink = Some(output.create_pgp_safe(
-            &sq, true, openpgp::armor::Kind::File)?);
+            &sq, true, openpgp::armor::Kind::File, &[])?);
     }
 
     sink.unwrap().finalize()?;

@@ -39,6 +39,7 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
             &sq,
             binary,
             armor::Kind::Message,
+            &[],
         )?;
         let data: FileOrStdin = merge.into();
         let mut input2 = data.open("OpenPGP signatures")?;

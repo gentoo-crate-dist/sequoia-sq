@@ -29,15 +29,17 @@ pub fn dispatch(sq: Sq, cmd: export::Command) -> Result<()> {
         return Err(anyhow::anyhow!("no query given"));
     }
 
-    let mut sink = cmd.output.create_pgp_safe(
-        &sq,
-        false,
-        armor::Kind::PublicKey,
-    )?;
-
+    let mut sink;
     let mut exported_something = false;
 
     if cmd.all {
+        sink = cmd.output.create_pgp_safe(
+            &sq,
+            false,
+            armor::Kind::PublicKey,
+            &Vec::from(["OpenPGP keyring".to_string()]),
+        )?;
+
         // Export everything.
         for cert in cert_store.certs()
             .filter(|c| cmd.local
@@ -75,6 +77,21 @@ pub fn dispatch(sq: Sq, cmd: export::Command) -> Result<()> {
         if ! errors.is_empty() {
             return Err(anyhow::anyhow!("Failed to resolve certificates"));
         }
+
+        // If there multiple certificates, emit a single comment saying so,
+        // otherwise emit all armored headers for the single cert.
+        let headers = if certs.len() == 1 {
+            certs[0].armor_headers()
+        } else {
+            Vec::from(["OpenPGP keyring".to_string()])
+        };
+
+        sink = cmd.output.create_pgp_safe(
+            &sq,
+            false,
+            armor::Kind::PublicKey,
+            &headers,
+        )?;
 
         for cert in certs.into_iter() {
             if cmd.local {

@@ -79,7 +79,7 @@ pub fn replay(sq: Sq, c: replay::Command)
         let mut message = output.create_pgp_safe(
             &sq,
             false, // binary
-            sequoia::openpgp::armor::Kind::PublicKey)?;
+            sequoia::openpgp::armor::Kind::PublicKey, &[])?;
         for cert in results.into_iter() {
             cert.serialize(&mut message)?;
         }

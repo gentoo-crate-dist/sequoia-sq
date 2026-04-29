@@ -222,6 +222,7 @@ fn filter<F>(sq: &Sq, inputs: Vec<PathBuf>, output: FileOrStdout,
         } else {
             armor::Kind::PublicKey
         },
+        &[],
     )?;
 
     for cert in certs {
@@ -516,6 +517,7 @@ fn merge(sq: &Sq, inputs: Vec<PathBuf>, output: FileOrStdout,
         } else {
             armor::Kind::PublicKey
         },
+        &[],
     )?;
 
     for cert in certs.values().filter_map(|v| v.as_ref()) {

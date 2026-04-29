@@ -72,6 +72,7 @@ impl FileOrStdout {
         sq: &Sq,
         binary: bool,
         kind: armor::Kind,
+        headers: &[String],
     ) -> Result<Message<'a>> {
         // Allow secrets to be emitted if the armor label says secret
         // key.
@@ -83,7 +84,11 @@ impl FileOrStdout {
 
         let mut message = Message::new(sink);
         if ! binary {
-            message = Armorer::new(message).kind(kind).build()?;
+            let mut armorer = Armorer::new(message).kind(kind);
+            for header in headers {
+                armorer = armorer.add_header("Comment", header);
+            }
+            message = armorer.build()?;
         }
         Ok(message)
     }

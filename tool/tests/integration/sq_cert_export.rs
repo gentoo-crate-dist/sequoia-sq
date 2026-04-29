@@ -88,6 +88,8 @@ fn sq_cert_export() -> Result<()>
             let fpr = cert.fingerprint();
             if let Some(_data) = data.iter().find(|data| {
                 data.cert().fingerprint() == fpr
+                    && (stdout.contains(&format!("Comment: {}", fpr.to_spaced_hex()))
+                        || stdout.contains("Comment: OpenPGP keyring"))
             }) {
                 ()
             } else {

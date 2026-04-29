@@ -263,7 +263,8 @@ pub fn lint(sq: Sq, mut args: Command) -> Result<()> {
                 armor::Kind::SecretKey
             } else {
                 armor::Kind::PublicKey
-            })?)
+            },
+            &[])?)
     } else {
         None
     };

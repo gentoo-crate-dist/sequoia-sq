@@ -33,6 +33,7 @@ pub fn add(sq: Sq, mut c: add::Command)
             &sq,
             false, // Binary.
             openpgp::armor::Kind::PublicKey,
+            &[],
         )?;
 
         message_ = Some(message);
