@@ -1578,6 +1578,7 @@ impl<'sequoia> Builder<'sequoia>
 
                 // Escape any control characters.
                 const CONTROL: &[(&str, &str)] = &[
+                    ("\\", "\\\\"),
                     (".", "\\."),
                     ("|", "\\|"),
                     ("(", "\\("),
