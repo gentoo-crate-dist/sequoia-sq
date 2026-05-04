@@ -766,7 +766,7 @@ impl Sequoia {
                 domains: Vec::new(),
                 regular_expressions: Vec::new(),
                 exportable: true,
-                revocable: false,
+                revocable: true,
                 notations: Vec::new(),
                 additional_certifications: Vec::new(),
             },
