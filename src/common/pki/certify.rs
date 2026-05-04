@@ -224,6 +224,7 @@ The certifier is the same as the certificate to certify."));
 
         // Escape any control characters.
         const CONTROL: &[(&str, &str)] = &[
+            ("\\", "\\\\"),
             (".", "\\."),
             ("|", "\\|"),
             ("(", "\\("),
