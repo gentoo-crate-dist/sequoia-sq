@@ -2026,7 +2026,8 @@ Failed:              {:8}{:8}",
             .generate(
                 prompt::Cancel::new(),
                 Some((&mut alice_key, None, &mut alice_rev)))
-            .expect("Can generate key");
+            .expect("Can generate key")
+            .into_cert();
         sequoia
             .key_import()
             .import_key(alice.clone(), &mut Default::default())
@@ -2041,7 +2042,8 @@ Failed:              {:8}{:8}",
             .generate(
                 prompt::Cancel::new(),
                 Some((&mut bob_key, None, &mut bob_rev)))
-            .expect("Can generate key");
+            .expect("Can generate key")
+            .into_cert();
         sequoia.key_import()
             .import_key(bob.clone(), &mut Default::default())
             .expect("Can import key");
@@ -2056,7 +2058,8 @@ Failed:              {:8}{:8}",
             .generate(
                 prompt::Cancel::new(),
                 Some((&mut carol_key, None, &mut carol_rev)))
-            .expect("Can generate key");
+            .expect("Can generate key")
+            .into_cert();
         let mut dave_key = Vec::new();
         let mut dave_rev = Vec::new();
         let dave = sequoia
@@ -2066,7 +2069,8 @@ Failed:              {:8}{:8}",
             .generate(
                 prompt::Cancel::new(),
                 Some((&mut dave_key, None, &mut dave_rev)))
-            .expect("Can generate key");
+            .expect("Can generate key")
+            .into_cert();
 
         // Make a correct and reasonable certification over a
         // self-signed user ID.

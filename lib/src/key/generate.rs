@@ -158,6 +158,26 @@ pub enum Error {
     PromptError(#[from] prompt::Error),
 }
 
+/// The success value.
+///
+/// Returned by [`Builder::generate`].
+#[non_exhaustive]
+pub struct Artifact {
+    pub cert: Cert,
+}
+
+impl Artifact {
+    /// Returns a reference to the generated certificate.
+    pub fn cert(&self) -> &Cert {
+        &self.cert
+    }
+
+    /// Returns the generated certificate.
+    pub fn into_cert(self) -> Cert {
+        self.cert
+    }
+}
+
 impl Sequoia {
     /// Returns a builder providing control over how to generate a
     /// certificate.
@@ -553,7 +573,7 @@ impl<'sequoia> Builder<'sequoia>
                            output: Option<(&mut dyn std::io::Write,
                                            Option<&Path>,
                                            &mut dyn std::io::Write)>)
-        -> Result<Cert, Error>
+        -> Result<Artifact, Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -982,6 +1002,8 @@ impl<'sequoia> Builder<'sequoia>
             }
         }
 
-        Ok(cert)
+        Ok(Artifact {
+            cert,
+        })
     }
 }
