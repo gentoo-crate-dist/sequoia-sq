@@ -1,3 +1,56 @@
+//! Functionality for generating keys.
+//!
+//! A key is a certificate with secret key material.  A certificate
+//! consists of the public keys as well optional information about the
+//! certificate holder like their name, and their email address.
+//!
+//! # Examples
+//!
+//! Generate a key and import it to the key store:
+//!
+//! ```
+//! # use sequoia::Sequoia;
+//! use sequoia::prompt::Cancel;
+//!
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral()?.build()?;
+//! #
+//! let artifact = sq.key_generate()
+//!     .name("Alice")
+//!     .email("alice@example.org")
+//!     .password("secr3t".into())
+//!     // We already provided the password so we don't need a password prompt.
+//!     .generate(Cancel::new(), None)?;
+//!
+//! println!("New certificate's fingerprint: {}",
+//!          artifact.cert().fingerprint());
+//! # Ok(()) }
+//! ```
+//!
+//! Generate a key without importing it to the key store:
+//!
+//! ```
+//! # use sequoia::Sequoia;
+//! use sequoia::prompt::Cancel;
+//!
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral()?.build()?;
+//! #
+//! let mut key = Vec::new();
+//! let mut revocation = Vec::new();
+//!
+//! let artifact = sq.key_generate()
+//!     .name("Alice")
+//!     .email("alice@example.org")
+//!     .password("secr3t".into())
+//!     // We already provided the password so we don't need a password prompt.
+//!     .generate(Cancel::new(), Some((&mut key, &mut revocation)))?;
+//!
+//! println!("New certificate's fingerprint: {}",
+//!          artifact.cert().fingerprint());
+//! # Ok(()) }
+//! ```
+
 use chrono::DateTime;
 use chrono::Utc;
 
