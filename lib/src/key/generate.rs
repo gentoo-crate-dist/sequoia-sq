@@ -76,6 +76,7 @@ use sequoia_wot::FULLY_TRUSTED;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::config::DEFAULT_KEY_VALIDITY_DURATION;
 use crate::config::Expiration;
 use crate::key::PasswordPolicy;
@@ -137,23 +138,6 @@ pub mod error {
         pub lints: Vec<UserIDLint>,
     }
 
-    /// A system error that prevents processing from continuing.
-    ///
-    /// System errors are fatal and cause processing to abort.
-    ///
-    /// System errors are related to the system.  An example of a
-    /// system error is that a key store is not available, but is
-    /// needed to complete the operation.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    pub enum SystemError {
-        #[error("Home disabled: can't save certificate")]
-        HomeDisabled,
-
-        #[error(transparent)]
-        Other(anyhow::Error),
-    }
-
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -190,7 +174,7 @@ pub enum Error {
     /// system error is that a key store is not available, but is
     /// needed to complete the operation.
     #[error(transparent)]
-    SystemError(#[from] error::SystemError),
+    SystemError(#[from] SystemError),
 
     /// An operational error that prevents processing from continuing.
     ///
@@ -662,14 +646,6 @@ impl<'sequoia> Builder<'sequoia>
                 }
             }
         }
-        macro_rules! sys {
-            () => {
-                |err| {
-                    Error::SystemError(
-                        error::SystemError::Other(err.into()))
-                }
-            }
-        }
         macro_rules! op {
             () => {
                 |err| {
@@ -872,7 +848,7 @@ impl<'sequoia> Builder<'sequoia>
                 (None, &mut rev_writer_ as &mut dyn std::io::Write)
             } else {
                 return Err(Error::SystemError(
-                    error::SystemError::HomeDisabled));
+                    SystemError::HomeDisabled));
             }
         };
 

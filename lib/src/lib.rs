@@ -42,6 +42,9 @@ use cert_store::{
 };
 
 #[macro_use] pub mod transitional;
+#[macro_use] mod errors;
+pub use errors::Error;
+pub use errors::SystemError;
 
 pub mod cert;
 pub mod consts;
@@ -64,8 +67,6 @@ mod compat;
 pub mod config;
 use config::Config;
 use config::ConfigFile;
-mod errors;
-pub use errors::Error;
 mod keys;
 pub use keys::GetKeysOptions;
 pub use keys::KeyType;
