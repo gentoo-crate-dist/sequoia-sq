@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use chrono::DateTime;
 use chrono::Utc;
 
@@ -21,15 +19,12 @@ use openpgp::serialize::Serialize;
 use openpgp::types::KeyFlags;
 use openpgp::types::SignatureType;
 
-use sequoia_openpgp::parse::buffered_reader;
-
 use sequoia_wot::FULLY_TRUSTED;
 
 use crate::Result;
 use crate::Sequoia;
 use crate::config::DEFAULT_KEY_VALIDITY_DURATION;
 use crate::config::Expiration;
-use crate::inspect::inspect;
 use crate::key::PasswordPolicy;
 use crate::key::certify_generated;
 use crate::prompt::check::CheckNewPassword;
@@ -37,6 +32,7 @@ use crate::prompt;
 use crate::types::EncryptPurpose;
 use crate::types::PartFileWriter;
 use crate::types::import_stats::ImportStats;
+use crate::types::import_stats;
 use crate::userid::UserIDLint;
 use crate::userid::lint_email;
 use crate::userid::lint_name;
@@ -164,6 +160,8 @@ pub enum Error {
 #[non_exhaustive]
 pub struct Artifact {
     pub cert: Cert,
+    pub key_import_status: Option<Vec<(sequoia_openpgp::Fingerprint,
+                                       import_stats::ImportStatus)>>,
 }
 
 impl Artifact {
@@ -175,6 +173,14 @@ impl Artifact {
     /// Returns the generated certificate.
     pub fn into_cert(self) -> Cert {
         self.cert
+    }
+
+    /// Returns the key import status.
+    ///
+    /// This is `None` if the key was not imported to the key store.
+    pub fn key_import_status(&self) -> Option<&[(sequoia_openpgp::Fingerprint,
+                                                 import_stats::ImportStatus)]> {
+        self.key_import_status.as_deref()
     }
 }
 
@@ -571,7 +577,6 @@ impl<'sequoia> Builder<'sequoia>
     pub fn generate<'a, P>(&self,
                            prompt: P,
                            output: Option<(&mut dyn std::io::Write,
-                                           Option<&Path>,
                                            &mut dyn std::io::Write)>)
         -> Result<Artifact, Error>
     where
@@ -660,9 +665,7 @@ impl<'sequoia> Builder<'sequoia>
             }
         }
 
-        if userids.is_empty() {
-            weprintln!("No user ID given, using direct key signature");
-        } else {
+        if ! userids.is_empty() {
             // Make sure the user IDs are in canonical form.  If not, and
             // `--allow-non-canonical-userids` is not set, error out.
             if ! allow_non_canonical_userids {
@@ -784,15 +787,13 @@ impl<'sequoia> Builder<'sequoia>
 
         let (mut cert, rev);
 
-        let on_keystore = output.is_none();
-
         let mut rev_writer_;
-        let (output_writer, output_path, rev_writer)
-            = if let Some((output_writer, output_path, rev_writer)) = output
+        let (output_writer, rev_writer)
+            = if let Some((output_writer, rev_writer)) = output
         {
             (cert, rev) = gen()?;
 
-            (Some(output_writer), output_path, rev_writer)
+            (Some(output_writer), rev_writer)
         } else {
             if let Some(home) = sequoia.home() {
                 let dir = home.data_dir(crate::directories::Component::Other(
@@ -815,7 +816,7 @@ impl<'sequoia> Builder<'sequoia>
                     })
                     .map_err(sys!())?;
 
-                (None, None, &mut rev_writer_ as &mut dyn std::io::Write)
+                (None, &mut rev_writer_ as &mut dyn std::io::Write)
             } else {
                 return Err(Error::SystemError(
                     error::SystemError::HomeDisabled));
@@ -842,6 +843,8 @@ impl<'sequoia> Builder<'sequoia>
             w.finalize()
                 .map_err(op!())?;
         }
+
+        let mut key_import_status = None;
 
         // Write out the key.
         {
@@ -874,11 +877,7 @@ impl<'sequoia> Builder<'sequoia>
                     let result = sequoia.key_import()
                         .import_key(cert.clone(), &mut stats)
                         .map_err(op!())?;
-                    for (fpr, status) in result.key_import_status.iter() {
-                        sequoia.info(format_args!(
-                            "Importing {} into key store: {:?}",
-                            fpr, status));
-                    }
+                    key_import_status = Some(result.key_import_status);
 
                     // Now certify the user IDs, and if this is our own
                     // key, mark it as trusted introducer.
@@ -928,82 +927,9 @@ impl<'sequoia> Builder<'sequoia>
             }
         }
 
-        {
-            let mut bytes = Vec::new();
-            cert.as_tsk().serialize(&mut bytes)
-                .expect("serializing to a vector is infallible");
-            if let Err(err) = inspect(
-                sequoia,
-                buffered_reader::Memory::with_cookie(&bytes, Default::default()),
-                output_path
-                    .as_ref()
-                    .and_then(|p| Some(p.display().to_string()))
-                    .as_deref(),
-                &mut (Box::new(std::io::stderr()) as Box<dyn std::io::Write + Send + Sync>),
-                false, false)
-            {
-                weprintln!("Failed to display key: {}", err);
-                weprintln!("This is probably a bug in sq, please report it to \
-                            https://gitlab.com/sequoia-pgp/sequoia-sq/-/issues/new .");
-            }
-        }
-
-        // If we are writing to key store, provide some guidance.
-        if on_keystore && own_key {
-            sequoia.hint(format_args!("Because you supplied the `--own-key` \
-                                       flag, the user IDs on this key have \
-                                       been marked as authenticated, and \
-                                       this key has been marked as a fully \
-                                       trusted introducer.  If that was a \
-                                       mistake, you can undo that with:"))
-                .sq().arg("pki").arg("link").arg("retract")
-                .arg_value("--cert", cert.fingerprint())
-                .arg("--all")
-                .done();
-        }
-        if on_keystore && ! own_key {
-            sequoia.hint(format_args!("The user IDs on the key have been marked \
-                                       as authenticated.  \
-                                       If that was a mistake, you can undo that \
-                                       with:"))
-                .sq().arg("pki").arg("link").arg("retract")
-                .arg_value("--cert", cert.fingerprint())
-                .arg("--all")
-                .done();
-        }
-
-        if on_keystore {
-            sequoia.hint(format_args!("You can export your certificate as \
-                                       follows:"))
-                .sq().arg("cert").arg("export")
-                .arg_value("--cert", cert.fingerprint())
-                .done();
-            sequoia.hint(format_args!("Once you are happy you can upload \
-                                       it to public directories using:"))
-                .sq().arg("network").arg("keyserver").arg("publish")
-                .arg_value("--cert", cert.fingerprint())
-                .done();
-        } else {
-            let mut shown = false;
-            if let Some(ref output_path) = output_path {
-                sequoia.hint(format_args!("You can extract the \
-                                           certificate from the \
-                                           generated key by running:"))
-                    .sq().arg("key").arg("delete")
-                    .arg_value("--cert-file", output_path.display())
-                    .arg_value("--output", output_path.with_extension("cert").display())
-                    .done();
-                shown = true;
-            }
-            if ! shown {
-                sequoia.hint(format_args!("You can extract the certificate from the \
-                                           generated key using:"))
-                    .sq().arg("key").arg("delete").done();
-            }
-        }
-
         Ok(Artifact {
             cert,
+            key_import_status,
         })
     }
 }

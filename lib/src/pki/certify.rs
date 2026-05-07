@@ -2025,7 +2025,7 @@ Failed:              {:8}{:8}",
             .without_password()
             .generate(
                 prompt::Cancel::new(),
-                Some((&mut alice_key, None, &mut alice_rev)))
+                Some((&mut alice_key, &mut alice_rev)))
             .expect("Can generate key")
             .into_cert();
         sequoia
@@ -2041,7 +2041,7 @@ Failed:              {:8}{:8}",
             .without_password()
             .generate(
                 prompt::Cancel::new(),
-                Some((&mut bob_key, None, &mut bob_rev)))
+                Some((&mut bob_key, &mut bob_rev)))
             .expect("Can generate key")
             .into_cert();
         sequoia.key_import()
@@ -2057,7 +2057,7 @@ Failed:              {:8}{:8}",
             .without_password()
             .generate(
                 prompt::Cancel::new(),
-                Some((&mut carol_key, None, &mut carol_rev)))
+                Some((&mut carol_key, &mut carol_rev)))
             .expect("Can generate key")
             .into_cert();
         let mut dave_key = Vec::new();
@@ -2068,7 +2068,7 @@ Failed:              {:8}{:8}",
             .without_password()
             .generate(
                 prompt::Cancel::new(),
-                Some((&mut dave_key, None, &mut dave_rev)))
+                Some((&mut dave_key, &mut dave_rev)))
             .expect("Can generate key")
             .into_cert();
 
