@@ -305,7 +305,7 @@ impl<'a> Builder<'a> {
     /// trust amount to 0 using [`Builder::trust_amount`].
     /// Setting the trust amount to 0 will return all valid bindings,
     /// but it will not return any unauthenticated paths.
-    pub fn gossip(&mut self, gossip: bool) -> &mut Self {
+    pub fn gossip(mut self, gossip: bool) -> Self {
         self.params.gossip = gossip;
         self
     }
@@ -321,7 +321,7 @@ impl<'a> Builder<'a> {
     /// Note: the bindings still have to meet the trust threshold.  As
     /// such, this option is only meaningful if gossip mode is also
     /// enabled (see [`Builder::gossip`]).
-    pub fn unusable(&mut self, unusable: bool) -> &mut Self {
+    pub fn unusable(mut self, unusable: bool) -> Self {
         self.params.unusable = unusable;
         self
     }
@@ -341,8 +341,8 @@ impl<'a> Builder<'a> {
     /// Certification networks are useful for understanding how well a
     /// group of people are connected.  They should not be use for
     /// authentication purposes.
-    pub fn certification_network(&mut self, certification_network: bool)
-        -> &mut Self
+    pub fn certification_network(mut self, certification_network: bool)
+        -> Self
     {
         self.params.certification_network = certification_network;
         self
@@ -356,7 +356,7 @@ impl<'a> Builder<'a> {
     ///
     /// If gossip mode is enabled, that mode takes precedence, and the
     /// trust amount is ignored.
-    pub fn trust_amount<T>(&mut self, trust_amount: T) -> &mut Self
+    pub fn trust_amount<T>(mut self, trust_amount: T) -> Self
     where
         T: Into<Option<TrustAmount<usize>>>
     {
@@ -370,7 +370,7 @@ impl<'a> Builder<'a> {
     /// The report includes lints and some statistics.  See
     /// [`Output::Report`] for more details of what is returned.  This
     /// is disabled by default.
-    pub fn report(&mut self, report: bool) -> &mut Self {
+    pub fn report(mut self, report: bool) -> Self {
         self.params.report = report;
         self
     }
@@ -383,7 +383,7 @@ impl<'a> Builder<'a> {
     }
 
     /// Execute authenticate with the configured parameters.
-    pub fn execute<O>(&mut self) -> Result<Vec<Output>>
+    pub fn execute<O>(self) -> Result<Vec<Output>>
     {
         struct S {
             output: Vec<Output>,

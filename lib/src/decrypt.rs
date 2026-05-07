@@ -153,7 +153,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// Note: [`decrypt_unwrap`](Builder::decrypt_unwrap) does not
     /// apply a signing policy and silently ignores this parameter.
-    pub fn signatures(&mut self, signatures: usize) -> &mut Self {
+    pub fn signatures(mut self, signatures: usize) -> Self {
         self.params.vparams.signatures = signatures;
 
         self
@@ -176,7 +176,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     ///   [`SequoiaBuilder::stateless`]: crate::SequoiaBuilder::stateless
     ///   [`SequoiaBuiler::add_keyring`]: crate::SequoiaBuilder::add_keyring
-    pub fn designated_signers(&mut self, certs: Vec<Cert>) -> &mut Self {
+    pub fn designated_signers(mut self, certs: Vec<Cert>) -> Self {
         self.params.vparams.designated_signers = Some(certs);
 
         self
@@ -186,7 +186,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// The secret keys are tried in addition to the key store, if it
     /// hasn't been disabled.
-    pub fn secret_keys(&mut self, secret_keys: Vec<Cert>) -> &mut Self {
+    pub fn secret_keys(mut self, secret_keys: Vec<Cert>) -> Self {
         self.params.secret_keys = secret_keys;
 
         self
@@ -196,7 +196,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// The session keys are tried in addition to the key store, if
     /// it hasn't been disabled.
-    pub fn session_keys(&mut self, session_keys: Vec<SessionKey>) -> &mut Self {
+    pub fn session_keys(mut self, session_keys: Vec<SessionKey>) -> Self {
         self.params.session_keys = session_keys;
 
         self

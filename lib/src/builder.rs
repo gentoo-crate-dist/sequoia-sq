@@ -101,7 +101,7 @@ impl SequoiaBuilder {
     /// assert!(sequoia.home().is_some());
     /// # Ok(()) }
     /// ```
-    pub fn home_directory<P>(&mut self, directory: P) -> Result<&mut Self>
+    pub fn home_directory<P>(mut self, directory: P) -> Result<Self>
     where P: AsRef<Path>
     {
         let directory = directory.as_ref();
@@ -115,7 +115,7 @@ impl SequoiaBuilder {
     }
 
     /// Override the home directory.
-    pub fn home(&mut self, home: sequoia_directories::Home) -> &mut Self {
+    pub fn home(mut self, home: sequoia_directories::Home) -> Self {
         self.home = Home::Home(Cow::Owned(home));
 
         self
@@ -126,7 +126,7 @@ impl SequoiaBuilder {
     /// Configure the [`Sequoia`] context to use an ephemeral home
     /// directory.  When the context is destroyed, the ephemeral home
     /// directory is removed.
-    pub fn ephemeral(&mut self) -> Result<&mut Self> {
+    pub fn ephemeral(mut self) -> Result<Self> {
         self.home = Home::Home(Cow::Owned(
             sequoia_directories::Home::ephemeral()?));
 
@@ -154,26 +154,26 @@ impl SequoiaBuilder {
     /// assert!(sequoia.home().is_none());
     /// # Ok(()) }
     /// ```
-    pub fn stateless(&mut self) -> &mut Self {
+    pub fn stateless(mut self) -> Self {
         self.home = Home::Stateless;
 
         self
     }
 
     /// Overrides the cert store location.
-    pub fn cert_store_path(&mut self, p: StateDirectory) -> &mut Self {
+    pub fn cert_store_path(mut self, p: StateDirectory) -> Self {
         self.cert_store_path = Some(p);
         self
     }
 
     /// Overrides the key store location.
-    pub fn key_store_path(&mut self, p: StateDirectory) -> &mut Self {
+    pub fn key_store_path(mut self, p: StateDirectory) -> Self {
         self.key_store_path = Some(p);
         self
     }
 
     /// Adds the given keyring to Sequoia's virtual cert store.
-    pub fn add_keyring<P>(&mut self, p: P) -> &mut Self
+    pub fn add_keyring<P>(mut self, p: P) -> Self
     where
         P: AsRef<Path>,
     {
@@ -182,7 +182,7 @@ impl SequoiaBuilder {
     }
 
     /// Adds the given fingerprint as trust root.
-    pub fn add_trust_root(&mut self, fp: openpgp::Fingerprint) -> &mut Self {
+    pub fn add_trust_root(mut self, fp: openpgp::Fingerprint) -> Self {
         self.trust_roots.push(fp);
         self
     }
@@ -195,7 +195,7 @@ impl SequoiaBuilder {
     /// See [`StandardPolicy::at`] for more details.
     ///
     ///   [`StandardPolicy::at`]: https://docs.rs/sequoia-openpgp/latest/sequoia_openpgp/policy/struct.StandardPolicy.html#method.at
-    pub fn policy_as_of<T>(&mut self, at: T) -> &mut Self
+    pub fn policy_as_of<T>(mut self, at: T) -> Self
     where
         T: Into<SystemTime>
     {
@@ -205,19 +205,19 @@ impl SequoiaBuilder {
     }
 
     /// Fixes the time at the current time.
-    pub fn fix_time(&mut self) -> &mut Self {
+    pub fn fix_time(mut self) -> Self {
         self.time = Clock::Frozen(SystemTime::now());
         self
     }
 
     /// Fixes the time at the given time.
-    pub fn fix_time_at(&mut self, t: SystemTime) -> &mut Self {
+    pub fn fix_time_at(mut self, t: SystemTime) -> Self {
         self.time = Clock::Fix(t);
         self
     }
 
     /// Sets the path to the IPC servers.
-    pub fn ipc_server_path<P>(&mut self, p: P) -> &mut Self
+    pub fn ipc_server_path<P>(mut self, p: P) -> Self
     where
         P: AsRef<Path>,
     {

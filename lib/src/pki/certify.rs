@@ -810,7 +810,7 @@ impl CertificationTemplateBuilder {
     /// For details, see [`Builder::trust_amount`].
     ///
     /// If unset, it falls back to the value specified in [`Params`].
-    pub fn trust_amount(&mut self, trust_amount: u8) -> &mut Self {
+    pub fn trust_amount(mut self, trust_amount: u8) -> Self {
         self.template.trust_amount = Some(trust_amount);
         self
     }
@@ -820,7 +820,7 @@ impl CertificationTemplateBuilder {
     /// For details, see [`Builder::trust_depth`].
     ///
     /// If unset, it falls back to the value specified in [`Params`].
-    pub fn trust_depth(&mut self, trust_depth: u8) -> &mut Self {
+    pub fn trust_depth(mut self, trust_depth: u8) -> Self {
         self.template.trust_depth = Some(trust_depth);
         self
     }
@@ -830,7 +830,7 @@ impl CertificationTemplateBuilder {
     /// For details, see [`Builder::expiration`].
     ///
     /// If unset, it falls back to the value specified in [`Params`].
-    pub fn expiration(&mut self, expiration: Expiration) -> &mut Self {
+    pub fn expiration(mut self, expiration: Expiration) -> Self {
         self.template.expiration = Some(expiration);
         self
     }

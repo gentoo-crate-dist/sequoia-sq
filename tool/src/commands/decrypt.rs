@@ -42,12 +42,12 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
     let prompt = password::Prompt::new(&sq, true);
     let stream = Stream::new(
         &sq, DecryptContext::Decrypt, command.dump_session_key);
-    let mut decryptor = sq.sequoia.decrypt();
-    decryptor.signatures(signatures)
+    let mut decryptor = sq.sequoia.decrypt()
+        .signatures(signatures)
         .secret_keys(secret_keys)
         .session_keys(session_keys);
     if ! signers.is_empty() {
-        decryptor.designated_signers(signers);
+        decryptor = decryptor.designated_signers(signers);
     }
 
     let result = decryptor.decrypt(&mut input, &mut output, prompt, stream);

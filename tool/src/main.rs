@@ -240,9 +240,9 @@ fn real_main() -> Result<()> {
 
     let mut sequoia = Sequoia::builder();
     if let Some(home) = home {
-        sequoia.home(home);
+        sequoia = sequoia.home(home);
     } else {
-        sequoia.stateless();
+        sequoia = sequoia.stateless();
     }
 
     let time: SystemTime = if let Some(t) = c.time.as_ref() {
@@ -256,29 +256,29 @@ fn real_main() -> Result<()> {
     } else {
         time.clone()
     };
-    sequoia.policy_as_of(policy_as_of);
+    sequoia = sequoia.policy_as_of(policy_as_of);
 
     if let Some(t) = c.time.as_ref() {
-        sequoia.fix_time_at(
+        sequoia = sequoia.fix_time_at(
             t.to_system_time(std::time::SystemTime::now())?);
     } else {
-        sequoia.fix_time();
+        sequoia = sequoia.fix_time();
     };
 
     if let Some(p) = c.cert_store.clone() {
-        sequoia.cert_store_path(p);
+        sequoia = sequoia.cert_store_path(p);
     }
 
     if let Some(p) = c.key_store.clone() {
-        sequoia.key_store_path(p);
+        sequoia = sequoia.key_store_path(p);
     }
 
     for p in &c.keyring {
-        sequoia.add_keyring(p);
+        sequoia = sequoia.add_keyring(p);
     }
 
     for root in c.trust_roots.clone() {
-        sequoia.add_trust_root(root);
+        sequoia = sequoia.add_trust_root(root);
     }
 
     let mut sequoia = sequoia.build()?;

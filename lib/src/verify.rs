@@ -791,7 +791,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// mathematically correct signature is not considered
     /// authenticated; at least one of the user IDs on the signer's
     /// certificate must also be fully authenticated.
-    pub fn signatures(&mut self, signatures: usize) -> &mut Self {
+    pub fn signatures(mut self, signatures: usize) -> Self {
         self.params.signatures = signatures;
 
         self
@@ -811,7 +811,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     ///   [`SequoiaBuilder::stateless`]: crate::SequoiaBuilder::stateless
     ///   [`SequoiaBuiler::add_keyring`]: crate::SequoiaBuilder::add_keyring
-    pub fn designated_signers(&mut self, certs: Vec<Cert>) -> &mut Self {
+    pub fn designated_signers(mut self, certs: Vec<Cert>) -> Self {
         self.params.designated_signers = Some(certs);
 
         self
@@ -819,9 +819,9 @@ impl<'sequoia> Builder<'sequoia> {
 
     /// XXX transitional: remove once presentation is moved back to
     /// sq.
-    pub fn detached_args(&mut self, detached_sig_arg: Option<&str>,
+    pub fn detached_args(mut self, detached_sig_arg: Option<&str>,
                          detached_sig_value: &Path)
-        -> &mut Self
+        -> Self
     {
         self.params.detached_sig_arg
             = detached_sig_arg.map(|a| a.to_string());

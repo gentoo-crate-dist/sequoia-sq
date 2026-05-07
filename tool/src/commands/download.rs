@@ -424,12 +424,11 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         }
                                     }
 
-                                    let mut authenticate = sq.sequoia.list_builder(
+                                    let authenticate = sq.sequoia.list_builder(
                                         vec![
                                             Query::for_key_handle(
                                                 None, cert.key_handle())
-                                        ]);
-                                    let authenticate = authenticate
+                                        ])
                                         .gossip(false)
                                         .unusable(false)
                                         .certification_network(false)
@@ -635,16 +634,15 @@ pub fn dispatch(sq: Sq, c: download::Command)
 
     data_file.as_mut().rewind()?;
 
-    let mut verifier = sq.sequoia.verify();
-    verifier.detached_args(None, data_file.path());
-
-    verifier.signatures(signatures);
+    let mut verifier = sq.sequoia.verify()
+        .detached_args(None, data_file.path())
+        .signatures(signatures);
 
     let mut self_auth_signers = self_auth_signers;
     let mut all_signers = signers;
     all_signers.extend_from_slice(&mut self_auth_signers);
     if ! all_signers.is_empty() {
-        verifier.designated_signers(all_signers);
+        verifier = verifier.designated_signers(all_signers);
     }
 
     let stream = Stream::new(&sq, VerifyContext::Download);
@@ -652,7 +650,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
     let result = if let Some(signature_file) = signature_file.as_mut() {
         signature_file.as_mut().rewind()?;
 
-        verifier.detached_args(
+        verifier = verifier.detached_args(
             Some("--signature-url"),
             &signature_url.map(PathBuf::from).unwrap_or_else(|| "URL".into()));
 

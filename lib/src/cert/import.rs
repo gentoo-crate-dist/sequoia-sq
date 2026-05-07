@@ -563,7 +563,7 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// Note: even if the autocrypt message can't be decrypted, any
     /// certificate found in the Autocrypt header is still imported.
-    pub fn secret_keys(&mut self, secret_keys: Vec<Cert>) -> &mut Self {
+    pub fn secret_keys(mut self, secret_keys: Vec<Cert>) -> Self {
         self.params.secret_keys = secret_keys;
 
         self
@@ -582,7 +582,7 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// Note: even if the autocrypt message can't be decrypted, any
     /// certificate found in the Autocrypt header is still imported.
-    pub fn session_keys(&mut self, session_keys: Vec<SessionKey>) -> &mut Self {
+    pub fn session_keys(mut self, session_keys: Vec<SessionKey>) -> Self {
         self.params.session_keys = session_keys;
 
         self
