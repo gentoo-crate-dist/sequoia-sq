@@ -186,40 +186,7 @@ impl Sequoia {
     /// List bindings.
     ///
     /// See [`Builder`] for details.
-    ///
-    /// Using `Builder`, it is also possible to stream the
-    /// results.
-    pub fn cert_list<Q>(&self, queries: Vec<Q>)
-        -> Result<Vec<Binding>>
-    where
-        Q: Into<Query>,
-    {
-        struct S {
-            output: Vec<Binding>,
-        }
-        impl Stream for &mut S {
-            fn output(&mut self, _params: &Params, output: Output)
-                -> Result<()>
-            {
-                match output {
-                    Output::Binding(binding) => self.output.push(binding),
-                    _ => (),
-                }
-
-                Ok(())
-            }
-        }
-
-        let mut s = S { output: Vec::new() };
-
-        self.cert_list_builder(queries).execute(&mut s)?;
-
-        Ok(s.output)
-    }
-
-    /// Returns a builder that can be used to control
-    /// `Sequoia::list`'s behavior.
-    pub fn cert_list_builder<Q>(&self, queries: Vec<Q>) -> Builder<'_>
+    pub fn cert_list<Q>(&self, queries: Vec<Q>) -> Builder<'_>
     where
         Q: Into<Query>,
     {

@@ -424,7 +424,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         }
                                     }
 
-                                    let authenticate = sq.sequoia.cert_list_builder(
+                                    let authenticate = sq.sequoia.cert_list(
                                         vec![
                                             Query::for_key_handle(
                                                 None, cert.key_handle())
