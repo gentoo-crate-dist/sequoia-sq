@@ -42,7 +42,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
                 &sq, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
-            list.execute(stream)?
+            list.list(stream)?
         }
 
         // Find all authenticated bindings for a given User ID, list
@@ -66,7 +66,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
                 &sq, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
-            list.execute(stream)?
+            list.list(stream)?
         }
 
         // Find and list all authenticated bindings for a given
@@ -90,7 +90,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
                 &sq, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
-            list.execute(stream)?
+            list.list(stream)?
         }
 
         // Authenticates a given path.

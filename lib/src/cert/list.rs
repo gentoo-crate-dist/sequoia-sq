@@ -382,8 +382,8 @@ impl<'a> Builder<'a> {
         &self.params
     }
 
-    /// Execute authenticate with the configured parameters.
-    pub fn execute<S>(self, mut stream: S) -> Result<()>
+    /// List matching certificates.
+    pub fn list<S>(self, mut stream: S) -> Result<()>
     where
         S: Stream,
     {

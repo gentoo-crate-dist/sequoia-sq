@@ -424,7 +424,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         }
                                     }
 
-                                    let authenticate = sq.sequoia.cert_list(
+                                    let list = sq.sequoia.cert_list(
                                         vec![
                                             Query::for_key_handle(
                                                 None, cert.key_handle())
@@ -438,11 +438,11 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                     let stderr = &mut std::io::stderr();
 
                                     let stream = crate::common::pki::output::list::Stream::new(
-                                        &sq, authenticate.params(),
+                                        &sq, list.params(),
                                         ListContext::Download,
                                         true, stderr);
 
-                                    if let Err(err) = authenticate.execute(stream)
+                                    if let Err(err) = list.list(stream)
                                     {
                                         weprintln!("Can't authenticate the \
                                                     alleged signer:");
