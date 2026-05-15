@@ -442,8 +442,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         ListContext::Download,
                                         true, stderr);
 
-                                    if let Err(err) = authenticate
-                                        .execute_stream(stream)
+                                    if let Err(err) = authenticate.execute(stream)
                                     {
                                         weprintln!("Can't authenticate the \
                                                     alleged signer:");

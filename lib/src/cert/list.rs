@@ -52,6 +52,39 @@ pub trait Stream {
     fn output(&mut self, params: &Params, output: Output) -> Result<()>;
 }
 
+impl<T> Stream for Box<T>
+where
+    T: Stream + ?Sized
+{
+    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+        AsMut::as_mut(self).output(params, output)
+    }
+}
+
+impl<T> Stream for &mut T
+where
+    T: Stream + ?Sized
+{
+    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+        (*self).output(params, output)
+    }
+}
+
+/// Collects the output in the specified vector.
+impl Stream for &mut Vec<Output> {
+    fn output(&mut self, _params: &Params, output: Output) -> Result<()> {
+        self.push(output);
+        Ok(())
+    }
+}
+
+/// Discards the output.
+impl Stream for () {
+    fn output(&mut self, _params: &Params, _output: Output) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// A matching binding.
 ///
 /// Note the binding is not necessarily authenticated.  You still
@@ -179,7 +212,7 @@ impl Sequoia {
 
         let mut s = S { output: Vec::new() };
 
-        self.cert_list_builder(queries).execute_stream(&mut s)?;
+        self.cert_list_builder(queries).execute(&mut s)?;
 
         Ok(s.output)
     }
@@ -383,28 +416,7 @@ impl<'a> Builder<'a> {
     }
 
     /// Execute authenticate with the configured parameters.
-    pub fn execute<O>(self) -> Result<Vec<Output>>
-    {
-        struct S {
-            output: Vec<Output>,
-        }
-        impl Stream for &mut S {
-            fn output(&mut self, _params: &Params, output: Output)
-                -> Result<()>
-            {
-                self.output.push(output);
-                Ok(())
-            }
-        }
-
-        let mut s = S { output: Vec::new() };
-        self.execute_stream(&mut s)?;
-
-        Ok(s.output)
-    }
-
-    /// Execute authenticate with the configured parameters.
-    pub fn execute_stream<S>(&self, mut stream: S) -> Result<()>
+    pub fn execute<S>(self, mut stream: S) -> Result<()>
     where
         S: Stream,
     {
