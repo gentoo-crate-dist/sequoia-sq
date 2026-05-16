@@ -33,8 +33,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
-                .trust_amount(*trust_amount)
-                .report(true);
+                .trust_amount(*trust_amount);
 
             let stdout = &mut std::io::stdout();
 
@@ -57,8 +56,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
-                .trust_amount(*trust_amount)
-                .report(true);
+                .trust_amount(*trust_amount);
 
             let stdout = &mut std::io::stdout();
 
@@ -81,8 +79,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
-                .trust_amount(*trust_amount)
-                .report(true);
+                .trust_amount(*trust_amount);
 
             let stdout = &mut std::io::stdout();
 

@@ -432,8 +432,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         .gossip(false)
                                         .unusable(false)
                                         .certification_network(false)
-                                        .trust_amount(TrustAmount::Full)
-                                        .report(true);
+                                        .trust_amount(TrustAmount::Full);
 
                                     let stderr = &mut std::io::stderr();
 
