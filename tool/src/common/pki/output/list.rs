@@ -1,7 +1,7 @@
 use sequoia::cert_store::Store;
 
-use sequoia::list;
-use sequoia::list::required_trust_amount;
+use sequoia::cert::list;
+use sequoia::cert::list::required_trust_amount;
 use sequoia::types::QueryKind;
 
 use crate::Result;
@@ -44,7 +44,7 @@ impl<'a> Stream<'a> {
     }
 }
 
-impl<'a> sequoia::list::Stream for Stream<'a> {
+impl<'a> sequoia::cert::list::Stream for Stream<'a> {
     fn output(&mut self,
               params: &list::Params,
               output: list::Output)

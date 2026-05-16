@@ -65,7 +65,7 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
                 });
             }
 
-            let list = sq.sequoia.list_builder(queries)
+            let list = sq.sequoia.cert_list_builder(queries)
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)

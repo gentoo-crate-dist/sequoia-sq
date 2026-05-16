@@ -3,7 +3,7 @@ use openpgp::Result;
 
 use sequoia::wot;
 
-use sequoia::list::required_trust_amount;
+use sequoia::cert::list::required_trust_amount;
 use sequoia::types::TrustThreshold;
 
 use crate::Sq;

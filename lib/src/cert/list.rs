@@ -156,7 +156,7 @@ impl Sequoia {
     ///
     /// Using `Builder`, it is also possible to stream the
     /// results.
-    pub fn list<Q>(&self, queries: Vec<Q>)
+    pub fn cert_list<Q>(&self, queries: Vec<Q>)
         -> Result<Vec<Binding>>
     where
         Q: Into<Query>,
@@ -179,14 +179,14 @@ impl Sequoia {
 
         let mut s = S { output: Vec::new() };
 
-        self.list_builder(queries).execute_stream(&mut s)?;
+        self.cert_list_builder(queries).execute_stream(&mut s)?;
 
         Ok(s.output)
     }
 
     /// Returns a builder that can be used to control
     /// `Sequoia::list`'s behavior.
-    pub fn list_builder<Q>(&self, queries: Vec<Q>) -> Builder<'_>
+    pub fn cert_list_builder<Q>(&self, queries: Vec<Q>) -> Builder<'_>
     where
         Q: Into<Query>,
     {
@@ -209,7 +209,7 @@ impl Sequoia {
 
 /// Parameters to the list function.
 ///
-/// The parameters passed to [`Sequoia::list`].
+/// The parameters passed to [`Sequoia::cert_list`].
 pub struct Params<'a> {
     sequoia: &'a Sequoia,
     queries: Vec<Query>,
