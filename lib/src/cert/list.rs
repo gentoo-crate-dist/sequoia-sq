@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use anyhow::Context;
@@ -218,8 +217,6 @@ impl Sequoia {
 /// more precise errors.  In this way, if you match on a category, and
 /// a new error is added you can still react.
 pub mod error {
-    use super::*;
-
     /// The argument is not a valid email address.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug)]
@@ -254,45 +251,6 @@ pub mod error {
         Other(anyhow::Error),
     }
 
-    /// No matching bindings.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error(
-        "{}",
-        match (.queries.len(), .gossip, .unsatisfied.len())
-        {
-            (1, true, 1) => {
-                Cow::Borrowed("No bindings match the query.")
-            }
-            (_, true, 1) => {
-                Cow::Borrowed("No bindings match one of the queries.")
-            }
-            (1, false, 1) => {
-                Cow::Borrowed("No bindings matching the query could \
-                               be authenticated.")
-            }
-            (_, false, 1) => {
-                Cow::Borrowed("No bindings matching one of the queries could \
-                               be authenticated.")
-            }
-            (_, true, unsatisfied_count) => {
-                Cow::Owned(format!(
-                    "No bindings match {} of the queries.",
-                    unsatisfied_count))
-            }
-            (_, false, unsatisfied_count) => {
-                Cow::Owned(format!(
-                    "No bindings matching {} of the queries could be \
-                     authenticated.",
-                    unsatisfied_count))
-            }
-        })]
-    pub struct NoMatchingBindings {
-        pub queries: Vec<Query>,
-        pub gossip: bool,
-        pub unsatisfied: Vec<Query>,
-    }
-
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -303,9 +261,6 @@ pub mod error {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug)]
     pub enum OperationalError {
-        #[error(transparent)]
-        NoMatchingBindings(NoMatchingBindings),
-
         #[error(transparent)]
         Other(anyhow::Error),
     }
@@ -538,9 +493,6 @@ impl<'a> Builder<'a> {
     /// Returns an error if the cert store was disabled (see
     /// [`SequoiaBuilder::cert_store_path`]) and no keyrings were
     /// added (see [`SequoiaBuilder::add_keyring`]).
-    ///
-    /// Returns an error if one or more queries don't match any
-    /// certificates.
     pub fn list<S>(self, mut stream: S) -> Result<(), Error>
     where
         S: Stream,
@@ -1138,8 +1090,6 @@ impl<'a> Builder<'a> {
         let bindings_not_authenticated
             = bindings.len() - bindings_authenticated - bindings_unusable;
 
-        let unsatisfied_count = unsatisfied.len();
-
         if report {
             stream.output(&self.params, Output::Report(Report {
                 missing_trust_roots: if ! unsatisfied.is_empty() {
@@ -1157,16 +1107,6 @@ impl<'a> Builder<'a> {
             .map_err(|err| Error::StreamOutputError(err))?;
         }
 
-        if unsatisfied_count > 0 {
-            Err(Error::OperationalError(
-                error::OperationalError::NoMatchingBindings(
-                    error::NoMatchingBindings {
-                        queries: queries.to_owned(),
-                        unsatisfied,
-                        gossip,
-                    })))
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 }

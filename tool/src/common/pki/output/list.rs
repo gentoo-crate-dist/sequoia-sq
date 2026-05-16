@@ -203,6 +203,35 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                         qprintln!("Pass `--gossip` to see the unauthenticated bindings.");
                     }
                 }
+
+
+                let unsatisfied_count = unsatisfied_queries.len();
+                if unsatisfied_count == 1 {
+                    if params.gossip() {
+                        if params.queries().len() == 1 {
+                            Err(anyhow::anyhow!("No bindings match the query."))?;
+                        } else {
+                            Err(anyhow::anyhow!("No bindings match one of the queries."))?;
+                        }
+                    } else {
+                        if params.queries().len() == 1 {
+                            Err(anyhow::anyhow!(
+                                "No bindings matching the query could be authenticated."))?;
+                        } else {
+                            Err(anyhow::anyhow!(
+                                "No bindings matching one of the queries could be authenticated."))?;
+                        }
+                    }
+                } else if unsatisfied_count > 1 {
+                    if params.gossip() {
+                        Err(anyhow::anyhow!("No bindings match {} of the queries.",
+                                            unsatisfied_count))?;
+                    } else {
+                        Err(anyhow::anyhow!(
+                            "No bindings matching {} of the queries could be authenticated.",
+                            unsatisfied_count))?;
+                    }
+                }
             }
 
             // Unknown.  Ignore.
