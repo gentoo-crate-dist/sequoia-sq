@@ -638,7 +638,7 @@ pub enum Error {
     #[error(transparent)]
     CertificationError(#[from] error::CertificationError),
 
-    /// If [`Stream::output`] returns an error, it is propagate here.
+    /// If [`Stream::output`] returns an error, it is propagated here.
     StreamOutputError(anyhow::Error),
 }
 
