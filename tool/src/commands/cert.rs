@@ -78,7 +78,9 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
                 &sq, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
-            list.list(stream)
+            list.list(stream)?;
+
+            Ok(())
         },
 
         Subcommands::Lint(command) =>

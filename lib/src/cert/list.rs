@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use anyhow::Context;
@@ -20,10 +21,14 @@ use cert_store::store::UserIDQueryParams;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::types::Query;
 use crate::types::QueryKind;
 use crate::types::Safe;
 use crate::types::TrustAmount;
+
+#[cfg(doc)]
+use crate::SequoiaBuilder;
 
 const TRACE: bool = false;
 
@@ -207,6 +212,142 @@ impl Sequoia {
     }
 }
 
+/// Data structures related to [`Error`].
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+pub mod error {
+    use super::*;
+
+    /// The argument is not a valid email address.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    #[error("{:?} does not appear to be an email address", .email)]
+    pub struct InvalidEmail {
+        pub email: String,
+    }
+
+    /// The argument is not a valid domain name.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    #[error("{:?} does not appear to be a domain name", .domain)]
+    pub struct InvalidDomain {
+        pub domain: String,
+        #[source]
+        pub error: anyhow::Error,
+    }
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        InvalidEmail(InvalidEmail),
+
+        #[error(transparent)]
+        InvalidDomain(InvalidDomain),
+
+        #[error(transparent)]
+        Other(anyhow::Error),
+    }
+
+    /// No matching bindings.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    #[error(
+        "{}",
+        match (.queries.len(), .gossip, .unsatisfied.len())
+        {
+            (1, true, 1) => {
+                Cow::Borrowed("No bindings match the query.")
+            }
+            (_, true, 1) => {
+                Cow::Borrowed("No bindings match one of the queries.")
+            }
+            (1, false, 1) => {
+                Cow::Borrowed("No bindings matching the query could \
+                               be authenticated.")
+            }
+            (_, false, 1) => {
+                Cow::Borrowed("No bindings matching one of the queries could \
+                               be authenticated.")
+            }
+            (_, true, unsatisfied_count) => {
+                Cow::Owned(format!(
+                    "No bindings match {} of the queries.",
+                    unsatisfied_count))
+            }
+            (_, false, unsatisfied_count) => {
+                Cow::Owned(format!(
+                    "No bindings matching {} of the queries could be \
+                     authenticated.",
+                    unsatisfied_count))
+            }
+        })]
+    pub struct NoMatchingBindings {
+        pub queries: Vec<Query>,
+        pub gossip: bool,
+        pub unsatisfied: Vec<Query>,
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        NoMatchingBindings(NoMatchingBindings),
+
+        #[error(transparent)]
+        Other(anyhow::Error),
+    }
+}
+
+/// Errors related to generating a certificate.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
+}
+
 /// Parameters to the list function.
 ///
 /// The parameters passed to [`Sequoia::cert_list`].
@@ -383,7 +524,24 @@ impl<'a> Builder<'a> {
     }
 
     /// List matching certificates.
-    pub fn list<S>(self, mut stream: S) -> Result<()>
+    ///
+    /// Unless `gossip` has been enabled, queries against user IDs
+    /// only match authenticated user IDs.  That is, if you search for
+    /// `alice@example.org`, a certificate with that user ID will only
+    /// be returned if the user ID can be authenticated.
+    ///
+    /// Note: authenticated user IDs do not need to be self-signed; a
+    /// user ID is considered authenticated if there is sufficient
+    /// evidence that the user ID should be associated with the
+    /// certificate.  This is computed using the web of trust.
+    ///
+    /// Returns an error if the cert store was disabled (see
+    /// [`SequoiaBuilder::cert_store_path`]) and no keyrings were
+    /// added (see [`SequoiaBuilder::add_keyring`]).
+    ///
+    /// Returns an error if one or more queries don't match any
+    /// certificates.
+    pub fn list<S>(self, mut stream: S) -> Result<(), Error>
     where
         S: Stream,
     {
@@ -410,7 +568,7 @@ impl<'a> Builder<'a> {
         let return_all = queries.iter().any(|q| matches!(q.kind, QueryKind::All));
 
         // Build the network.
-        let cert_store = sequoia.cert_store_or_else()?;
+        let cert_store = sequoia.cert_store_or_else().map_err(sys!())?;
         if return_all {
             cert_store.precompute();
         }
@@ -512,14 +670,18 @@ impl<'a> Builder<'a> {
                     let userid_check = UserID::from(format!("<{}>", email));
                     if let Ok(Some(email_check)) = userid_check.email() {
                         if email != email_check {
-                            return Err(anyhow::anyhow!(
-                                "{:?} does not appear to be an email address",
-                                email));
+                            return Err(Error::ArgumentError(
+                                error::ArgumentError::InvalidEmail(
+                                    error::InvalidEmail {
+                                        email: email.to_owned(),
+                                    })));
                         }
                     } else {
-                        return Err(anyhow::anyhow!(
-                            "{:?} does not appear to be an email address",
-                            email));
+                        return Err(Error::ArgumentError(
+                            error::ArgumentError::InvalidEmail(
+                                error::InvalidEmail {
+                                    email: email.to_owned(),
+                                })));
                     }
 
                     // Now, iterate over all of the certifications of the target,
@@ -575,7 +737,15 @@ impl<'a> Builder<'a> {
                     {
                         t!("Authenticating domain {}", pattern);
 
-                        let domain = UserIDQueryParams::is_domain(pattern)?;
+                        let domain = UserIDQueryParams::is_domain(pattern)
+                            .map_err(|err| {
+                                Error::ArgumentError(
+                                    error::ArgumentError::InvalidDomain(
+                                        error::InvalidDomain {
+                                            domain: pattern.to_owned(),
+                                            error: err,
+                                        }))
+                            })?;
                         let mut query_params = UserIDQueryParams::new();
                         query_params.set_email(true)
                             .set_anchor_start(false);
@@ -782,7 +952,8 @@ impl<'a> Builder<'a> {
         let mut lints: Vec<(Option<anyhow::Error>, bool, &[usize])>
             = Vec::with_capacity(queries.len());
 
-        stream.output(&self.params, Output::StartOfBindings)?;
+        stream.output(&self.params, Output::StartOfBindings)
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         for (fingerprint, userid, cert_authenticated, i) in bindings.iter() {
             if let Some(userid) = userid {
@@ -870,12 +1041,14 @@ impl<'a> Builder<'a> {
                 } else {
                     vec![]
                 };
-                stream.output(&self.params, Output::Binding(Binding {
-                    fingerprint: fingerprint.clone(),
-                    userid: Some(userid.clone()),
-                    paths: paths,
-                    aggregate_trust_amount: aggregated_amount,
-                }))?;
+                stream.output(
+                    &self.params, Output::Binding(Binding {
+                        fingerprint: fingerprint.clone(),
+                        userid: Some(userid.clone()),
+                        paths: paths,
+                        aggregate_trust_amount: aggregated_amount,
+                    }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
             } else {
                 // A certificate with no User ID bindings.
                 if gossip || *cert_authenticated {
@@ -888,12 +1061,14 @@ impl<'a> Builder<'a> {
                         }
                     }
 
-                    stream.output(&self.params, Output::Binding(Binding {
-                        fingerprint: fingerprint.clone(),
-                        userid: None,
-                        paths: vec![],
-                        aggregate_trust_amount: 0,
-                    }))?;
+                    stream.output(
+                        &self.params, Output::Binding(Binding {
+                            fingerprint: fingerprint.clone(),
+                            userid: None,
+                            paths: vec![],
+                            aggregate_trust_amount: 0,
+                        }))
+                        .map_err(|err| Error::StreamOutputError(err))?;
                     bindings_authenticated += 1;
                 } else {
                     t!("Skipping {}: no user IDs", fingerprint);
@@ -906,7 +1081,8 @@ impl<'a> Builder<'a> {
             }
         }
 
-        stream.output(&self.params, Output::EndOfBindings)?;
+        stream.output(&self.params, Output::EndOfBindings)
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         let mut unsatisfied = Vec::new();
         let mut unsatisfied_lints = Vec::new();
@@ -973,38 +1149,22 @@ impl<'a> Builder<'a> {
                 },
                 query_lints: unsatisfied_lints,
                 matching_bindings: bindings.len(),
-                unsatisfied_queries: unsatisfied,
+                unsatisfied_queries: unsatisfied.clone(),
                 authenticated_bindings: bindings_authenticated,
                 unusable_bindings: bindings_unusable,
                 unauthenticated_bindings: bindings_not_authenticated
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
         }
 
-        if unsatisfied_count == 1 {
-            if gossip {
-                if queries.len() == 1 {
-                    Err(anyhow::anyhow!("No bindings match the query."))
-                } else {
-                    Err(anyhow::anyhow!("No bindings match one of the queries."))
-                }
-            } else {
-                if queries.len() == 1 {
-                    Err(anyhow::anyhow!(
-                        "No bindings matching the query could be authenticated."))
-                } else {
-                    Err(anyhow::anyhow!(
-                        "No bindings matching one of the queries could be authenticated."))
-                }
-            }
-        } else if unsatisfied_count > 1 {
-            if gossip {
-                Err(anyhow::anyhow!("No bindings match {} of the queries.",
-                                    unsatisfied_count))
-            } else {
-                Err(anyhow::anyhow!(
-                    "No bindings matching {} of the queries could be authenticated.",
-                    unsatisfied_count))
-            }
+        if unsatisfied_count > 0 {
+            Err(Error::OperationalError(
+                error::OperationalError::NoMatchingBindings(
+                    error::NoMatchingBindings {
+                        queries: queries.to_owned(),
+                        unsatisfied,
+                        gossip,
+                    })))
         } else {
             Ok(())
         }

@@ -453,7 +453,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         weprintln!(
                                             initial_indent = " - ",
                                             "{}",
-                                            crate::one_line_error_chain(err));
+                                            crate::one_line_error_chain(anyhow::Error::from(err)));
                                         weprintln!();
                                     } else {
                                         authenticated = true;
