@@ -1,3 +1,127 @@
+//! Functionality for listing certificates.
+//!
+//! A Sequoia context usually includes a certificate store.
+//! [`Sequoia::cert_list`] enables the user to query the certificate
+//! store by fingerprint or by user ID.  A query matches on a binding,
+//! which is either a certificate and a user ID pair or a bare
+//! certificate.
+//!
+//! In additional to returning any matching certificates,
+//! [`Sequoia::cert_list`] also returns why a binding is considered
+//! authenticated.  By default, [`Sequoia::cert_list`] only matches on
+//! authenticated certificates.  However, setting the gossip flag
+//! (using [`Builder::gossip`]) changes it to return any matching
+//! bindings.
+//!
+//! If you are only looking up a certificate by its fingerprint, you
+//! should use [`Sequoia::lookup`], which is lighter weight.
+//!
+//! # Examples
+//!
+//! List all bindings that have an authenticated user ID that contain
+//! an email address with the specified domain.  (See [`Query`] for
+//! other types of queries.)
+//!
+//! ```
+//! use sequoia::Sequoia;
+//! use sequoia::types::Query;
+//! use sequoia::cert::list::Output;
+//! # use sequoia::prompt::Cancel;
+//!
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral()?.build()?;
+//! #
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # // Generate a key and import it into the certificate store.
+//! # // This will marked it as a trusted introducer.
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new(), None)
+//! #     .expect("can generate a key")
+//! #     .into_cert();
+//! #
+//! let mut output = Vec::new();
+//! sq.cert_list(Some(Query::domain("example.org")))
+//!     .list(&mut output)?;
+//! # let mut bindings = 0;
+//! for o in output {
+//!     if let Output::Binding(binding) = o {
+//!         eprintln!("{}, {:?} matches",
+//!                   binding.fingerprint,
+//!                   binding.userid
+//!                       .map(|u| {
+//!                           String::from_utf8_lossy(u.value()).to_string()
+//!                       })
+//!                       .unwrap_or_else(|| "<bare certificate>".into()));
+//! #       bindings += 1;
+//!     }
+//! }
+//! # assert_eq!(bindings, 1);
+//! # Ok(()) }
+//! ```
+//!
+//! The above example waits for all of the results and then displays
+//! them.  If the certificate store is very large, this can take a
+//! noticeable amount of time.  To display the results as they are
+//! returned, we can instead provide an implementation of [`Stream`],
+//! which is called with each result.
+//!
+//! ```
+//! use sequoia::Result;
+//! use sequoia::Sequoia;
+//! use sequoia::cert::list::Output;
+//! use sequoia::cert::list::Params;
+//! use sequoia::cert::list::Stream;
+//! use sequoia::types::Query;
+//! # use sequoia::prompt::Cancel;
+//!
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral()?.build()?;
+//! #
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # // Generate a key and import it into the certificate store.
+//! # // This will marked it as a trusted introducer.
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new(), None)
+//! #     .expect("can generate a key")
+//! #     .into_cert();
+//! #
+//! struct MyStream {
+//! #   bindings: usize,
+//! }
+//!
+//! impl Stream for MyStream {
+//!     fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+//!         if let Output::Binding(binding) = output {
+//!             eprintln!("{}, {:?} matches",
+//!                       binding.fingerprint,
+//!                       binding.userid
+//!                           .map(|u| {
+//!                               String::from_utf8_lossy(u.value()).to_string()
+//!                           })
+//!                           .unwrap_or_else(|| "<bare certificate>".into()));
+//! #           self.bindings += 1;
+//!         }
+//!
+//!         Ok(())
+//!     }
+//! }
+//!
+//! let mut my_stream = MyStream {
+//! #   bindings: 0,
+//! };
+//!
+//! sq.cert_list(Some(Query::domain("example.org")))
+//!     .list(&mut my_stream)?;
+//! # assert_eq!(my_stream.bindings, 1);
+//! # Ok(()) }
+//! ```
+
 use std::collections::BTreeSet;
 
 use anyhow::Context;
