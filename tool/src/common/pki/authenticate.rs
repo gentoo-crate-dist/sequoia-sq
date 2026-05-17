@@ -138,6 +138,22 @@ where
     }
 }
 
+impl<Arguments, Prefix, Options, Doc>
+    IntoIterator
+    for CertDesignators<Arguments, Prefix, Options, Doc>
+where
+    Arguments: typenum::Unsigned,
+    Prefix: cert_designator::ArgumentPrefix,
+{
+    type Item = Query;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter
+    {
+        Vec::<Query>::from(self).into_iter()
+    }
+}
+
 impl<Arguments, Options, Documentation>
     From<UserIDDesignators<Arguments, Options, Documentation>> for Vec<Query>
 where
@@ -163,5 +179,20 @@ where
                 }
             })
             .collect()
+    }
+}
+
+impl<Arguments, Options, Documentation>
+    IntoIterator
+    for UserIDDesignators<Arguments, Options, Documentation>
+where
+    Arguments: typenum::Unsigned,
+{
+    type Item = Query;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter
+    {
+        Vec::<Query>::from(self).into_iter()
     }
 }

@@ -52,7 +52,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
         }) => {
             assert_eq!(userid.len(), 1);
 
-            let list = sq.sequoia.cert_list(userid.into())
+            let list = sq.sequoia.cert_list(userid)
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -75,7 +75,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
         }) => {
             assert_eq!(cert.len(), 1);
 
-            let list = sq.sequoia.cert_list(cert.into())
+            let list = sq.sequoia.cert_list(cert)
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)

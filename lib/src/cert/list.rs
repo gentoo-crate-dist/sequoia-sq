@@ -190,9 +190,9 @@ impl Sequoia {
     /// List bindings.
     ///
     /// See [`Builder`] for details.
-    pub fn cert_list<Q>(&self, queries: Vec<Q>) -> Builder<'_>
+    pub fn cert_list<I>(&self, queries: I) -> Builder<'_>
     where
-        Q: Into<Query>,
+        I: IntoIterator<Item=Query>,
     {
         let queries: Vec<Query>
             = queries.into_iter().map(|q| q.into()).collect();
