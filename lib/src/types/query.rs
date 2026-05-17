@@ -3,6 +3,7 @@ use openpgp::KeyHandle;
 
 /// The different kinds of queries that we support.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum QueryKind {
     AuthenticatedCert(KeyHandle),
     Cert(KeyHandle),
@@ -16,6 +17,7 @@ pub enum QueryKind {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Query {
     pub kind: QueryKind,
 }

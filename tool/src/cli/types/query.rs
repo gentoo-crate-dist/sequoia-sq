@@ -22,9 +22,7 @@ impl Query {
     {
         Query {
             argument,
-            inner: InnerQuery {
-                kind,
-            }
+            inner: InnerQuery::for_kind(kind),
         }
     }
 
