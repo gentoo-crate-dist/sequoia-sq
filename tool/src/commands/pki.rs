@@ -10,6 +10,7 @@ pub mod vouch;
 use crate::cli;
 
 use crate::Sq;
+use crate::cli::types::Query;
 use crate::common::pki::output::list::ListContext;
 
 pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
@@ -28,8 +29,10 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
             assert_eq!(cert.len(), 1);
             assert_eq!(userid.len(), 1);
 
+            let queries = cert.binding_query(userid);
+
             let list = sq.sequoia.cert_list(
-                cert.binding_query(userid))
+                    queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -38,7 +41,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
             let stdout = &mut std::io::stdout();
 
             let stream = crate::common::pki::output::list::Stream::new(
-                &sq, list.params(), ListContext::PKI,
+                &sq, queries, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
             list.list(stream)?
@@ -52,7 +55,10 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
         }) => {
             assert_eq!(userid.len(), 1);
 
-            let list = sq.sequoia.cert_list(userid)
+            let queries = Vec::<Query>::from(userid);
+
+            let list = sq.sequoia.cert_list(
+                    queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -61,7 +67,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
             let stdout = &mut std::io::stdout();
 
             let stream = crate::common::pki::output::list::Stream::new(
-                &sq, list.params(), ListContext::PKI,
+                &sq, queries, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
             list.list(stream)?
@@ -75,7 +81,10 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
         }) => {
             assert_eq!(cert.len(), 1);
 
-            let list = sq.sequoia.cert_list(cert)
+            let queries = Vec::<Query>::from(cert);
+
+            let list = sq.sequoia.cert_list(
+                    queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -84,7 +93,7 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
             let stdout = &mut std::io::stdout();
 
             let stream = crate::common::pki::output::list::Stream::new(
-                &sq, list.params(), ListContext::PKI,
+                &sq, queries, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
             list.list(stream)?

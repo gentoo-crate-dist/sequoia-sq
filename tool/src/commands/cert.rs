@@ -6,13 +6,13 @@ use openpgp::{
     KeyHandle,
 };
 
-use sequoia::types::Query;
 use sequoia::types::QueryKind;
 
 use crate::{
     Result,
     Sq,
     cli::cert::{Command, list, Subcommands},
+    cli::types::Query,
     common::pki::output::list::ListContext,
 };
 
@@ -59,13 +59,12 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
                 let query_kind = query_kind.unwrap_or_else(|| {
                     QueryKind::Pattern(pattern.clone())
                 });
-                queries.push(Query {
-                    argument: Some(format!("{:?}", pattern)),
-                    kind: query_kind,
-                });
+                queries.push(Query::for_kind(
+                    Some(format!("{:?}", pattern)),
+                    query_kind));
             }
 
-            let list = sq.sequoia.cert_list(queries)
+            let list = sq.sequoia.cert_list(queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -74,7 +73,7 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
             let stdout = &mut std::io::stdout();
 
             let stream = crate::common::pki::output::list::Stream::new(
-                &sq, list.params(), ListContext::PKI,
+                &sq, queries, list.params(), ListContext::PKI,
                 *show_paths, stdout);
 
             list.list(stream)?;

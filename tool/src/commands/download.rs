@@ -34,13 +34,13 @@ use openpgp::parse::PacketParserResult;
 use openpgp::parse::Parse;
 use openpgp::types::KeyFlags;
 
-use sequoia::types::Query;
 use sequoia::types::TrustAmount;
 use sequoia::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;
 use crate::cli::download;
+use crate::cli::types::Query;
 use crate::cli::types::cert_designator::CertDesignator;
 use crate::commands::network::CONNECT_TIMEOUT;
 use crate::commands::network::USER_AGENT;
@@ -424,11 +424,12 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         }
                                     }
 
+                                    let queries = vec![
+                                        Query::for_key_handle(
+                                            None, cert.key_handle())
+                                    ];
                                     let list = sq.sequoia.cert_list(
-                                        vec![
-                                            Query::for_key_handle(
-                                                None, cert.key_handle())
-                                        ])
+                                        queries.iter().map(|q| q.to_inner().clone()))
                                         .gossip(false)
                                         .unusable(false)
                                         .certification_network(false)
@@ -437,7 +438,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                     let stderr = &mut std::io::stderr();
 
                                     let stream = crate::common::pki::output::list::Stream::new(
-                                        &sq, list.params(),
+                                        &sq, queries, list.params(),
                                         ListContext::Download,
                                         true, stderr);
 

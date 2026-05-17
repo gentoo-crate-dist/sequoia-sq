@@ -6,6 +6,7 @@ use sequoia::types::QueryKind;
 
 use crate::Result;
 use crate::Sq;
+use crate::cli::types::Query;
 use crate::common::pki::output::ConciseHumanReadableOutputNetwork;
 use crate::common::pki::output::OutputType;
 
@@ -19,12 +20,14 @@ pub enum ListContext {
 }
 
 pub struct Stream<'a> {
+    queries: Vec<Query>,
     context: ListContext,
     network: ConciseHumanReadableOutputNetwork<'a>,
 }
 
 impl<'a> Stream<'a> {
     pub fn new(sq: &'a Sq,
+               queries: Vec<Query>,
                params: &list::Params,
                context: ListContext,
                show_paths: bool,
@@ -38,6 +41,7 @@ impl<'a> Stream<'a> {
             output, &sq, required_amount, show_paths);
 
         Self {
+            queries,
             context,
             network,
         }
@@ -95,13 +99,26 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                 }
 
                 for q in unsatisfied_queries.iter() {
+                    // We do a linear search, which makes this is
+                    // quadratic.  Use a generic message if we'd do
+                    // too much work.
+                    let arg: &str = if self.queries.len() * unsatisfied_queries.len() < 4096 {
+                        self.queries.iter().find(|q2| {
+                            q2.inner.identical(&q)
+                        })
+                    } else {
+                        None
+                    }
+                    .and_then(|q| {
+                        q.argument.as_deref()
+                    })
+                    .unwrap_or("the query");
+
                     if params.gossip() {
-                        qprintln!("No valid bindings match {}.",
-                                  q.argument.as_deref().unwrap_or("the query"))
+                        qprintln!("No valid bindings match {}.", arg)
                     } else {
                         qprintln!("No bindings matching {} could be \
-                                   authenticated.",
-                                  q.argument.as_deref().unwrap_or("the query"));
+                                   authenticated.", arg);
                     }
                 }
 

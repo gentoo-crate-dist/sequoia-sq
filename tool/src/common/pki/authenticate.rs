@@ -1,6 +1,5 @@
 use typenum::Unsigned;
 
-use sequoia::types::Query;
 use sequoia::types::QueryKind;
 
 use crate::cli;
@@ -8,6 +7,7 @@ use cli::types::CertDesignators;
 use cli::types::cert_designator;
 use cli::types::userid_designator;
 use cli::types::UserIDDesignators;
+use cli::types::Query;
 
 impl<Arguments, Prefix, Options, Doc>
     CertDesignators<Arguments, Prefix, Options, Doc>
@@ -48,10 +48,7 @@ where
                     Grep(pattern) => QueryKind::Pattern(pattern.clone()),
                 };
 
-                Query {
-                    argument: Some(designator.argument::<Prefix>()),
-                    kind,
-                }
+                Query::for_kind(Some(designator.argument::<Prefix>()), kind)
             })
             .collect()
     }
@@ -115,12 +112,11 @@ where
         };
 
         vec![
-            Query {
-                argument: Some(format!("{} {}",
-                                       cert.argument::<Prefix>(),
-                                       userid.argument::<UserIDArguments>())),
-                kind,
-            }
+            Query::for_kind(
+                Some(format!("{} {}",
+                             cert.argument::<Prefix>(),
+                             userid.argument::<UserIDArguments>())),
+                kind),
         ]
     }
 }
@@ -173,10 +169,9 @@ where
                     }
                 };
 
-                Query {
-                    argument: Some(designator.argument::<Arguments>()),
-                    kind,
-                }
+                Query::for_kind(
+                    Some(designator.argument::<Arguments>()),
+                    kind)
             })
             .collect()
     }

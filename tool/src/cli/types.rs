@@ -29,6 +29,8 @@ pub use userid_designator::UserIDDesignators;
 pub mod expiration;
 pub use expiration::Expiration;
 pub use expiration::ExpirationArg;
+pub mod query;
+pub use query::Query;
 pub mod signature_notations;
 pub use signature_notations::SignatureNotationsArg;
 pub mod special_names;

@@ -17,9 +17,6 @@ pub enum QueryKind {
 
 #[derive(Debug, Clone)]
 pub struct Query {
-    /// The user-supplied command-line argument, e.g., `--cert
-    /// FINGERPRINT`.
-    pub argument: Option<String>,
     pub kind: QueryKind,
 }
 
@@ -27,21 +24,29 @@ impl Query {
     /// Returns a `Query` that matches all bindings.
     pub fn all() -> Self {
         Query {
-            argument: None,
             kind: QueryKind::All,
         }
     }
 
-    /// Returns a `Query` for a key handle.
-    ///
-    /// `argument` is the user-supplied command-line argument, e.g.,
-    /// `--cert FINGERPRINT`.
-    pub fn for_key_handle(argument: Option<String>, kh: KeyHandle)
-        -> Query
-    {
-        Query {
-            argument,
-            kind: QueryKind::Cert(kh),
+    /// Returns whether the two queries are identical.
+    pub fn identical(&self, other: &Self) -> bool {
+        use QueryKind::*;
+
+        match (&self.kind, &other.kind) {
+            (AuthenticatedCert(a), AuthenticatedCert(b)) => a == b,
+            (Cert(a), Cert(b)) => a == b,
+            (UserID(a), UserID(b)) => a == b,
+            (Email(a), Email(b)) => a == b,
+            (UserIDBinding(a1, a2), UserIDBinding(b1, b2)) => {
+                a1 == b1 && a2 == b2
+            }
+            (EmailBinding(a1, a2), EmailBinding(b1, b2)) => {
+                a1 == b1 && a2 == b2
+            }
+            (Domain(a), Domain(b)) => a == b,
+            (Pattern(a), Pattern(b)) => a == b,
+            (All, All) => true,
+            (_, _) => false,
         }
     }
 }
