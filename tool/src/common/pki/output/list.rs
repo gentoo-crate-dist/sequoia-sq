@@ -60,7 +60,7 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
 
         match output {
             StartOfBindings => (),
-            Binding(list::Binding {
+            Binding(list::output::Binding {
                 fingerprint,
                 userid,
                 paths,
@@ -75,7 +75,7 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
             }
             EndOfBindings => self.network.finalize()?,
 
-            Report(list::Report {
+            Report(list::output::Report {
                 missing_trust_roots,
                 query_lints,
                 matching_bindings,

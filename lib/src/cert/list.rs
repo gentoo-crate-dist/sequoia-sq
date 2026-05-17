@@ -89,74 +89,79 @@ impl Stream for () {
     }
 }
 
-/// A matching binding.
-///
-/// Note the binding is not necessarily authenticated.  You still
-/// need to check the aggregate trust amount.
-#[non_exhaustive]
-pub struct Binding {
-    /// The certificate.
-    pub fingerprint: Fingerprint,
+/// Data structures related to [`Output`].
+pub mod output {
+    use super::*;
 
-    /// The user ID.  This can be `None` when just authenticating a
-    /// certificate.  This happens when listing all certificates and
-    /// there is a certificate with no user IDs.
-    pub userid: Option<UserID>,
-
-    /// A set of paths that help authenticate the binding.
+    /// A matching binding.
     ///
-    /// If the set of paths are sufficient to authenticate the binding
-    /// at the required confidence level, then the set of paths may
-    /// not be exhaustive.
-    pub paths: Vec<(wot::Path, usize)>,
+    /// Note the binding is not necessarily authenticated.  You still
+    /// need to check the aggregate trust amount.
+    #[non_exhaustive]
+    pub struct Binding {
+        /// The certificate.
+        pub fingerprint: Fingerprint,
 
-    /// The aggregate trust amount across all paths.
-    ///
-    /// This excludes overlaps and as such may be less than simply
-    /// summing the trust amount of each individual path.
-    pub aggregate_trust_amount: usize,
-}
+        /// The user ID.  This can be `None` when just authenticating a
+        /// certificate.  This happens when listing all certificates and
+        /// there is a certificate with no user IDs.
+        pub userid: Option<UserID>,
 
-#[non_exhaustive]
-pub struct Report {
-    /// A certificate for each of the specified trust roots could not
-    /// be found.
-    ///
-    /// This is only included in the report if at least one query did
-    /// not match anything.
-    ///
-    /// Roots is a copy of the trust roots.
-    pub missing_trust_roots:
-        Option<(wot::Roots, Vec<(Fingerprint, anyhow::Error)>)>,
+        /// A set of paths that help authenticate the binding.
+        ///
+        /// If the set of paths are sufficient to authenticate the binding
+        /// at the required confidence level, then the set of paths may
+        /// not be exhaustive.
+        pub paths: Vec<(wot::Path, usize)>,
 
-    /// Query lints.
-    pub query_lints: Vec<(Query, anyhow::Error)>,
+        /// The aggregate trust amount across all paths.
+        ///
+        /// This excludes overlaps and as such may be less than simply
+        /// summing the trust amount of each individual path.
+        pub aggregate_trust_amount: usize,
+    }
 
-    /// The number of bindings that match the query.
-    pub matching_bindings: usize,
+    #[non_exhaustive]
+    pub struct Report {
+        /// A certificate for each of the specified trust roots could not
+        /// be found.
+        ///
+        /// This is only included in the report if at least one query did
+        /// not match anything.
+        ///
+        /// Roots is a copy of the trust roots.
+        pub missing_trust_roots:
+            Option<(wot::Roots, Vec<(Fingerprint, anyhow::Error)>)>,
 
-    /// The queries that didn't match any bindings in the certificate
-    /// store.
-    pub unsatisfied_queries: Vec<Query>,
+        /// Query lints.
+        pub query_lints: Vec<(Query, anyhow::Error)>,
 
-    /// The number of bindings that match the query and could be
-    /// authenticated.
-    pub authenticated_bindings: usize,
+        /// The number of bindings that match the query.
+        pub matching_bindings: usize,
 
-    /// The number of matching bindings that were not considered
-    /// because they are unusable.
-    ///
-    /// See [`Builder::unusable`] for an explanation of
-    /// unusable bindings.
-    pub unusable_bindings: usize,
+        /// The queries that didn't match any bindings in the certificate
+        /// store.
+        pub unsatisfied_queries: Vec<Query>,
 
-    /// The number of matching bindings that were not considered
-    /// because they could not be authenticated at the specified
-    /// level.
-    ///
-    /// When gossip mode is enabled, all bindings are considered
-    /// authenticated at the specified level and this will be 0.
-    pub unauthenticated_bindings: usize,
+        /// The number of bindings that match the query and could be
+        /// authenticated.
+        pub authenticated_bindings: usize,
+
+        /// The number of matching bindings that were not considered
+        /// because they are unusable.
+        ///
+        /// See [`Builder::unusable`] for an explanation of
+        /// unusable bindings.
+        pub unusable_bindings: usize,
+
+        /// The number of matching bindings that were not considered
+        /// because they could not be authenticated at the specified
+        /// level.
+        ///
+        /// When gossip mode is enabled, all bindings are considered
+        /// authenticated at the specified level and this will be 0.
+        pub unauthenticated_bindings: usize,
+    }
 }
 
 /// The variants of this enum are the different types of output that
@@ -172,7 +177,7 @@ pub enum Output {
     ///
     /// Note the binding is not necessarily authenticated.  You still
     /// need to check the aggregate trust amount.
-    Binding(Binding),
+    Binding(output::Binding),
 
     /// All of the bindings that will be returned have been returned.
     ///
@@ -183,7 +188,7 @@ pub enum Output {
     ///
     /// The report includes lints and statistics that are collected
     /// during the operation.
-    Report(Report),
+    Report(output::Report),
 }
 
 impl Sequoia {
@@ -973,7 +978,7 @@ impl<'a> Builder<'a> {
                     vec![]
                 };
                 stream.output(
-                    &self.params, Output::Binding(Binding {
+                    &self.params, Output::Binding(output::Binding {
                         fingerprint: fingerprint.clone(),
                         userid: Some(userid.clone()),
                         paths: paths,
@@ -993,7 +998,7 @@ impl<'a> Builder<'a> {
                     }
 
                     stream.output(
-                        &self.params, Output::Binding(Binding {
+                        &self.params, Output::Binding(output::Binding {
                             fingerprint: fingerprint.clone(),
                             userid: None,
                             paths: vec![],
@@ -1066,7 +1071,7 @@ impl<'a> Builder<'a> {
             = bindings.len() - bindings_authenticated - bindings_unusable;
 
         stream.output(
-            &self.params, Output::Report(Report {
+            &self.params, Output::Report(output::Report {
                 missing_trust_roots: if ! unsatisfied.is_empty() {
                     Some((n.roots().clone(), missing_trust_roots))
                 } else {
