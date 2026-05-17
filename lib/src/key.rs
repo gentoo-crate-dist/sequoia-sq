@@ -48,6 +48,23 @@ pub enum PasswordPolicy {
     Prompt,
 }
 
+pub(crate) fn certify_generated_cert(sequoia: &Sequoia)
+    -> Result<Arc<LazyCert<'static>>>
+{
+    let hostname =
+        gethostname::gethostname().to_string_lossy().to_string();
+    let certd = sequoia.certd_or_else()?;
+
+    let (ca, _created) = certd.shadow_ca(
+        &format!("generated_on_{}", hostname),
+        true,
+        format!("Generated on {}", hostname),
+        1,
+        &[])?;
+
+    Ok(ca)
+}
+
 /// Certifies the newly created key with a per-host shadow CA that
 /// marks the origin.
 ///
@@ -60,16 +77,7 @@ pub fn certify_generated<P>(sequoia: &Sequoia, cert: &Cert, prompt: P)
 where
     P: prompt::Prompt,
 {
-    let hostname =
-        gethostname::gethostname().to_string_lossy().to_string();
-    let certd = sequoia.certd_or_else()?;
-
-    let (ca, _created) = certd.shadow_ca(
-        &format!("generated_on_{}", hostname),
-        true,
-        format!("Generated on {}", hostname),
-        1,
-        &[])?;
+    let ca = certify_generated_cert(sequoia)?;
 
     // let prompt = crate::common::password::Prompt::new(sequoia, true);
 
