@@ -98,6 +98,7 @@ pub mod output {
     /// Note the binding is not necessarily authenticated.  You still
     /// need to check the aggregate trust amount.
     #[non_exhaustive]
+    #[derive(Debug)]
     pub struct Binding {
         /// The certificate.
         pub fingerprint: Fingerprint,
@@ -122,6 +123,7 @@ pub mod output {
     }
 
     #[non_exhaustive]
+    #[derive(Debug)]
     pub struct Report {
         /// A certificate for each of the specified trust roots could not
         /// be found.
