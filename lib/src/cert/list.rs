@@ -1084,3 +1084,366 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::BTreeSet;
+
+    use crate::prompt::Cancel;
+
+    fn check(sequoia: &Sequoia,
+             output: Vec<Output>,
+             expected_certs: &[(Fingerprint, Option<&str>, usize)])
+    {
+        let local_trust_root = sequoia.local_trust_root()
+            .expect("have local trust root")
+            .fingerprint();
+        let generated_cert = sequoia.shadow_ca_generated_on()
+            .expect("have generate on")
+            .fingerprint();
+
+        let mut saw_start_of_bindings = false;
+        let mut saw_end_of_bindings = false;
+        let mut saw_report = false;
+
+        let expected_certs = BTreeSet::from_iter(
+            expected_certs
+                .into_iter()
+                .map(|(fingerprint, userid, trust_amount)| {
+                    (fingerprint.clone(),
+                     userid.as_ref().map(|u| UserID::from(*u)),
+                     *trust_amount)
+                }));
+        let mut got_certs = BTreeSet::new();
+
+        let mut binding_count = 0;
+
+        eprintln!("Start of cert list");
+        for o in output.iter() {
+            match o {
+                Output::StartOfBindings => {
+                    eprintln!("- Start of bindings");
+                    assert!(! saw_start_of_bindings);
+                    assert!(! saw_end_of_bindings);
+                    assert!(! saw_report);
+                    saw_start_of_bindings = true;
+                }
+                Output::Binding(binding) => {
+                    eprintln!("- Binding: {}, {}, {}",
+                              binding.fingerprint,
+                              binding.userid
+                                  .as_ref()
+                                  .map(|userid| {
+                                      String::from_utf8_lossy(userid.value())
+                                          .to_string()
+                                  })
+                                  .unwrap_or_else(|| "<none>".into()),
+                              binding.aggregate_trust_amount);
+                    assert!(saw_start_of_bindings);
+                    assert!(! saw_end_of_bindings);
+                    assert!(! saw_report);
+
+                    if binding.fingerprint == local_trust_root {
+                        eprintln!("  (local trust root; skipping)");
+                    } else if binding.fingerprint == generated_cert {
+                        eprintln!("  (generated cert; skipping)");
+                    } else {
+                        got_certs.insert(
+                            (binding.fingerprint.clone(),
+                             binding.userid.clone(),
+                             binding.aggregate_trust_amount));
+                    }
+
+                    binding_count += 1;
+                }
+                Output::EndOfBindings => {
+                    eprintln!("- End of bindings");
+                    assert!(saw_start_of_bindings);
+                    assert!(! saw_end_of_bindings);
+                    assert!(! saw_report);
+                    saw_end_of_bindings = true;
+                }
+                Output::Report(report) => {
+                    eprintln!("- Report");
+                    assert!(saw_start_of_bindings);
+                    assert!(saw_end_of_bindings);
+                    assert!(! saw_report);
+                    saw_report = true;
+
+                    // If gossip is true, then not all returned
+                    // bindings will be authenticated.
+                    assert!(report.authenticated_bindings <= binding_count);
+                }
+            }
+        }
+        eprintln!("End of cert list");
+
+        assert!(saw_start_of_bindings);
+        assert!(saw_end_of_bindings);
+        assert!(saw_report);
+
+        let missing = expected_certs.difference(&got_certs)
+            .collect::<Vec<_>>();
+        if missing.len() > 0 {
+            eprintln!("{} missing bindings:", missing.len());
+            for (fingerprint, userid, aggregate_trust_amount) in missing.iter() {
+                eprintln!("  - {}, {}, {}",
+                          fingerprint,
+                          userid
+                              .as_ref()
+                              .map(|userid| {
+                                  String::from_utf8_lossy(userid.value())
+                                      .to_string()
+                              })
+                              .unwrap_or_else(|| "<none>".into()),
+                          aggregate_trust_amount);
+            }
+        }
+        let unexpected = got_certs.difference(&expected_certs)
+            .collect::<Vec<_>>();
+        if unexpected.len() > 0 {
+            eprintln!("{} unexpected bindings:", unexpected.len());
+            for (fingerprint, userid, aggregate_trust_amount) in unexpected.iter() {
+                eprintln!("  - {}, {}, {}",
+                          fingerprint,
+                          userid
+                              .as_ref()
+                              .map(|userid| {
+                                  String::from_utf8_lossy(userid.value())
+                                      .to_string()
+                              })
+                              .unwrap_or_else(|| "<none>".into()),
+                          aggregate_trust_amount);
+            }
+        }
+        assert_eq!(missing.len(), 0);
+        assert_eq!(unexpected.len(), 0);
+    }
+
+    #[test]
+    fn cert_list_empty() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let mut output = Vec::new();
+        sq.cert_list(std::iter::empty())
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output, &[]);
+
+        let mut output = Vec::new();
+        sq.cert_list(std::iter::empty())
+            .gossip(true)
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output, &[]);
+    }
+
+    #[test]
+    fn cert_list_generated() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate a key and import it into the certificate store.
+        // This will marked it as a trusted introducer.
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        let mut output = Vec::new();
+        sq.cert_list(std::iter::empty())
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output,
+              &[(alice.fingerprint(), Some("<alice@example.org>"), 120)]);
+
+        // In gossip mode, we don't stop at 120.  It will also get 1
+        // point of trust amount from the "Generated on host" shadow
+        // CA.
+        let mut output = Vec::new();
+        sq.cert_list(std::iter::empty())
+            .gossip(true)
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output,
+              &[(alice.fingerprint(), Some("<alice@example.org>"), 121)]);
+    }
+
+
+    #[test]
+    fn cert_list_imported() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let local_trust_root = sq.local_trust_root()
+            .expect("have local trust root")
+            .to_cert()
+            .expect("local trust root is valid")
+            .clone();
+
+        // Generate a key, manually import it into the certificate
+        // store, and manually mark it as a trusted introducer.
+        let gen = |email: &str, certifier: Option<(&Cert, u8, u8)>|
+        {
+            let cert = sq.key_generate()
+                .email(email)
+                .without_password()
+                .generate(Cancel::new(), Some((&mut std::io::sink(), &mut std::io::sink())))
+                .expect("can generate a key")
+                .into_cert();
+
+            let mut stats = Default::default();
+            sq.key_import()
+                .import_key(cert.clone(), &mut stats)
+                .expect("can import key");
+
+            if let Some((certifier, trust_depth, trust_amount)) = certifier {
+                sq.pki_certify()
+                    .trust_depth(trust_depth)
+                    .trust_amount(trust_amount)
+                    .certify(&certifier,
+                             &cert,
+                             &[UserID::from(format!("<{}>", email))],
+                             (),
+                             Cancel::new(),
+                             None)
+                    .expect("can certify");
+            }
+
+            cert
+        };
+
+        let alice = gen("alice@example.org", Some((&local_trust_root, 1, 120)));
+        let alice_binding
+            = (alice.fingerprint(), Some("<alice@example.org>"), 120);
+
+        let bob = gen("bob@example.org", Some((&alice, 1, 120)));
+        let bob_binding
+            = (bob.fingerprint(), Some("<bob@example.org>"), 120);
+
+        let carol = gen("carol@example.org", Some((&bob, 0, 120)));
+        let carol_binding
+            = (carol.fingerprint(), Some("<carol@example.org>"), 0);
+
+        let dave = gen("dave@example.org", None);
+        let dave_binding
+            = (dave.fingerprint(), Some("<dave@example.org>"), 0);
+
+        // List authenticated bindings.
+        let mut output = Vec::new();
+        sq.cert_list(std::iter::empty())
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output,
+              &[
+                  alice_binding.clone(),
+                  bob_binding.clone(),
+              ]);
+
+        // List all bindings.
+        let mut output = Vec::new();
+        sq.cert_list(std::iter::empty())
+            .gossip(true)
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output,
+              &[
+                  alice_binding.clone(),
+                  bob_binding.clone(),
+                  carol_binding.clone(),
+                  dave_binding.clone(),
+              ]);
+
+        // List individual bindings in different ways.
+        for binding in [
+            &alice_binding,
+            &bob_binding,
+            &carol_binding,
+            &dave_binding,
+        ] {
+            // By unauthenticated certificate.
+            let mut output = Vec::new();
+            sq.cert_list(
+                Some(Query::unauthenticated_cert(binding.0.clone().into())))
+                .list(&mut output)
+                .expect("ok");
+            if binding.2 >= 120 {
+                check(&sq, output, &[ binding.clone(), ]);
+            } else {
+                check(&sq, output, &[ ]);
+            }
+
+            let mut output = Vec::new();
+            sq.cert_list(
+                Some(Query::unauthenticated_cert(binding.0.clone().into())))
+                .gossip(true)
+                .list(&mut output)
+                .expect("ok");
+            check(&sq, output, &[ binding.clone(), ]);
+
+            // By authenticated certificate.
+            let mut output = Vec::new();
+            sq.cert_list(
+                Some(Query::authenticated_cert(binding.0.clone().into())))
+                .list(&mut output)
+                .expect("ok");
+            check(&sq, output, &[ binding.clone(), ]);
+
+            let mut output = Vec::new();
+            sq.cert_list(
+                Some(Query::authenticated_cert(binding.0.clone().into())))
+                .gossip(true)
+                .list(&mut output)
+                .expect("ok");
+            check(&sq, output, &[ binding.clone(), ]);
+
+            // By user ID.
+            if let Some(userid) = binding.1 {
+                let mut output = Vec::new();
+                sq.cert_list(
+                    Some(Query::userid(userid)))
+                    .list(&mut output)
+                    .expect("ok");
+                if binding.2 >= 120 {
+                    check(&sq, output, &[ binding.clone(), ]);
+                } else {
+                    check(&sq, output, &[ ]);
+                }
+
+                let mut output = Vec::new();
+                sq.cert_list(
+                    Some(Query::userid(userid)))
+                    .gossip(true)
+                    .list(&mut output)
+                    .expect("ok");
+                check(&sq, output, &[ binding.clone(), ]);
+            }
+        }
+
+        // And queries that don't match anything.
+        let mut output = Vec::new();
+        sq.cert_list(
+            Some(Query::unauthenticated_cert(
+                "012345678901234567890123456789".parse().expect("valid"))))
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output, &[ ]);
+
+        let mut output = Vec::new();
+        sq.cert_list(
+            Some(Query::authenticated_cert(
+                "012345678901234567890123456789".parse().expect("valid"))))
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output, &[ ]);
+
+        let mut output = Vec::new();
+        sq.cert_list(
+            Some(Query::userid("not present")))
+            .list(&mut output)
+            .expect("ok");
+        check(&sq, output, &[ ]);
+    }
+}
