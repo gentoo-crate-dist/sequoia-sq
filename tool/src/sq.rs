@@ -253,12 +253,6 @@ impl Sq {
             handle, keyflags, or_by_primary, policy, time)
     }
 
-    pub fn lookup_by_userid(&self, userid: &[String], email: bool)
-        -> Result<Vec<Cert>>
-    {
-        self.sequoia.lookup_by_userid(userid, email)
-    }
-
     /// Returns the local trust root, creating it if necessary.
     pub fn local_trust_root(&self) -> Result<Arc<LazyCert<'static>>> {
         self.sequoia.local_trust_root()
