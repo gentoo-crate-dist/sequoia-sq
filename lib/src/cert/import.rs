@@ -1057,8 +1057,10 @@ impl<'sequoia> Builder<'sequoia>
         let mut missing = Vec::new();
         let mut bad = Vec::new();
         for issuer in issuers.iter() {
-            let certs = if let Ok(certs)
-                = sequoia.lookup(std::iter::once(issuer), None, false, true)
+            let certs = if let Ok(certs) = sequoia.lookup()
+                .keyflags(None)
+                .or_by_primary(false)
+                .lookup(std::iter::once(issuer), true)
             {
                 certs
             } else {

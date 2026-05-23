@@ -159,8 +159,8 @@ impl Display for FileOrStdin {
 
 /// Designates a certificate by path, by stdin, or by key handle.
 ///
-/// Use [`Sequoia::lookup_one`](crate::Sequoia::lookup_one) to read
-/// the certificate.
+/// Use [`Sequoia::lookup`](crate::Sequoia::lookup) to read the
+/// certificate.
 #[derive(Clone, Debug)]
 pub enum FileStdinOrKeyHandle {
     FileOrStdin(FileOrStdin),

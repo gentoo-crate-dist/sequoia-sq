@@ -153,8 +153,10 @@ impl Sequoia {
     where
         F: Into<Option<KeyFlags>>,
     {
-        let certs = self.lookup(std::iter::once(key_handle),
-                                keyflags.into(), false, true);
+        let certs = self.lookup()
+            .keyflags(keyflags.into())
+            .or_by_primary(false)
+            .lookup(std::iter::once(key_handle), true);
 
         match certs {
             Ok(certs) => {

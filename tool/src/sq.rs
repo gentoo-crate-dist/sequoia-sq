@@ -206,7 +206,10 @@ impl Sq {
     where I: IntoIterator,
           I::Item: Into<FileStdinOrKeyHandle>,
     {
-        self.sequoia.lookup(handles, keyflags, or_by_primary, allow_ambiguous)
+        self.sequoia.lookup()
+            .keyflags(keyflags)
+            .or_by_primary(or_by_primary)
+            .lookup(handles, allow_ambiguous)
     }
 
     pub fn lookup_with_policy<'a, I>(&self, handles: I,
@@ -219,8 +222,11 @@ impl Sq {
     where I: IntoIterator,
           I::Item: Into<FileStdinOrKeyHandle>,
     {
-        self.sequoia.lookup_with_policy(handles, keyflags, or_by_primary,
-                                        allow_ambiguous, policy, time)
+        self.sequoia.lookup()
+            .keyflags(keyflags)
+            .or_by_primary(or_by_primary)
+            .lookup_with_policy(handles, allow_ambiguous,
+                                policy, time)
     }
 
     pub fn lookup_one<H>(&self, handle: H,
@@ -228,7 +234,10 @@ impl Sq {
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
     {
-        self.sequoia.lookup_one(handle, keyflags, or_by_primary)
+        self.sequoia.lookup()
+            .keyflags(keyflags)
+            .or_by_primary(or_by_primary)
+            .lookup_one(handle)
     }
 
     pub fn lookup_one_with_policy<H>(&self, handle: H,
@@ -239,8 +248,10 @@ impl Sq {
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
     {
-        self.sequoia.lookup_one_with_policy(
-            handle, keyflags, or_by_primary, policy, time)
+        self.sequoia.lookup()
+            .keyflags(keyflags)
+            .or_by_primary(or_by_primary)
+            .lookup_one_with_policy(handle, policy, time)
     }
 
     /// Returns the local trust root, creating it if necessary.

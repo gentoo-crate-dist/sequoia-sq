@@ -18,15 +18,108 @@ use crate::transitional::print_error_chain;
 use crate::types::FileStdinOrKeyHandle;
 
 impl Sequoia {
-    /// Looks up an identifier.
+    pub fn lookup(&self) -> Builder<'_> {
+        Builder {
+            params: Params {
+                sequoia: self,
+                keyflags: None,
+                or_by_primary: false,
+            }
+        }
+    }
+}
+
+/// Look up certificates.
+///
+/// These parameters are used by [`lookup`](Sequoia::lookup).
+#[derive(Clone)]
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
+
+    keyflags: Option<KeyFlags>,
+    or_by_primary: bool,
+}
+
+impl<'sequoia> Params<'sequoia> {
+    /// Returns the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        &self.sequoia
+    }
+
+    /// Returns the key flag restrictions.
     ///
-    /// This matches on both the primary key and the subkeys.
+    /// If `keyflags` is `Some`, then only returns certificates where
+    /// the matching key has at least one of the specified key flags.
+    pub fn keyflags(&self) -> Option<&KeyFlags> {
+        self.keyflags.as_ref()
+    }
+
+    /// Returns whether to also consider the primary key when
+    /// searching by key flags.
     ///
-    /// If `keyflags` is not `None`, then only returns certificates
-    /// where the matching key has at least one of the specified key
-    /// flags.  If `or_by_primary` is set, then certificates with the
-    /// specified key handle and a subkey with the specified flags
-    /// also match.
+    /// By default, if `keyflags` is set, the specified key must have
+    /// the specified key flags.  Setting this flag changes the
+    /// behavior as follows: if the specified key is a primary key,
+    /// then the certificate matches if it has any subkeys with the
+    /// specified key flags.
+    ///
+    /// Consider a certificate 0x1111 that has an encryption-capable
+    /// subkey 0x2222.  If this flag is unset, then searching for
+    /// `0x1111 + encryption capable` will not match the certificate
+    /// since 0x1111 is not encryption capable.  If `or_by_primary` is
+    /// set, then 0x1111 matches, because it has a subkey with the
+    /// specified key flags.
+    pub fn or_by_primary(&self) -> bool {
+        self.or_by_primary
+    }
+}
+
+/// Look up certificates.
+///
+/// A builder providing control over how to lookup certificates.
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
+}
+
+impl<'sequoia> Builder<'sequoia>
+{
+    /// Returns the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia> {
+        &self.params
+    }
+
+    /// Sets the key flag restrictions.
+    ///
+    /// If `keyflags` is `Some`, then only returns certificates where
+    /// the matching key has at least one of the specified key flags.
+    pub fn keyflags(mut self, keyflags: Option<KeyFlags>) -> Self {
+        self.params.keyflags = keyflags;
+        self
+    }
+
+    /// Sets whether to also consider the primary key when searching
+    /// by key flags.
+    ///
+    /// By default, if `keyflags` is set, the specified key must have
+    /// the specified key flags.  Setting this flag changes the
+    /// behavior as follows: if the specified key is a primary key,
+    /// then the certificate matches if it has any subkeys with the
+    /// specified key flags.
+    ///
+    /// Consider a certificate 0x1111 that has an encryption-capable
+    /// subkey 0x2222.  If this flag is unset, then searching for
+    /// `0x1111 + encryption capable` will not match the certificate
+    /// since 0x1111 is not encryption capable.  If `or_by_primary` is
+    /// set, then 0x1111 matches, because it has a subkey with the
+    /// specified key flags.
+    pub fn or_by_primary(mut self, or_by_primary: bool) -> Self {
+        self.params.or_by_primary = or_by_primary;
+        self
+    }
+
+    /// Looks up certificates.
     ///
     /// If `allow_ambiguous` is true, then all matching certificates
     /// are returned.  Otherwise, if an identifier matches multiple
@@ -34,26 +127,21 @@ impl Sequoia {
     ///
     /// An error is also returned if any of the identifiers does not
     /// match at least one certificate.
-    pub fn lookup<'a, I>(&self, handles: I,
-                         keyflags: Option<KeyFlags>,
-                         or_by_primary: bool,
-                         allow_ambiguous: bool)
+    pub fn lookup<'a, I>(&self, handles: I, allow_ambiguous: bool)
         -> Result<Vec<Cert>>
     where I: IntoIterator,
           I::Item: Into<FileStdinOrKeyHandle>,
     {
         self.lookup_with_policy(
-            handles, keyflags, or_by_primary, allow_ambiguous,
-            self.policy(), self.time())
+            handles, allow_ambiguous,
+            self.params.sequoia.policy(), self.params.sequoia.time())
     }
 
-    /// Looks up an identifier.
+    /// Looks up certificates.
     ///
     /// Like [`Sequoia::lookup`], but uses an alternate policy and an
     /// alternate reference time.
     pub fn lookup_with_policy<'a, I>(&self, handles: I,
-                                     keyflags: Option<KeyFlags>,
-                                     or_by_primary: bool,
                                      allow_ambiguous: bool,
                                      policy: &dyn Policy,
                                      time: SystemTime)
@@ -61,6 +149,14 @@ impl Sequoia {
     where I: IntoIterator,
           I::Item: Into<FileStdinOrKeyHandle>,
     {
+        let &Builder {
+            params: Params {
+                sequoia,
+                ref keyflags,
+                or_by_primary,
+            },
+        } = self;
+
         let mut results = Vec::new();
 
         for handle in handles {
@@ -71,7 +167,7 @@ impl Sequoia {
                     (cert.key_handle(), vec![ cert ])
                 }
                 FileStdinOrKeyHandle::KeyHandle(kh) => {
-                    let certs = self.cert_store_or_else()?
+                    let certs = sequoia.cert_store_or_else()?
                         .lookup_by_cert_or_subkey(&kh)
                         .with_context(|| {
                             format!("Failed to load {} from certificate store", kh)
@@ -162,13 +258,12 @@ impl Sequoia {
     ///
     /// Like [`Sequoia::lookup`], but looks up a certificate, which must be
     /// uniquely identified by `handle` and `keyflags`.
-    pub fn lookup_one<H>(&self, handle: H,
-                      keyflags: Option<KeyFlags>, or_by_primary: bool)
+    pub fn lookup_one<H>(&self, handle: H)
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
     {
-        self.lookup_one_with_policy(handle, keyflags, or_by_primary,
-                                    self.policy(), self.time())
+        self.lookup_one_with_policy(
+            handle, self.params.sequoia.policy(), self.params.sequoia.time())
     }
 
     /// Looks up a certificate.
@@ -176,15 +271,12 @@ impl Sequoia {
     /// Like [`Sequoia::lookup_one_with_policy`], but uses an alternate
     /// policy and an alternate reference time.
     pub fn lookup_one_with_policy<H>(&self, handle: H,
-                                     keyflags: Option<KeyFlags>,
-                                     or_by_primary: bool,
                                      policy: &dyn Policy,
                                      time: SystemTime)
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
     {
-        self.lookup_with_policy(std::iter::once(handle.into()),
-                                keyflags, or_by_primary, false,
+        self.lookup_with_policy(std::iter::once(handle.into()), false,
                                 policy, time)
             .map(|certs| {
                 assert_eq!(certs.len(), 1);

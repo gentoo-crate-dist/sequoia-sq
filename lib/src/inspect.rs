@@ -190,13 +190,16 @@ where
                 // Lookup the certificate, if possible.  Prefer a
                 // binding that is valid according to the current
                 // policy.  Otherwise, fall back to the NULL policy.
-                if let Ok(certs) = sq.lookup(Some(&recipient),
-                                             None, true, true)
+                if let Ok(certs) = sq.lookup()
+                    .keyflags(None)
+                    .or_by_primary(true)
+                    .lookup(Some(&recipient), true)
                     .or_else(|_| {
-                        sq.lookup_with_policy(
-                            Some(recipient),
-                            None, true, true,
-                            NULL_POLICY, sq.time())
+                        sq.lookup()
+                            .keyflags(None)
+                            .or_by_primary(true)
+                            .lookup_with_policy(Some(&recipient), true,
+                                                NULL_POLICY, sq.time())
                     })
                 {
                     if certs.len() == 1 {

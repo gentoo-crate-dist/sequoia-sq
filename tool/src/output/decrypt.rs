@@ -108,8 +108,11 @@ impl decrypt::Stream for Stream<'_> {
                                        hex::encode(&session_key));
                         }
                         if ! quiet && self.context != DecryptContext::PacketDecrypt {
-                            if let Ok(cert) = self.vstream.sq.sequoia.lookup_one(
-                                key.key_handle(), None, true)
+                            if let Ok(cert) = self.vstream.sq.sequoia
+                                .lookup()
+                                .keyflags(None)
+                                .or_by_primary(true)
+                                .lookup_one(key.key_handle())
                             {
                                 qprintln!("Decrypted by {}, {}",
                                           cert.fingerprint(),
@@ -153,13 +156,13 @@ impl decrypt::Stream for Stream<'_> {
 
                 for recipient in pkesks.iter().map(|p| p.recipient()) {
                     if let Some(r) = recipient {
-                        let certs = self.vstream.sq.sequoia.lookup(
-                            std::iter::once(&r),
-                            Some(KeyFlags::empty()
-                                 .set_storage_encryption()
-                                 .set_transport_encryption()),
-                            false,
-                            true);
+                        let certs = self.vstream.sq.sequoia
+                            .lookup()
+                            .keyflags(Some(KeyFlags::empty()
+                                           .set_storage_encryption()
+                                           .set_transport_encryption()))
+                            .or_by_primary(false)
+                            .lookup(std::iter::once(&r), true);
 
                         match certs {
                             Ok(certs) => {

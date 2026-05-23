@@ -2237,7 +2237,11 @@ Failed:              {:8}{:8}",
                 .expect("Can certify");
             check(output, 0, 0, 1, 0, 0);
 
-            let bob2 = sequoia.lookup_one(bob.key_handle(), None, false)
+            let bob2 = sequoia
+                .lookup()
+                .keyflags(None)
+                .or_by_primary(false)
+                .lookup_one(bob.key_handle())
                 .expect("Certificate for bob is in cert store");
 
             let mut output = Vec::new();
