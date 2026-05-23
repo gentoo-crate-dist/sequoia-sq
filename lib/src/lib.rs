@@ -36,10 +36,7 @@ use openpgp::policy::StandardPolicy;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 
-use cert_store::{
-    LazyCert,
-    StoreUpdate,
-};
+use cert_store::StoreUpdate;
 
 #[macro_use] pub mod transitional;
 #[macro_use] mod errors;
@@ -55,6 +52,7 @@ pub mod key;
 pub mod list;
 pub mod pki;
 pub mod provenance;
+mod shadow_ca;
 pub mod sign;
 pub mod types;
 pub mod userid;
@@ -396,13 +394,6 @@ impl Sequoia {
         let network = wot::NetworkBuilder::rooted(cert_store,
                                                   &*self.trust_roots());
         Ok(network)
-    }
-
-    /// Returns the local trust root, creating it if necessary.
-    pub fn local_trust_root(&self) -> Result<Arc<LazyCert<'static>>> {
-        self.certd_or_else()?.trust_root().map(|(cert, _created)| {
-            cert
-        })
     }
 
     /// Returns the trust roots, including the cert store's trust
