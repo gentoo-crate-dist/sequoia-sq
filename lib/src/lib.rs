@@ -377,8 +377,8 @@ impl Sequoia {
         Ok(Some(result))
     }
 
-    fn no_cert_store_err() -> errors::Error {
-        errors::Error::state_disabled("certificate store")
+    fn no_cert_store_err() -> SystemError {
+        errors::SystemError::CertStoreDisabled
     }
 
     /// Returns the cert store.

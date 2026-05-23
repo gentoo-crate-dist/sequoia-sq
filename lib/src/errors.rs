@@ -32,6 +32,9 @@ impl Error {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum SystemError {
+    #[error("Cert store disabled")]
+    CertStoreDisabled,
+
     #[error("Home disabled: can't save certificate")]
     HomeDisabled,
 
