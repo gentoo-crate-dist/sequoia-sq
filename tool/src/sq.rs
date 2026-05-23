@@ -127,32 +127,22 @@ impl Sq {
     ///
     /// If the cert store is disabled, returns `Ok(None)`.  If it is not yet
     /// open, opens it.
-    pub fn cert_store(&self) -> Result<Option<&WotStore>> {
+    pub fn cert_store(&self) -> Result<Option<Arc<WotStore>>> {
         self.sequoia.cert_store()
     }
 
     /// Returns the cert store.
     ///
     /// If the cert store is disabled, returns an error.
-    pub fn cert_store_or_else<'s>(&'s self) -> Result<&'s WotStore> {
+    pub fn cert_store_or_else(&self) -> Result<Arc<WotStore>> {
         self.sequoia.cert_store_or_else()
-    }
-
-    /// Returns a reference to the underlying certificate directory,
-    /// if it is configured.
-    ///
-    /// If the cert direcgory is disabled, returns an error.
-    pub fn certd_or_else(&self)
-        -> Result<&cert_store::store::certd::CertD<'static>>
-    {
-        self.sequoia.certd_or_else()
     }
 
     /// Returns a web-of-trust query builder.
     ///
     /// The trust roots are already set appropriately.
     pub fn wot_query(&self)
-        -> Result<wot::NetworkBuilder<&WotStore>>
+        -> Result<wot::NetworkBuilder<Arc<WotStore>>>
     {
         self.sequoia.wot_query()
     }
@@ -661,11 +651,11 @@ impl Sq {
         // Only open the cert store if we actually need it.
         let mut cert_store_ = None;
         let mut cert_store = || -> Result<_> {
-            if let Some(cert_store) = cert_store_ {
-                Ok(cert_store)
+            if let Some(cert_store) = cert_store_.as_ref() {
+                Ok(Arc::clone(cert_store))
             } else {
                 cert_store_ = Some(self.cert_store_or_else()?);
-                Ok(cert_store_.expect("just set"))
+                Ok(Arc::clone(cert_store_.as_ref().expect("just set")))
             }
         };
 
@@ -903,12 +893,25 @@ impl Sq {
                     }
                 }
                 cert_designator::CertDesignator::Special(name) => {
-                    let certd = match self.certd_or_else() {
+                    let cert_store = match self.cert_store_or_else() {
                         Ok(certd) => certd,
                         Err(err) => {
                             ret(
                                 designator,
                                 Err(err),
+                                true, Some(&mut filter));
+                            continue;
+                        }
+                    };
+                    let certd = match cert_store.certd() {
+                        Some(certd) => certd,
+                        None => {
+                            ret(
+                                designator,
+                                Err(anyhow::anyhow!(
+                                    "A local trust root and other special certificates are \
+                                     only available when using an OpenPGP certificate \
+                                     directory")),
                                 true, Some(&mut filter));
                             continue;
                         }

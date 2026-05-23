@@ -1277,10 +1277,8 @@ impl<'sequoia> Builder<'sequoia>
                     None
                 }
             } else {
-                if let Ok(ca) = sequoia.certd_or_else()
-                    .and_then(|certd| {
-                        certd.shadow_ca_autocrypt().map(|(ca, _)| ca)
-                    })
+                if let Ok(ca) = sequoia.shadow_ca_autocrypt()
+                    .map(|ca| ca.into_cert())
                 {
                     autocrypt_ca = Some(Some(Arc::clone(&ca)));
                     Some(ca)

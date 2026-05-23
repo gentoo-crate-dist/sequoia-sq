@@ -1233,7 +1233,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2327,7 +2327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3509,7 +3509,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3671,13 +3671,13 @@ dependencies = [
 
 [[package]]
 name = "sequoia-cert-store"
-version = "0.7.0"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc8987ed37e9931aee509c7ebc10e93b2ee5862849546c8a0c4588f3ed670b74"
+checksum = "c4e07e420427eb5e0dc3bb61172d181fa3c87afb2a77e8c629e920f54a291a6d"
 dependencies = [
  "anyhow",
  "crossbeam",
- "dirs 5.0.1",
+ "dirs 6.0.0",
  "gethostname",
  "num_cpus",
  "openpgp-cert-d",
@@ -3981,9 +3981,9 @@ dependencies = [
 
 [[package]]
 name = "sequoia-wot"
-version = "0.15.0"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a63dfb4727485747f504ec23bfe77e44b02724612f5b90ddf111acabd3c11e49"
+checksum = "cc825dbf5b5d5d20b16a01e39319a0e4d6368ea8b6ea7e88d12d2bd30532b011"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4368,7 +4368,7 @@ dependencies = [
  "getrandom 0.3.1",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5142,7 +5142,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

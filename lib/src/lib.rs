@@ -104,7 +104,7 @@ pub struct Sequoia {
 
     /// This will be set if the cert store has not been disabled, OR
     /// --keyring is passed.
-    cert_store: OnceLock<WotStore>,
+    cert_store: Mutex<Option<Arc<WotStore>>>,
 
     /// Additional keyrings to read.
     keyrings: Vec<PathBuf>,
@@ -224,7 +224,7 @@ impl Sequoia {
     ///
     /// If the cert store is disabled, returns `Ok(None)`.  If it is not yet
     /// open, opens it.
-    pub fn cert_store(&self) -> Result<Option<&WotStore>> {
+    pub fn cert_store(&self) -> Result<Option<Arc<WotStore>>> {
         if self.no_rw_cert_store()
             && self.keyrings.is_empty()
         {
@@ -232,9 +232,10 @@ impl Sequoia {
             return Ok(None);
         }
 
-        if let Some(cert_store) = self.cert_store.get() {
+        let mut cert_store = self.cert_store.lock().unwrap();
+        if let Some(cert_store) = cert_store.as_ref() {
             // The cert store is already initialized, return it.
-            return Ok(Some(cert_store));
+            return Ok(Some(Arc::clone(cert_store)));
         }
 
         let create_dirs = |path: &Path| -> Result<()> {
@@ -273,7 +274,7 @@ impl Sequoia {
         };
 
         // We need to initialize the cert store.
-        let mut cert_store = if ! self.no_rw_cert_store() {
+        let mut cs = if ! self.no_rw_cert_store() {
             // Open the cert-d.
 
             let path = self.cert_store_base()
@@ -327,7 +328,7 @@ impl Sequoia {
             return Err(err).context("Parsing keyrings");
         }
 
-        cert_store.add_backend(
+        cs.add_backend(
             Box::new(keyring),
             cert_store::AccessMode::Always);
 
@@ -337,19 +338,19 @@ impl Sequoia {
             .unwrap_or(false)
             && std::env::var("GNUPGHOME").is_err()
         {
-            if let Err(e) = crate::compat::sync_from_gnupg(self, &cert_store) {
+            if let Err(e) = crate::compat::sync_from_gnupg(self, &cs) {
                 self.warn(format_args!(
                     "Syncing state from GnuPG failed: {}", e));
             }
         }
 
-        let cert_store = WotStore::from_store(
-            cert_store, Box::new(self.policy().clone()) as Box::<dyn Policy>,
-            self.time());
+        let result = Arc::new(WotStore::from_store(
+            cs, Box::new(self.policy().clone()) as Box::<dyn Policy>,
+            self.time()));
 
-        let _ = self.cert_store.set(cert_store);
+        *cert_store = Some(Arc::clone(&result));
 
-        Ok(Some(self.cert_store.get().expect("just configured")))
+        Ok(Some(result))
     }
 
     fn no_cert_store_err() -> errors::Error {
@@ -359,37 +360,21 @@ impl Sequoia {
     /// Returns the cert store.
     ///
     /// If the cert store is disabled, returns an error.
-    pub fn cert_store_or_else<'s>(&'s self) -> Result<&'s WotStore> {
-        self.cert_store().and_then(|cert_store| cert_store.ok_or_else(|| {
-            Self::no_cert_store_err().into()
-        }))
+    pub fn cert_store_or_else<'s>(&'s self) -> Result<Arc<WotStore>> {
+        self.cert_store()
+            .and_then(|cert_store| {
+                cert_store
+                    .ok_or_else(|| {
+                        Self::no_cert_store_err().into()
+                    })
+            })
     }
-
-    /// Returns a reference to the underlying certificate directory,
-    /// if it is configured.
-    ///
-    /// If the cert direcgory is disabled, returns an error.
-    pub fn certd_or_else(&self)
-        -> Result<&cert_store::store::certd::CertD<'static>>
-    {
-        const NO_CERTD_ERR: &str =
-            "A local trust root and other special certificates are \
-             only available when using an OpenPGP certificate \
-             directory";
-
-        let cert_store = self.cert_store_or_else()
-            .with_context(|| NO_CERTD_ERR.to_string())?;
-
-        cert_store.certd()
-            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))
-    }
-
 
     /// Returns a web-of-trust query builder.
     ///
     /// The trust roots are already set appropriately.
     pub fn wot_query(&self)
-        -> Result<wot::NetworkBuilder<&WotStore>>
+        -> Result<wot::NetworkBuilder<Arc<WotStore>>>
     {
         let cert_store = self.cert_store_or_else()?;
         let network = wot::NetworkBuilder::rooted(cert_store,
@@ -401,47 +386,46 @@ impl Sequoia {
     /// root, if any.
     pub fn trust_roots(&self) -> Vec<Fingerprint> {
         let trust_root_local = self.trust_root_local.get_or_init(|| {
-            self.cert_store_or_else()
-                .ok()
-                .and_then(|cert_store| cert_store.certd())
-                .and_then(|certd| {
-                    match certd.certd().get(cert_store::store::openpgp_cert_d::TRUST_ROOT) {
-                        Ok(Some((_tag, cert_bytes))) => Some(cert_bytes),
-                        // Not found.
-                        Ok(None) => None,
-                        Err(err) => {
+            let cert_store = self.cert_store_or_else().ok()?;
+            let certd = cert_store.certd()?;
+
+            let cert_bytes = match certd.certd().get(cert_store::store::openpgp_cert_d::TRUST_ROOT) {
+                Ok(Some((_tag, cert_bytes))) => Some(cert_bytes),
+                // Not found.
+                Ok(None) => None,
+                Err(err) => {
+                    self.warn(format_args!(
+                        "Error looking up local trust root: {}", err));
+                    None
+                }
+            }?;
+
+            let cert = match RawCertParser::from_bytes(&cert_bytes[..]) {
+                Ok(mut parser) => {
+                    match parser.next() {
+                        Some(Ok(cert)) => Some(cert.fingerprint()),
+                        Some(Err(err)) => {
                             self.warn(format_args!(
-                                "Error looking up local trust root: {}", err));
+                                "Local trust root is corrupted: {}",
+                                err));
+                            None
+                        }
+                        None =>  {
+                            self.warn(format_args!(
+                                "Local trust root is corrupted: \
+                                 no data"));
                             None
                         }
                     }
-                })
-                .and_then(|cert_bytes| {
-                    match RawCertParser::from_bytes(&cert_bytes[..]) {
-                        Ok(mut parser) => {
-                            match parser.next() {
-                                Some(Ok(cert)) => Some(cert.fingerprint()),
-                                Some(Err(err)) => {
-                                    self.warn(format_args!(
-                                        "Local trust root is corrupted: {}",
-                                        err));
-                                    None
-                                }
-                                None =>  {
-                                    self.warn(format_args!(
-                                        "Local trust root is corrupted: \
-                                         no data"));
-                                    None
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            self.warn(format_args!(
-                                "Error parsing local trust root: {}", err));
-                            None
-                        }
-                    }
-                })
+                }
+                Err(err) => {
+                    self.warn(format_args!(
+                        "Error parsing local trust root: {}", err));
+                    None
+                }
+            };
+
+            cert
         });
 
         if let Some(trust_root_local) = trust_root_local {

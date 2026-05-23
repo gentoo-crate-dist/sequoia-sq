@@ -381,7 +381,12 @@ impl Method {
         make_qprintln!(sq.quiet());
 
         let ca = || -> Result<_> {
-            let certd = sq.certd_or_else()?;
+            let cert_store = sq.cert_store_or_else()?;
+            let certd = cert_store.certd()
+                .ok_or_else(|| anyhow::anyhow!(
+                    "A local trust root and other special certificates are \
+                     only available when using an OpenPGP certificate \
+                     directory"))?;
             let (cert, created) = match self {
                 Method::KeyServer(url) => {
                     let result = certd.shadow_ca_keyserver(url)?;

@@ -43,10 +43,20 @@ impl Ca {
     }
 }
 
+const NO_CERTD_ERR: &str =
+    "A local trust root and other special certificates are \
+     only available when using an OpenPGP certificate \
+     directory";
+
 impl Sequoia {
     /// Returns the local trust root, creating it if necessary.
     pub fn local_trust_root(&self) -> Result<Ca> {
-        let (cert, created) = self.certd_or_else()?.trust_root()?;
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.trust_root()?;
+
         Ok(Ca {
             cert,
             created,
@@ -69,86 +79,86 @@ impl Sequoia {
 
     /// Returns the WKD CA, creating it if necessary.
     pub fn shadow_ca_wkd(&self) -> Result<Ca> {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca_wkd()
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca_wkd()?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 
     /// Returns the DANE shadow CA, creating it if necessary.
     pub fn shadow_ca_dane(&self) -> Result<Ca> {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca_dane()
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca_dane()?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 
     /// Returns the `autocrypt` shadow CA, creating it if necessary.
     pub fn shadow_ca_autocrypt(&self) -> Result<Ca> {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca_autocrypt()
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca_autocrypt()?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 
     /// Returns the `proton.me` CA, creating it if necessary.
     pub fn shadow_ca_proton_me(&self) -> Result<Ca> {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca_proton_me()
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca_proton_me()?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 
     /// Returns the `keys.openpgp.org` shadow CA, creating it if necessary.
     pub fn shadow_ca_keys_openpgp_org(&self) -> Result<Ca> {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca_keys_openpgp_org()
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca_keys_openpgp_org()?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 
     /// Returns the `keys.mailvelope.com` shadow CA, creating it if necessary.
     pub fn shadow_ca_keys_mailvelope_com(&self) -> Result<Ca> {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca_keys_mailvelope_com()
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca_keys_mailvelope_com()?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 
     /// Returns the specified shadow CA, creating it if necessary.
@@ -162,16 +172,16 @@ impl Sequoia {
     where
         U: Into<UserID>,
     {
-        self.certd_or_else()
-            .and_then(|certd| {
-                certd.shadow_ca(
-                    name, create, userid, trust_amount, intermediaries)
-            })
-            .map(|(cert, created)| {
-                Ca {
-                    cert,
-                    created,
-                }
-            })
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        let (cert, created) = certd.shadow_ca(
+                    name, create, userid, trust_amount, intermediaries)?;
+
+        Ok(Ca {
+            cert,
+            created,
+        })
     }
 }

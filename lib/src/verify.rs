@@ -1324,7 +1324,7 @@ impl<'c> VerificationHelper<'c> {
 
                 // Build the network.
                 let cert_store = sequoia_wot::store::CertStore::from_store(
-                    cert_store, self.sequoia.policy(), self.sequoia.time());
+                    cert_store.as_ref(), self.sequoia.policy(), self.sequoia.time());
 
                 let userids =
                     cert_store.certified_userids_of(&cert_fpr);

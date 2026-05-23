@@ -212,7 +212,8 @@ where
 
     // If we want to authenticate, prepare the authentication network.
     let network_threshold = cmd_add_authenticated.then_some(
-        (wot::NetworkBuilder::rooted(store, &*sequoia.trust_roots()).build(),
+        (wot::NetworkBuilder::rooted(
+            store.as_ref(), &*sequoia.trust_roots()).build(),
          wot::FULLY_TRUSTED));
 
     // Get a signer.

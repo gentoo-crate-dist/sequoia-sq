@@ -436,7 +436,8 @@ impl<'a> Builder<'a> {
             cert_store.precompute();
         }
 
-        let mut n = wot::NetworkBuilder::rooted(cert_store, &*sequoia.trust_roots());
+        let mut n = wot::NetworkBuilder::rooted(
+            cert_store.as_ref(), &*sequoia.trust_roots());
         if certification_network {
             n = n.certification_network();
         }
