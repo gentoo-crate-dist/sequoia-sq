@@ -53,6 +53,7 @@ pub mod list;
 pub mod pki;
 pub mod provenance;
 mod shadow_ca;
+pub use shadow_ca::Ca;
 pub mod sign;
 pub mod types;
 pub mod userid;
