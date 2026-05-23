@@ -53,6 +53,20 @@ impl Sequoia {
         })
     }
 
+    /// Returns the "generated on $host" shadow CA, creating it
+    /// if necessary.
+    pub fn shadow_ca_generated_on(&self) -> Result<Ca> {
+        let hostname =
+            gethostname::gethostname().to_string_lossy().to_string();
+
+        self.shadow_ca(
+            &format!("generated_on_{}", hostname),
+            true,
+            format!("Generated on {}", hostname),
+            1,
+            &[])
+    }
+
     /// Returns the WKD CA, creating it if necessary.
     pub fn shadow_ca_wkd(&self) -> Result<Ca> {
         self.certd_or_else()
