@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
     time::SystemTime,
+    time::UNIX_EPOCH,
 };
 
 #[macro_use] mod log;
@@ -104,7 +105,10 @@ pub struct Sequoia {
 
     /// This will be set if the cert store has not been disabled, OR
     /// --keyring is passed.
-    cert_store: Mutex<Option<Arc<WotStore>>>,
+    ///
+    /// The u64 is the policy time (in seconds since the UNIX epoch)
+    /// of the WotStore.
+    cert_store: Mutex<Option<(u64, Arc<WotStore>)>>,
 
     /// Additional keyrings to read.
     keyrings: Vec<PathBuf>,
@@ -233,9 +237,25 @@ impl Sequoia {
         }
 
         let mut cert_store = self.cert_store.lock().unwrap();
-        if let Some(cert_store) = cert_store.as_ref() {
-            // The cert store is already initialized, return it.
-            return Ok(Some(Arc::clone(cert_store)));
+        if let Some((current_secs, cs)) = cert_store.as_ref() {
+            // If the WotStore is out of date, then re-initialize it.
+            let now = self.time();
+            let now_secs = now.duration_since(UNIX_EPOCH)
+                .map(|t| t.as_secs())
+                .unwrap_or(0);
+            if now_secs == *current_secs {
+                // The cert store is already initialized for the
+                // current time, return it.
+                return Ok(Some(Arc::clone(&cs)));
+            } else {
+                // Re-initialize it.
+                let result = Arc::new(WotStore::from_store(
+                    Arc::clone(cs.store()),
+                    Box::new(self.policy().clone()) as Box::<dyn Policy>,
+                    now));
+                *cert_store = Some((now_secs, Arc::clone(&result)));
+                return Ok(Some(result));
+            }
         }
 
         let create_dirs = |path: &Path| -> Result<()> {
@@ -344,11 +364,16 @@ impl Sequoia {
             }
         }
 
+        let now = self.time();
         let result = Arc::new(WotStore::from_store(
-            cs, Box::new(self.policy().clone()) as Box::<dyn Policy>,
-            self.time()));
+            Arc::new(cs), Box::new(self.policy().clone()) as Box::<dyn Policy>,
+            now));
 
-        *cert_store = Some(Arc::clone(&result));
+        let now_secs = now.duration_since(UNIX_EPOCH)
+            .map(|t| t.as_secs())
+            .unwrap_or(0);
+
+        *cert_store = Some((now_secs, Arc::clone(&result)));
 
         Ok(Some(result))
     }
@@ -582,7 +607,7 @@ impl Clock {
 
 /// A shorthand for our store type.
 type WotStore
-    = wot::store::CertStore<'static, 'static, cert_store::CertStore<'static>>;
+    = wot::store::CertStore<'static, 'static, Arc<cert_store::CertStore<'static>>>;
 
 /// The creation time for the trust root and intermediate CAs.
 ///

@@ -70,7 +70,7 @@ pub static NULL_POLICY: NullPolicy = unsafe { NullPolicy::new() };
 
 // A shorthand for our store type.
 type WotStore
-    = wot::store::CertStore<'static, 'static, cert_store::CertStore<'static>>;
+    = wot::store::CertStore<'static, 'static, Arc<cert_store::CertStore<'static>>>;
 
 pub struct Sq {
     pub sequoia: Sequoia,
