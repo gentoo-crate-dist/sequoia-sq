@@ -1,5 +1,7 @@
 //! Error handling.
 
+use std::sync::Arc;
+
 /// Crate result specialization.
 pub type Result<T> = ::std::result::Result<T, anyhow::Error>;
 
@@ -30,7 +32,7 @@ impl Error {
 /// system error is that a key store is not available, but is
 /// needed to complete the operation.
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum SystemError {
     #[error("Cert store disabled")]
     CertStoreDisabled,
@@ -39,7 +41,7 @@ pub enum SystemError {
     HomeDisabled,
 
     #[error(transparent)]
-    Other(anyhow::Error),
+    Other(Arc<anyhow::Error>),
 }
 
 /// Converts an error to a SystemError::Other.
