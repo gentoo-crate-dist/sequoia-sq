@@ -384,12 +384,13 @@ impl Sequoia {
     /// Returns the cert store.
     ///
     /// If the cert store is disabled, returns an error.
-    pub fn cert_store_or_else<'s>(&'s self) -> Result<Arc<WotStore>> {
+    pub fn cert_store_or_else<'s>(&'s self) -> Result<Arc<WotStore>, SystemError> {
         self.cert_store()
+            .map_err(|err| errors::SystemError::CertStoreError(err.into()))
             .and_then(|cert_store| {
                 cert_store
                     .ok_or_else(|| {
-                        Self::no_cert_store_err().into()
+                        Self::no_cert_store_err()
                     })
             })
     }

@@ -630,7 +630,7 @@ impl<'a> Builder<'a> {
         let return_all = queries.iter().any(|q| matches!(q.kind, QueryKind::All));
 
         // Build the network.
-        let cert_store = sequoia.cert_store_or_else().map_err(sys!())?;
+        let cert_store = sequoia.cert_store_or_else()?;
         if return_all {
             cert_store.precompute();
         }

@@ -44,6 +44,7 @@ use sequoia::key_store as keystore;
 
 use sequoia::GetKeysOptions;
 use sequoia::Sequoia;
+use sequoia::SystemError;
 use sequoia::cert::CertError;
 use sequoia::prompt;
 use sequoia::types::FileStdinOrKeyHandle;
@@ -134,7 +135,9 @@ impl Sq {
     /// Returns the cert store.
     ///
     /// If the cert store is disabled, returns an error.
-    pub fn cert_store_or_else(&self) -> Result<Arc<WotStore>> {
+    pub fn cert_store_or_else(&self)
+        -> Result<Arc<WotStore>, SystemError>
+    {
         self.sequoia.cert_store_or_else()
     }
 
@@ -909,7 +912,7 @@ impl Sq {
                         Err(err) => {
                             ret(
                                 designator,
-                                Err(err),
+                                Err(err.into()),
                                 true, Some(&mut filter));
                             continue;
                         }

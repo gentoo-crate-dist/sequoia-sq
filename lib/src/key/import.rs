@@ -792,7 +792,7 @@ impl<'sequoia> Builder<'sequoia>
                 Err(Error::SystemError(
                     error::SystemError::NoCertStore(
                         error::NoCertStore {
-                            error: err,
+                            error: err.into(),
                         })))
             }
         };

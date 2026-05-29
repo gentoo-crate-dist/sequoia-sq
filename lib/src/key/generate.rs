@@ -659,7 +659,7 @@ impl<'sequoia> Builder<'sequoia>
             // We're going to write to the key store and cert store.
             // Fail early if they are not available.
             sequoia.key_store_or_else().map_err(sys!())?;
-            sequoia.cert_store_or_else().map_err(sys!())?;
+            sequoia.cert_store_or_else()?;
         }
 
         let key_flags_template = if own_key {

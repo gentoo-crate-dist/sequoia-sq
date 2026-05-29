@@ -37,6 +37,9 @@ pub enum SystemError {
     #[error("Cert store disabled")]
     CertStoreDisabled,
 
+    #[error("Error opening the cert store: {}", .0)]
+    CertStoreError(Arc<anyhow::Error>),
+
     #[error("Home disabled: can't save certificate")]
     HomeDisabled,
 

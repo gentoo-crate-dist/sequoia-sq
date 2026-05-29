@@ -732,7 +732,7 @@ impl<'sequoia> Builder<'sequoia>
                     output::Breakage::NoCertStore(
                         output::NoCertStore {
                         }),
-                    err,
+                    err.into(),
                     &mut *stats,
                     &mut *stream)?;
                 return Err(err_);
