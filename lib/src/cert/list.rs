@@ -123,6 +123,7 @@
 //! ```
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anyhow::Context;
 
@@ -294,6 +295,29 @@ pub mod output {
 /// `Sequoia::list` emits.
 #[non_exhaustive]
 pub enum Output {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    OperationalError(error::OperationalError),
+
     /// We're about to emit the actual results.
     ///
     /// Note: this is emitted even if no bindings are emitted.
@@ -347,9 +371,11 @@ impl Sequoia {
 /// more precise errors.  In this way, if you match on a category, and
 /// a new error is added you can still react.
 pub mod error {
+    use super::*;
+
     /// The argument is not a valid email address.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{:?} does not appear to be an email address", .email)]
     pub struct InvalidEmail {
         pub email: String,
@@ -357,19 +383,19 @@ pub mod error {
 
     /// The argument is not a valid domain name.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{:?} does not appear to be a domain name", .domain)]
     pub struct InvalidDomain {
         pub domain: String,
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
     /// An error related to the arguments.
     ///
     /// Argument errors are fatal and cause processing to abort.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum ArgumentError {
         #[error(transparent)]
         InvalidEmail(InvalidEmail),
@@ -378,7 +404,7 @@ pub mod error {
         InvalidDomain(InvalidDomain),
 
         #[error(transparent)]
-        Other(anyhow::Error),
+        Other(Arc<anyhow::Error>),
     }
 
     /// An operational error that prevents processing from continuing.
@@ -389,10 +415,10 @@ pub mod error {
     /// of an operational error is that the operation needs to create
     /// a signature, but the secret key material is not available.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
         #[error(transparent)]
-        Other(anyhow::Error),
+        Other(Arc<anyhow::Error>),
     }
 }
 
@@ -608,6 +634,40 @@ impl<'a> Builder<'a> {
     where
         S: Stream,
     {
+        let result = self.list_(&mut stream);
+
+        match result {
+            Ok(report) => {
+                stream.output(&self.params, Output::Report(report))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Ok(())
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                Err(err)
+            }
+            Err(Error::ArgumentError(err)) => {
+                let err_ = err.clone();
+                stream.output(&self.params, Output::ArgumentError(err))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err_))
+            }
+            Err(Error::SystemError(err)) => {
+                let err_ = err.clone();
+                stream.output(&self.params, Output::SystemError(err))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err_))
+            }
+            Err(Error::OperationalError(err)) => {
+                let err_ = err.clone();
+                stream.output(&self.params, Output::OperationalError(err))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err_))
+            }
+        }
+    }
+
+    pub fn list_(&self, stream: &mut dyn Stream) -> Result<output::Report, Error>
+    {
         let &Params {
             sequoia,
             ref queries,
@@ -805,7 +865,7 @@ impl<'a> Builder<'a> {
                                     error::ArgumentError::InvalidDomain(
                                         error::InvalidDomain {
                                             domain: pattern.to_owned(),
-                                            error: err,
+                                            error: err.into(),
                                         }))
                             })?;
                         let mut query_params = UserIDQueryParams::new();
@@ -1196,23 +1256,21 @@ impl<'a> Builder<'a> {
         let bindings_not_authenticated
             = bindings.len() - bindings_authenticated - bindings_unusable;
 
-        stream.output(
-            &self.params, Output::Report(output::Report {
-                missing_trust_roots: if ! unsatisfied.is_empty() {
-                    Some((n.roots().clone(), missing_trust_roots))
-                } else {
-                    None
-                },
-                query_lints: unsatisfied_lints,
-                matching_bindings: bindings.len(),
-                unsatisfied_queries: unsatisfied.clone(),
-                authenticated_bindings: bindings_authenticated,
-                unusable_bindings: bindings_unusable,
-                unauthenticated_bindings: bindings_not_authenticated
-            }))
-            .map_err(|err| Error::StreamOutputError(err))?;
+        let report = output::Report {
+            missing_trust_roots: if ! unsatisfied.is_empty() {
+                Some((n.roots().clone(), missing_trust_roots))
+            } else {
+                None
+            },
+            query_lints: unsatisfied_lints,
+            matching_bindings: bindings.len(),
+            unsatisfied_queries: unsatisfied.clone(),
+            authenticated_bindings: bindings_authenticated,
+            unusable_bindings: bindings_unusable,
+            unauthenticated_bindings: bindings_not_authenticated
+        };
 
-        Ok(())
+        Ok(report)
     }
 }
 
@@ -1306,6 +1364,15 @@ mod tests {
                     // If gossip is true, then not all returned
                     // bindings will be authenticated.
                     assert!(report.authenticated_bindings <= binding_count);
+                }
+                Output::ArgumentError(err) => {
+                    panic!("Argument error: {}", err);
+                }
+                Output::OperationalError(err) => {
+                    panic!("Operational error: {}", err);
+                }
+                Output::SystemError(err) => {
+                    panic!("System error: {}", err);
                 }
             }
         }
@@ -1576,5 +1643,68 @@ mod tests {
             .list(&mut output)
             .expect("ok");
         check(&sq, output, &[ ]);
+    }
+
+    #[test]
+    fn cert_list_bad_argument() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let mut output = Vec::new();
+        let result = sq.cert_list(Some(Query::email("invalid@email@domain.com")))
+            .list(&mut output);
+
+        // Check the function's return value.
+        let Err(err) = result else {
+            panic!("Failed to catch invalid argument");
+        };
+        let Error::ArgumentError(err) = err else {
+            panic!("Failed to return ArgumentError");
+        };
+        let error::ArgumentError::InvalidEmail(_err) = err else {
+            panic!("Failed to return InvalidEmail");
+        };
+
+        // Make sure the error was also reported via the stream interface.
+        assert_eq!(output.len(), 1,
+                   "Unexpected stream output");
+        let output = output.into_iter().next().unwrap();
+        let Output::ArgumentError(err) = output else {
+            panic!("Stream didn't return invalid argument");
+        };
+        let error::ArgumentError::InvalidEmail(_err) = err else {
+            panic!("Failed to return InvalidEmail");
+        };
+    }
+
+    #[test]
+    fn cert_list_no_home() {
+        let sq = Sequoia::builder().ephemeral().unwrap().stateless().build().unwrap();
+
+        let mut output = Vec::new();
+        let result = sq.cert_list(Some(Query::email("email@domain.com")))
+            .list(&mut output);
+
+        // Check the function's return value.
+        let Err(err) = result else {
+            panic!("Failed to catch missing home error");
+        };
+        let Error::SystemError(err) = &err else {
+            panic!("Failed to return SystemError, got: {:?}", err);
+        };
+        let SystemError::CertStoreDisabled = err else {
+            panic!("Failed to return CertStoreDisabled, got: {:?}", err);
+        };
+
+        // Make sure the error was also reported via the stream interface.
+        assert_eq!(output.len(), 1,
+                   "Unexpected stream output");
+        let output = output.into_iter().next().unwrap();
+        let Output::SystemError(err) = output else {
+            panic!("Stream didn't return CertStoreDisable");
+        };
+        let SystemError::CertStoreDisabled = err else {
+            panic!("Failed to return CertStoreDisabled");
+        };
+
     }
 }
