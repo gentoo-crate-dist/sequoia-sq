@@ -604,7 +604,7 @@ impl<'a> Builder<'a> {
     /// Returns an error if the cert store was disabled (see
     /// [`SequoiaBuilder::cert_store_path`]) and no keyrings were
     /// added (see [`SequoiaBuilder::add_keyring`]).
-    pub fn list<S>(self, mut stream: S) -> Result<(), Error>
+    pub fn list<S>(&self, mut stream: S) -> Result<(), Error>
     where
         S: Stream,
     {
