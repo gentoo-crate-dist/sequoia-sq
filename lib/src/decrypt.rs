@@ -13,7 +13,7 @@ use sequoia_openpgp as openpgp;
 use openpgp::types::SymmetricAlgorithm;
 use openpgp::KeyHandle;
 use openpgp::crypto;
-use openpgp::{Fingerprint, Cert, KeyID, Result};
+use openpgp::{Fingerprint, Cert, KeyID};
 use openpgp::packet;
 use openpgp::packet::prelude::*;
 use openpgp::parse::Parse;
@@ -27,7 +27,9 @@ use openpgp::types::KeyFlags;
 
 use sequoia_keystore as keystore;
 
+use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::prompt::Prompt as _;
 use crate::prompt::check::CheckRemoteKey;
 use crate::prompt::check::CheckSkesks;
@@ -129,6 +131,16 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+macro_rules! op {
+    () => {
+        |err| {
+            Error::OperationalError(
+                error::OperationalError::Other(
+                    Arc::new(anyhow::Error::from(err))))
+        }
+    }
+}
+
 /// Decrypt messages.
 ///
 /// This command builder is used to decrypt messages.
@@ -217,7 +229,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// them.
     pub fn decrypt<'a, I, O, S, P>(&self, input: I, output: O,
                                    prompt: P, mut stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -226,29 +238,34 @@ impl<'sequoia> Builder<'sequoia> {
     {
         let result = self.decrypt_(input, output, prompt, &mut stream);
 
-        if let Err(error) = result {
-            // Create a shallow copy of error, because we can't clone
-            // it.
-            let e = anyhow::anyhow!(error.to_string())
-                .context("Decryption failed");
-
-            stream.output(
-                self.params(),
-                Output::DecryptionFailed(
-                    output::DecryptionFailed::MalformedMessage(
-                        output::MalformedMessage {
-                            error,
-                        })))?;
-
-            Err(e)
-        } else {
-            Ok(())
+        match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                Err(err)
+            }
         }
     }
 
     fn decrypt_<'a, I, O, S, P>(&self, input: I, mut output: O,
                                 prompt: P, mut stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -286,10 +303,13 @@ impl<'sequoia> Builder<'sequoia> {
             = Some((proxy,
                     Cow::Borrowed(&self.params.vparams)));
 
-        let mut decryptor = DecryptorBuilder::from_reader(input)?
-            .with_policy(sequoia.policy(), None, helper)?;
+        let mut decryptor = DecryptorBuilder::from_reader(input)
+            .map_err(op!())?
+            .with_policy(sequoia.policy(), None, helper)
+            .map_err(op!())?;
 
-        io::copy(&mut decryptor, &mut output)?;
+        io::copy(&mut decryptor, &mut output)
+            .map_err(op!())?;
 
         Ok(())
     }
@@ -312,7 +332,7 @@ impl<'sequoia> Builder<'sequoia> {
     pub fn decrypt_unwrap<I, O, S, P>(&self,
                                       input: I, output: O,
                                       prompt: P, mut stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -321,30 +341,35 @@ impl<'sequoia> Builder<'sequoia> {
     {
         let result = self.decrypt_unwrap_(input, output, prompt, &mut stream);
 
-        if let Err(error) = result {
-            // Create a shallow copy of error, because we can't clone
-            // it.
-            let e = anyhow::anyhow!(error.to_string())
-                .context("Decryption failed");
-
-            stream.output(
-                self.params(),
-                Output::DecryptionFailed(
-                    output::DecryptionFailed::MalformedMessage(
-                        output::MalformedMessage {
-                            error,
-                        })))?;
-
-            Err(e)
-        } else {
-            Ok(())
+        match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                Err(err)
+            }
         }
     }
 
     fn decrypt_unwrap_<I, O, S, P>(&self,
                                    input: I, mut output: O,
                                    prompt: P, mut stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -382,7 +407,7 @@ impl<'sequoia> Builder<'sequoia> {
             = Some((proxy,
                     Cow::Borrowed(&self.params.vparams)));
 
-        let mut ppr = PacketParser::from_reader(input)?;
+        let mut ppr = PacketParser::from_reader(input).map_err(op!())?;
 
         let mut pkesks: Vec<packet::PKESK> = Vec::new();
         let mut skesks: Vec<packet::SKESK> = Vec::new();
@@ -399,25 +424,32 @@ impl<'sequoia> Builder<'sequoia> {
                             pp.decrypt(algo, secret).is_ok()
                         };
                         helper.decrypt(&pkesks[..], &skesks[..], sym_algo_hint,
-                                       &mut decrypt)?;
+                                       &mut decrypt)
+                            .map_err(op!())?;
                     }
                     if ! pp.processed() {
                         return Err(
-                            openpgp::Error::MissingSessionKey(
-                                "No session key".into()).into());
+                            Error::OperationalError(
+                                error::OperationalError::MissingSessionKey(
+                                    error::MissingSessionKey {
+                                    })));
                     }
 
-                    io::copy(&mut pp, &mut output)?;
+                    io::copy(&mut pp, &mut output).map_err(op!())?;
                     return Ok(());
                 },
                 #[allow(deprecated)]
                 Packet::MDC(ref mdc) => if ! mdc.valid() {
-                    return Err(openpgp::Error::ManipulatedMessage.into());
+                    return Err(
+                        Error::OperationalError(
+                            error::OperationalError::ManipulatedMessage(
+                                error::ManipulatedMessage {
+                                })));
                 },
                 _ => (),
             }
 
-            let (p, ppr_tmp) = pp.recurse()?;
+            let (p, ppr_tmp) = pp.recurse().map_err(op!())?;
             match p {
                 Packet::PKESK(pkesk) => pkesks.push(pkesk),
                 Packet::SKESK(skesk) => skesks.push(skesk),
@@ -515,32 +547,6 @@ pub mod output {
         pub session_key: crypto::SessionKey,
     }
 
-    /// The message is not an OpenPGP message, or does not contain an
-    /// encrypted part.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct MalformedMessage {
-        pub error: anyhow::Error,
-    }
-
-    /// The session key could not be decrypted, because we aren't able
-    /// to decrypt one of the PKESKs or SKESKs.
-    #[non_exhaustive]
-    #[derive(Debug, Clone)]
-    pub struct MissingSecretKeyMaterial {
-        pub pkesks: Vec<PKESK>,
-        pub skesks: Vec<SKESK>,
-    }
-
-    /// The message could not be decrypted, because the session key
-    /// could not be decrypted.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub enum DecryptionFailed {
-        MalformedMessage(MalformedMessage),
-        MissingSecretKeyMaterial(MissingSecretKeyMaterial),
-    }
-
     /// Information about the operation.
     ///
     /// This includes summary statistics.
@@ -557,11 +563,163 @@ pub mod output {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    OperationalError(error::OperationalError),
+
     Info(output::Info),
     Decrypted(output::Decrypted),
-    DecryptionFailed(output::DecryptionFailed),
     MessageStructure(verify::output::MessageStructure),
     Report(output::Report),
+}
+
+/// Data structures related to [`Error`].
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+pub mod error {
+    use super::*;
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+
+    /// The session key could not be decrypted, because we aren't able
+    /// to decrypt one of the PKESKs or SKESKs.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error(
+        "Missing secret key material: {}",
+        match (! .pkesks.is_empty(), ! .skesks.is_empty()) {
+            (false, false) => {
+                Cow::Borrowed(
+                    "message does not contain any PKESKs or SKESKs")
+            }
+            (false, true) => {
+                Cow::Borrowed("couldn't decrypt any of the SKESKs")
+            },
+            (true, skesks) => {
+                Cow::Owned(format!(
+                    "couldn't decrypt any of the PKESKs (recipients: {}){}",
+                    .pkesks.iter()
+                        .map(|pkesk| {
+                            pkesk.recipient()
+                                .map(|fpr| Cow::Owned(fpr.to_string()))
+                                .unwrap_or_else(|| {
+                                    Cow::Borrowed("anonymous recipient")
+                                })
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    if skesks {
+                        ",  or the SKESKs"
+                    } else {
+                        ""
+                    }))
+            },
+        }
+    )]
+    pub struct MissingSecretKeyMaterial {
+        pub pkesks: Vec<PKESK>,
+        pub skesks: Vec<SKESK>,
+    }
+
+    /// Missing session key.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("No session key")]
+    pub struct MissingSessionKey {
+    }
+
+    /// The message has been manipulated.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Message has been manipulated")]
+    pub struct ManipulatedMessage {
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        MissingSecretKeyMaterial(MissingSecretKeyMaterial),
+        #[error(transparent)]
+        MissingSessionKey(MissingSessionKey),
+        #[error(transparent)]
+        ManipulatedMessage(ManipulatedMessage),
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to generating a certificate.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
 }
 
 impl Sequoia {
@@ -1115,9 +1273,9 @@ impl<'c> DecryptionHelper for Helper<'c> {
 
         if skesks.is_empty() {
             self.output(
-                Output::DecryptionFailed(
-                    output::DecryptionFailed::MissingSecretKeyMaterial(
-                        output::MissingSecretKeyMaterial {
+                Output::OperationalError(
+                    error::OperationalError::MissingSecretKeyMaterial(
+                        error::MissingSecretKeyMaterial {
                             pkesks: pkesks.to_vec(),
                             skesks: skesks.to_vec(),
                         })))?;
@@ -1177,9 +1335,9 @@ impl<'c> DecryptionHelper for Helper<'c> {
 
         if result.is_err() {
             self.output(
-                Output::DecryptionFailed(
-                    output::DecryptionFailed::MissingSecretKeyMaterial(
-                        output::MissingSecretKeyMaterial {
+                Output::OperationalError(
+                    error::OperationalError::MissingSecretKeyMaterial(
+                        error::MissingSecretKeyMaterial {
                             pkesks: pkesks.to_vec(),
                             skesks: skesks.to_vec(),
                         })))?;

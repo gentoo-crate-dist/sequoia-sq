@@ -66,5 +66,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
         }
     }
 
-    result
+    result?;
+
+    Ok(())
 }

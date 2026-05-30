@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use sequoia::openpgp;
 use openpgp::fmt::hex;
 use openpgp::types::KeyFlags;
@@ -137,60 +139,64 @@ impl decrypt::Stream for Stream<'_> {
                     _ => (),
                 }
             }
-            decrypt::Output::DecryptionFailed(
-                decrypt::output::DecryptionFailed::MissingSecretKeyMaterial(
-                    decrypt::output::MissingSecretKeyMaterial {
-                        pkesks,
-                        skesks,
+            decrypt::Output::OperationalError(err) => {
+                if let decrypt::error::OperationalError::MissingSecretKeyMaterial(
+                    decrypt::error::MissingSecretKeyMaterial {
+                        ref pkesks,
+                        ref skesks,
                         ..
-                    })) =>
-            {
-                // Only show a diagnostic hint if we have no SKESKs.
-                if ! skesks.is_empty() {
-                    return Ok(());
-                }
-
-                weprintln!("No key to decrypt message.  The message appears \
-                            to be encrypted to:");
-                weprintln!();
-
-                for recipient in pkesks.iter().map(|p| p.recipient()) {
-                    if let Some(r) = recipient {
-                        let certs = self.vstream.sq.sequoia
-                            .lookup()
-                            .keyflags(Some(KeyFlags::empty()
-                                           .set_storage_encryption()
-                                           .set_transport_encryption()))
-                            .or_by_primary(false)
-                            .lookup(std::iter::once(&r), true);
-
-                        match certs {
-                            Ok(certs) => {
-                                for cert in certs {
-                                    emit_cert(&mut std::io::stderr(),
-                                              &self.vstream.sq, &cert)?;
-                                }
-                            }
-                            Err(err) => {
-                                if let Some(StoreError::NotFound(_))
-                                    = err.downcast_ref()
-                                {
-                                    weprintln!(initial_indent = " - ",
-                                               "{}, certificate not found", r);
-                                } else {
-                                    weprintln!(initial_indent = " - ",
-                                               "{}, error looking up certificate: {}",
-                                               r, err);
-                                }
-                            }
-                        }
-                    } else {
-                        weprintln!(initial_indent = " - ",
-                                   "anonymous recipient, certificate not found");
+                    }) = err
+                {
+                    // Only show a diagnostic hint if we have no SKESKs.
+                    if ! skesks.is_empty() {
+                        return Ok(());
                     }
+
+                    weprintln!("No key to decrypt message.  The message appears \
+                                to be encrypted to:");
+                    weprintln!();
+
+                    for recipient in pkesks.iter().map(|p| p.recipient()) {
+                        if let Some(r) = recipient {
+                            let certs = self.vstream.sq.sequoia
+                                .lookup()
+                                .keyflags(Some(KeyFlags::empty()
+                                               .set_storage_encryption()
+                                               .set_transport_encryption()))
+                                .or_by_primary(false)
+                                .lookup(std::iter::once(&r), true);
+
+                            match certs {
+                                Ok(certs) => {
+                                    for cert in certs {
+                                        emit_cert(&mut std::io::stderr(),
+                                                  &self.vstream.sq, &cert)?;
+                                    }
+                                }
+                                Err(err) => {
+                                    if let Some(StoreError::NotFound(_))
+                                        = err.downcast_ref()
+                                    {
+                                        weprintln!(initial_indent = " - ",
+                                                   "{}, certificate not found", r);
+                                    } else {
+                                        weprintln!(initial_indent = " - ",
+                                                   "{}, error looking up certificate: {}",
+                                                   r, err);
+                                    }
+                                }
+                            }
+                        } else {
+                            weprintln!(initial_indent = " - ",
+                                       "anonymous recipient, certificate not found");
+                        }
+                    }
+
+                    weprintln!();
                 }
 
-                weprintln!();
+                return Err(anyhow::Error::from(err))
+                    .context("Decryption failed");
             }
 
             _output => {

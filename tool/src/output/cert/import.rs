@@ -219,13 +219,13 @@ impl import::Stream for Stream<'_> {
                 for o in decryption_output.iter() {
                     let decrypt::Output::Info(info)
                         = o else { continue };
-                    error = Some(Cow::Owned(info.to_string()));
+                    error = Some(anyhow::anyhow!("{}", info.to_string()));
                     break;
                 }
 
                 let mut failure = None;
-                for o in decryption_output.iter() {
-                    if let decrypt::Output::DecryptionFailed(f) = o {
+                for o in decryption_output.into_iter() {
+                    if let decrypt::Output::OperationalError(f) = o {
                         failure = Some(f);
                         break;
                     }
@@ -234,19 +234,20 @@ impl import::Stream for Stream<'_> {
 
                 let mut printed = false;
                 match failure {
-                    decrypt::output::DecryptionFailed::MissingSecretKeyMaterial(
-                        decrypt::output::MissingSecretKeyMaterial {
+                    decrypt::error::OperationalError::MissingSecretKeyMaterial(
+                        decrypt::error::MissingSecretKeyMaterial {
                             pkesks,
                             skesks: _,
                             ..
                         }) =>
                     {
+                        let e_;
                         let e = if let Some(e) = error.as_ref() {
                             e
                         } else {
-                            error = Some(Cow::Borrowed(
-                                "No key to decrypt message"));
-                            error.as_ref().unwrap()
+                            e_ = anyhow::anyhow!(
+                                "No key to decrypt message");
+                            &e_
                         };
 
                         wwriteln!(stream = &mut stderr,
@@ -294,25 +295,21 @@ impl import::Stream for Stream<'_> {
                         }
                         wwriteln!(stream = &mut stderr);
                     }
-                    decrypt::output::DecryptionFailed::MalformedMessage(
-                        decrypt::output::MalformedMessage {
-                            error: e,
-                            ..
-                        }) =>
-                    {
-                        error = Some(Cow::Owned(e.to_string()));
+                    e => {
+                        error = Some(e.into());
                     }
-                    _ => (),
                 }
 
                 if self.sq.config().verbose() {
+                    let error = if let Some(error) = error {
+                        error
+                    } else {
+                        anyhow::anyhow!("unable to decrypt message")
+                    };
+
                     wwriteln!(stream = &mut stderr,
                               "Note: Processing of message failed: {}",
-                              if let Some(error) = error.as_ref() {
-                                  &error
-                              } else {
-                                  "unable to decrypt message"
-                              });
+                              error);
                 }
             }
 
