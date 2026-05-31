@@ -303,13 +303,25 @@ impl<'sequoia> Builder<'sequoia> {
             = Some((proxy,
                     Cow::Borrowed(&self.params.vparams)));
 
-        let mut decryptor = DecryptorBuilder::from_reader(input)
+        DecryptorBuilder::from_reader(input)
             .map_err(op!())?
             .with_policy(sequoia.policy(), None, helper)
-            .map_err(op!())?;
-
-        io::copy(&mut decryptor, &mut output)
-            .map_err(op!())?;
+            .and_then(|mut decryptor| {
+                io::copy(&mut decryptor, &mut output)?;
+                Ok(())
+            })
+            .map_err(|err| {
+                match err.downcast::<Error>() {
+                    Ok(err) => {
+                        err
+                    }
+                    Err(err) => {
+                        Error::OperationalError(
+                            error::OperationalError::Other(
+                                Arc::new(err)))
+                    }
+                }
+            })?;
 
         Ok(())
     }
@@ -425,7 +437,18 @@ impl<'sequoia> Builder<'sequoia> {
                         };
                         helper.decrypt(&pkesks[..], &skesks[..], sym_algo_hint,
                                        &mut decrypt)
-                            .map_err(op!())?;
+                            .map_err(|err| {
+                                match err.downcast::<Error>() {
+                                    Ok(err) => {
+                                        err
+                                    }
+                                    Err(err) => {
+                                        Error::OperationalError(
+                                            error::OperationalError::Other(
+                                                Arc::new(err)))
+                                    }
+                                }
+                            })?;
                     }
                     if ! pp.processed() {
                         return Err(
@@ -1275,15 +1298,12 @@ impl<'c> DecryptionHelper for Helper<'c> {
         t!("Exhausted all decryption methods");
 
         if skesks.is_empty() {
-            self.output(
-                Output::OperationalError(
-                    error::OperationalError::MissingSecretKeyMaterial(
-                        error::MissingSecretKeyMaterial {
-                            pkesks: pkesks.to_vec(),
-                            skesks: skesks.to_vec(),
-                        })))?;
-
-            return Err(anyhow::anyhow!("No key to decrypt message"));
+            return Err(Error::OperationalError(
+                error::OperationalError::MissingSecretKeyMaterial(
+                    error::MissingSecretKeyMaterial {
+                        pkesks: pkesks.to_vec(),
+                        skesks: skesks.to_vec(),
+                    })).into());
         }
 
         // Finally, try to decrypt using the SKESKs.  Before
@@ -1329,22 +1349,16 @@ impl<'c> DecryptionHelper for Helper<'c> {
             Ok(prompt::Response::NoPassword)
                 | Err(prompt::Error::Cancelled(_)) =>
             {
-                Err(anyhow::anyhow!("Decryption failed."))
+                return Err(error::OperationalError::MissingSecretKeyMaterial(
+                    error::MissingSecretKeyMaterial {
+                        pkesks: pkesks.to_vec(),
+                        skesks: skesks.to_vec(),
+                    }).into());
             }
             Err(err) => {
                 Err(err).context("Password prompt")
             }
         };
-
-        if result.is_err() {
-            self.output(
-                Output::OperationalError(
-                    error::OperationalError::MissingSecretKeyMaterial(
-                        error::MissingSecretKeyMaterial {
-                            pkesks: pkesks.to_vec(),
-                            skesks: skesks.to_vec(),
-                        })))?;
-        }
 
         result
     }
