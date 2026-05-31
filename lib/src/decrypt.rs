@@ -1363,3 +1363,443 @@ impl<'c> DecryptionHelper for Helper<'c> {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::str::FromStr;
+
+    use crate::prompt::Cancel;
+
+    // It's possible to decrypt, but then fail, if there are no valid
+    // signatures.
+    fn check(_sequoia: &Sequoia,
+             output: &[Output],
+             expect_decrypted: bool,
+             expect_error: bool)
+    {
+        let mut saw_decrypted = false;
+        let mut saw_message_structure = false;
+        let mut saw_error = false;
+        let mut saw_report = false;
+
+        use Output::*;
+        for output in output.into_iter() {
+            match output {
+                ArgumentError(err) => {
+                    // No argument errors.
+                    eprintln!("  - argument error: {}", err);
+                    panic!("Argument error");
+                }
+                SystemError(err) => {
+                    eprintln!("  - system error: {}", err);
+                    // Currently system errors only happen at the
+                    // beginning (although this is not part of the API
+                    // contract).
+                    assert!(! saw_error);
+                    assert!(! saw_decrypted);
+                    assert!(! saw_report);
+                    saw_error = true;
+                }
+                OperationalError(err) => {
+                    eprintln!("  - operational error: {}", err);
+                    // An operational error can happen at any time.
+                    assert!(! saw_error);
+                    saw_error = true;
+                }
+                Info(info) => {
+                    eprintln!("  - info: {:?}", info);
+                    assert!(! saw_error);
+                    assert!(! saw_report);
+                }
+                Decrypted(decrypted) => {
+                    eprintln!("  - decrypted: {:?}", decrypted);
+                    assert!(! saw_error);
+                    assert!(! saw_decrypted);
+                    assert!(! saw_message_structure);
+                    assert!(! saw_report);
+                    assert!(expect_decrypted);
+                    saw_decrypted = true;
+                }
+                MessageStructure(structure) => {
+                    eprintln!("  - message structure: {:?}", structure);
+                    assert!(! saw_error);
+                    assert!(saw_decrypted);
+                    assert!(! saw_message_structure);
+                    assert!(! saw_report);
+                    assert!(saw_decrypted);
+
+                    saw_message_structure = true;
+                }
+                Report(report) => {
+                    eprintln!("  - report: {:?}", report);
+                    assert!(! saw_error);
+                    assert!(saw_decrypted);
+                    assert!(saw_message_structure);
+                    assert!(! saw_report);
+                    assert!(saw_decrypted);
+                    saw_report = true;
+                }
+            }
+        }
+
+        assert!((saw_decrypted && saw_message_structure && saw_report)
+                || saw_error);
+
+        assert_eq!(saw_decrypted, expect_decrypted);
+        assert_eq!(saw_error, expect_error);
+    }
+
+    #[test]
+    fn decrypt_no_signature() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let cert = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &[u8] = b"message";
+
+        let mut ciphertext = Vec::new();
+
+        sq.encrypt()
+            .add_recipient(cert.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                Cancel::new(),
+                ())
+            .expect("can encrypt");
+
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+
+        // Fail to decrypt, because we expect a valid signature, but
+        // the message is not signed.
+        sq.decrypt()
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+        check(&sq, &output, true, true);
+
+        // Successfully decrypt by not requiring a signature.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .signatures(0)
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect("can decrypt");
+
+        check(&sq, &output, true, false);
+        assert_eq!(&plaintext, MESSAGE);
+    }
+
+    #[test]
+    fn decrypt_unauthenticated_signer() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        // Bob will sign the message, but his certificate is not
+        // authenticated.
+        let bob = sq.key_generate()
+            .email("bob@example.org")
+            .without_password()
+            .generate(Cancel::new(),
+                      // Don't mark it as trusted by not importing it.
+                      Some((&mut std::io::sink(),
+                            &mut std::io::sink())))
+            .expect("can generate a key")
+            .into_cert();
+
+        let mut stats = Default::default();
+        sq.key_import()
+            .import_key(bob.clone(), &mut stats)
+            .expect("can import key");
+
+        const MESSAGE: &[u8] = b"message";
+
+        let mut ciphertext = Vec::new();
+
+        sq.encrypt()
+            .add_recipient(alice.clone())
+            .add_signer(bob.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                Cancel::new(),
+                ())
+            .expect("can encrypt");
+
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+
+        // Fail to decrypt, because we expect a valid signature, but
+        // the signer is not authenticated.
+        sq.decrypt()
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+        check(&sq, &output, true, true);
+
+        // Successfully decrypt by designating the signer.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .designated_signers(vec![ bob.clone() ])
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect("can decrypt");
+
+        check(&sq, &output, true, false);
+        assert_eq!(&plaintext, MESSAGE);
+    }
+
+    #[test]
+    fn decrypt_authenticated_signer() {
+        // This is the reverse the previous test: there, the signer is
+        // not authenticated on the key store.  Here they are.
+
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        let bob = sq.key_generate()
+            .email("bob@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &[u8] = b"message";
+
+        let mut ciphertext = Vec::new();
+
+        sq.encrypt()
+            .add_recipient(alice.clone())
+            .add_signer(bob.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                Cancel::new(),
+                ())
+            .expect("can encrypt");
+
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+
+        // Decrypt, because we expect a valid signature, and we can
+        // authenticate it with an authenticated certificate in the
+        // cert store.
+        sq.decrypt()
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect("can decrypt");
+        check(&sq, &output, true, false);
+        assert_eq!(&plaintext, MESSAGE);
+
+        // Fail to decrypt by designating the wrong signer.  If we
+        // designate a signer then we don't use the certificate store.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .designated_signers(vec![ alice.clone() ])
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+
+        check(&sq, &output, true, true);
+    }
+
+    #[test]
+    fn decrypt_no_cert() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &str = "message";
+
+        let mut ciphertext = Vec::new();
+
+        sq.encrypt()
+            .add_recipient(alice.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                Cancel::new(),
+                ())
+            .expect("can encrypt");
+
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+
+        // Fail to decrypt, because we expect a valid signature, but
+        // there is none.
+        sq.decrypt()
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+        check(&sq, &output, true, true);
+
+        // Extract the session key.
+        let session_key = output.into_iter()
+            .find_map(|o| {
+                if let Output::Decrypted(output::Decrypted { session_key, .. }) = o {
+                    Some(session_key)
+                } else {
+                    None
+                }
+            })
+            .expect("have session key");
+
+        eprintln!("orig home: {:?}",
+                  sq.home);
+
+        // Create a new context so that we don't have the key.
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+        eprintln!("home: {:?}",
+                  sq.home);
+
+        // Without the key, we can't decrypt the message.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+        check(&sq, &output, false, true);
+
+        // Unless we have the session key.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .session_keys(vec![ session_key.into() ])
+            .signatures(0)
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect("can decrypt");
+        check(&sq, &output, true, false);
+
+        // But not if we have the WRONG session key.
+        let session_key = SessionKey::from_str("001122334455667788001122334455667788")
+            .expect("valid session key");
+
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .session_keys(vec![ session_key.into() ])
+            .signatures(0)
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+        check(&sq, &output, false, true);
+    }
+
+    #[test]
+    fn decrypt_manipulated_message() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        // A big message.
+        let message: Vec<u8> = vec![0x42; 10 * 1024 * 1024];
+
+        let mut ciphertext = Vec::new();
+
+        sq.encrypt()
+            .add_recipient(alice.clone())
+            .encrypt(
+                std::io::Cursor::new(&message),
+                &mut ciphertext,
+                Cancel::new(),
+                ())
+            .expect("can encrypt");
+
+        // Make sure we can decrypt the message.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .signatures(0)
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect("can decrypt");
+        check(&sq, &output, true, false);
+        assert_eq!(&message, &plaintext);
+
+        // Corrupt the message towards the end so that Decrypted will
+        // still be omitted.
+        let mut corrupted = ciphertext.clone();
+        let i = corrupted.len() * 95 / 100;
+        corrupted[i] = corrupted[i].wrapping_add(1);
+
+        // Decryption should now fail.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .decrypt(
+                std::io::Cursor::new(&corrupted),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+        check(&sq, &output, true, true);
+    }
+}
