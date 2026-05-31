@@ -42,6 +42,15 @@ impl std::str::FromStr for SessionKey {
     }
 }
 
+impl From<openpgp::crypto::SessionKey> for SessionKey {
+    fn from(session_key: openpgp::crypto::SessionKey) -> Self {
+        SessionKey {
+            session_key,
+            symmetric_algo: None,
+        }
+    }
+}
+
 impl SessionKey {
     /// Returns an object that implements Display for explicitly opting into
     /// printing a `SessionKey`.
