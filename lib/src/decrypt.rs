@@ -1,4 +1,164 @@
-//! Decryption.
+//! Message decryption.
+//!
+//! Decrypts a message and optionally checks that the message is
+//! signed.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use sequoia::Sequoia;
+//! use sequoia::prompt::Cancel;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new(), None)
+//! #     .expect("can generate a key")
+//! #     .into_cert();
+//! #
+//! let message: &[u8] = b"hello, world!";
+//!
+//! # let mut ciphertext = Vec::new();
+//! #
+//! # sq.encrypt()
+//! #     .add_recipient(alice.clone())
+//! #     .add_signer(alice.clone())
+//! #     .encrypt(
+//! #         std::io::Cursor::new(message),
+//! #         &mut ciphertext,
+//! #         Cancel::new(),
+//! #         ())
+//! #     .expect("can encrypt");
+//! # let ciphertext = std::io::Cursor::new(&ciphertext);
+//!
+//! let ciphertext = // Some Reader containing an encrypted message.
+//! #   ciphertext;
+//! let mut plaintext = Vec::new();
+//!
+//! // Information about the decryption operation.  If you don't want
+//! // to examine the output, pass `()` below.
+//!
+//! let mut output = Vec::new();
+//!
+//! sq.decrypt()
+//!     .decrypt(
+//!         ciphertext,
+//!         &mut plaintext,
+//!         Cancel::new(),
+//!         &mut output)?;
+//! // Examine output for more information about the decryption process.
+//! assert_eq!(plaintext, message);
+//! # Ok(()) }
+//! ```
+//!
+//! To get additional information about the decryption process
+//! including detailed information about the message structure, and
+//! authentication status, you can either collect the [`Output`] and
+//! examine it after the call completes, or implement [`Stream`] for a
+//! data structure of your choice to examine the [`Output`]
+//! asynchronously.  The latter approach, demonstrated below, is
+//! better when the message is large.
+//!
+//! ```rust
+//! use sequoia::Sequoia;
+//! use sequoia::decrypt;
+//! use sequoia::prompt::Cancel;
+//!
+//! struct Stream {
+//! }
+//!
+//! impl decrypt::Stream for Stream {
+//!     fn output(&mut self, params: &decrypt::Params, output: decrypt::Output)
+//!         -> Result<(), anyhow::Error>
+//!     {
+//!         match output {
+//!             decrypt::Output::Decrypted(
+//!                 decrypt::output::Decrypted {
+//!                     decryptor,
+//!                     ..
+//!                 }) =>
+//!             {
+//!                 use decrypt::output::Decryptor::*;
+//!                 match decryptor {
+//!                     Cert(cert, _key) => {
+//!                         eprintln!("Decrypting using {}", cert.fingerprint());
+//!                     }
+//!                     Key(key) => {
+//!                         eprintln!("Decrypting using {}", key.fingerprint());
+//!                     }
+//!                     SKESK(_skesk) => {
+//!                         eprintln!("Decrypting using a password");
+//!                     }
+//!                     SessionKey(_session_key) => {
+//!                         eprintln!("Decrypting using a provided session key");
+//!                     }
+//!                     // For future compatibility this and other data \
+//!                     // structures are marked non-exhaustive.
+//!                     _ => {
+//!                         eprintln!("Decrypted some other way");
+//!                     }
+//!                 }
+//!             }
+//!             decrypt::Output::Report(
+//!                 decrypt::output::Report { verification, .. }) =>
+//!             {
+//!                 eprintln!("Authenticated {} signatures",
+//!                           verification.authenticated_signatures);
+//!             }
+//!             _ => {
+//!                 // Ignore.
+//!             }
+//!         }
+//!
+//!         // Return an error to abort processing early.
+//!         Ok(())
+//!     }
+//! }
+//! # fn main() -> anyhow::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new(), None)
+//! #     .expect("can generate a key")
+//! #     .into_cert();
+//! #
+//! let message: &[u8] = b"hello, world!";
+//!
+//! # let mut ciphertext = Vec::new();
+//! #
+//! # sq.encrypt()
+//! #     .add_recipient(alice.clone())
+//! #     .add_signer(alice.clone())
+//! #     .encrypt(
+//! #         std::io::Cursor::new(message),
+//! #         &mut ciphertext,
+//! #         Cancel::new(),
+//! #         ())
+//! #     .expect("can encrypt");
+//! # let ciphertext = std::io::Cursor::new(&ciphertext);
+//!
+//! let ciphertext = // Some Reader containing an encrypted message.
+//! #   ciphertext;
+//! let mut plaintext = Vec::new();
+//!
+//! let mut output = Vec::new();
+//!
+//! sq.decrypt()
+//!     .decrypt(
+//!         ciphertext,
+//!         &mut plaintext,
+//!         Cancel::new(),
+//!         // If you wantx to examine the output, pass `()`.
+//!         &mut output)?;
+//! // Examine output for more information about the decryption process.
+//! assert_eq!(plaintext, message);
+//! # Ok(()) }
+//! ```
 
 use anyhow::Context as _;
 
@@ -158,10 +318,7 @@ impl<'sequoia> Builder<'sequoia> {
 
     /// Sets the number of required authenticated signatures.
     ///
-    /// The default depends on the designated signers setting (see
-    /// [`Builder::designated_signers`]).  If set, one authenticated
-    /// signature is required.  Otherwise, no authenticated signatures
-    /// are required.
+    /// By default, one authenticated signature is required.
     ///
     /// Note: [`decrypt_unwrap`](Builder::decrypt_unwrap) does not
     /// apply a signing policy and silently ignores this parameter.
@@ -216,13 +373,9 @@ impl<'sequoia> Builder<'sequoia> {
 
     /// Decrypts the specified message with the configured parameters.
     ///
-    /// Returns `Ok` if the message could be verified.  See
-    /// [`verify::Builder`] for details.  Note: as documented in
-    /// [`Builder::designated_signers`], the signing policy is
-    /// slightly different when decrypting a message vs. verifying a
-    /// signed message: when decrypting a message, if no designated
-    /// signers have been set, no authenticated signatures are
-    /// required by default.
+    /// Returns `Ok` if the message could be decrypted and verified.
+    /// See [`verify::Builder`] for details.  By default, at least one
+    /// signature needs to be authenticated.
     ///
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
@@ -548,10 +701,10 @@ pub mod output {
 
         /// The key was used to decrypt the SEIPD packet.
         ///
-        /// If the certificate is available, [`Decryptor::Cert`] will be
-        /// returned.  However, it may happen that a key on the key store,
-        /// but the certificate is not in the certificate store.  In cases
-        /// like this, this variant is returned.
+        /// If the certificate is available, [`Decryptor::Cert`] will
+        /// be returned.  However, it may happen that a key is on the
+        /// key store, but the certificate is not in the certificate
+        /// store.  In cases like this, this variant is returned.
         Key(Key<key::PublicParts, key::UnspecifiedRole>),
 
         /// The SKESK was used to decrypt the SEIPD packet.
@@ -609,9 +762,44 @@ pub enum Output {
     /// a signature, but the secret key material is not available.
     OperationalError(error::OperationalError),
 
+    /// Information emitted along the way.
+    ///
+    /// It may be possible to decrypt and authenticate a message, but
+    /// there may still be diagnostics
     Info(output::Info),
+
+    /// Emitted after the start of the message has been decrypted.
+    ///
+    /// This is emitted after the session key has been decrypted, and
+    /// appears reasonable.  This is emitted before the content of the
+    /// message is streamed.
+    ///
+    /// That this is emitted is not a guarantee that the operation
+    /// will succeed.  In particular, if the message is truncated, the
+    /// ciphertext is corrupted, or the authentication policy (as
+    /// controlled by [`Builder::signatures`] and
+    /// [`Builder::designated_signers`] isn't satisfied, this will be
+    /// emitted and the operation will then fail.
+    ///
+    /// This will be emitted at most once.
     Decrypted(output::Decrypted),
+
+    /// Information about an OpenPGP message's structure.
+    ///
+    /// This data structure contains information about an OpenPGP
+    /// message's structure; it does not include the message's
+    /// content.
+    ///
+    /// This will be emitted after the message has been decrypt, and
+    /// if it contains a valid message.
     MessageStructure(verify::output::MessageStructure),
+
+    /// Information about the decryption and verification.
+    ///
+    /// This data structure contains authentication information.
+    ///
+    /// This is emitted at the end, immediately before the
+    /// authentication check.
     Report(output::Report),
 }
 
@@ -1478,8 +1666,8 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
 
-        // Fail to decrypt, because we expect a valid signature, but
-        // the message is not signed.
+        // Fail to decrypt, because, by default, we expect a valid
+        // signature and the message is not signed.
         sq.decrypt()
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
