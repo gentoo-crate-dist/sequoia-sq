@@ -733,7 +733,7 @@ impl Sequoia {
                     sequoia: self,
                     detached_sig_arg: None,
                     detached_sig_value: None,
-                    signatures: 10,
+                    signatures: 1,
                     designated_signers: None,
                 },
                 secret_keys: Vec::new(),
