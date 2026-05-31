@@ -430,8 +430,8 @@ impl<'sequoia> Builder<'sequoia> {
                     if ! pp.processed() {
                         return Err(
                             Error::OperationalError(
-                                error::OperationalError::MissingSessionKey(
-                                    error::MissingSessionKey {
+                                error::OperationalError::InvalidSessionKey(
+                                    error::InvalidSessionKey {
                                     })));
                     }
 
@@ -650,11 +650,14 @@ pub mod error {
         pub skesks: Vec<SKESK>,
     }
 
-    /// Missing session key.
+    /// Invalid session key.
+    ///
+    /// We got a session key by decrypting a PKESK or SKESK, but it
+    /// failed to decrypt the encrypted packet.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
-    #[error("No session key")]
-    pub struct MissingSessionKey {
+    #[error("Invalid session key")]
+    pub struct InvalidSessionKey {
     }
 
     /// The message has been manipulated.
@@ -677,7 +680,7 @@ pub mod error {
         #[error(transparent)]
         MissingSecretKeyMaterial(MissingSecretKeyMaterial),
         #[error(transparent)]
-        MissingSessionKey(MissingSessionKey),
+        InvalidSessionKey(InvalidSessionKey),
         #[error(transparent)]
         ManipulatedMessage(ManipulatedMessage),
         #[error(transparent)]
