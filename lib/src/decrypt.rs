@@ -280,7 +280,7 @@ impl<'sequoia> Params<'sequoia> {
 
     /// Returns the pre-loaded secret keys.
     ///
-    /// See [`Builder::secret_keys`].
+    /// See [`Builder::add_secret_key`].
     pub fn secret_keys(&self) -> &[Cert] {
         &self.secret_keys[..]
     }
@@ -370,12 +370,22 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    /// Sets the secret keys to try.
+    /// Adds the certificate to the list of secret keys to try.
     ///
     /// The secret keys are tried in addition to the key store, if it
     /// hasn't been disabled.
-    pub fn secret_keys(mut self, secret_keys: Vec<Cert>) -> Self {
-        self.params.secret_keys = secret_keys;
+    pub fn add_secret_key(self, secret_key: Cert) -> Self {
+        self.add_secret_keys(std::iter::once(secret_key))
+    }
+
+    /// Adds the certificates to the list of secret keys to try.
+    ///
+    /// The secret keys are tried in addition to the key store, if it
+    /// hasn't been disabled.
+    pub fn add_secret_keys(mut self, secret_keys: impl IntoIterator<Item=Cert>)
+        -> Self
+    {
+        self.params.secret_keys.extend(secret_keys.into_iter());
 
         self
     }

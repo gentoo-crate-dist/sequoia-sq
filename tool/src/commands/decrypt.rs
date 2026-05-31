@@ -44,7 +44,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
         &sq, DecryptContext::Decrypt, command.dump_session_key);
     let mut decryptor = sq.sequoia.decrypt()
         .signatures(signatures)
-        .secret_keys(secret_keys)
+        .add_secret_keys(secret_keys)
         .session_keys(session_keys);
     if ! signers.is_empty() {
         decryptor = decryptor.add_designated_signers(signers);
