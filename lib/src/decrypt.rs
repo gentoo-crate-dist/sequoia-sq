@@ -390,12 +390,23 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    /// Sets session keys to try.
+    /// Adds a session keys to try.
     ///
     /// The session keys are tried in addition to the key store, if
     /// it hasn't been disabled.
-    pub fn session_keys(mut self, session_keys: Vec<SessionKey>) -> Self {
-        self.params.session_keys = session_keys;
+    pub fn add_session_key(self, session_key: SessionKey) -> Self {
+        self.add_session_keys(std::iter::once(session_key))
+    }
+
+    /// Adds session keys to try.
+    ///
+    /// The session keys are tried in addition to the key store, if
+    /// it hasn't been disabled.
+    pub fn add_session_keys(mut self,
+                            session_keys: impl IntoIterator<Item=SessionKey>)
+        -> Self
+    {
+        self.params.session_keys.extend(session_keys.into_iter());
 
         self
     }
@@ -1948,7 +1959,7 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
-            .session_keys(vec![ session_key.into() ])
+            .add_session_key(session_key.into())
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
@@ -1965,7 +1976,7 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
-            .session_keys(vec![ session_key.into() ])
+            .add_session_key(session_key.into())
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),

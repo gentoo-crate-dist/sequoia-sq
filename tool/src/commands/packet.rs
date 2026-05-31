@@ -116,7 +116,7 @@ pub fn dispatch(sq: Sq, command: Command)
 
             sq.sequoia.decrypt()
                 .add_secret_keys(secrets)
-                .session_keys(command.session_key)
+                .add_session_keys(command.session_key)
                 .decrypt_unwrap(&mut input, &mut output, prompt, stream)?;
 
             output.finalize()?;

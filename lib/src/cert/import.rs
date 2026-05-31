@@ -1373,7 +1373,7 @@ impl<'sequoia> Builder<'sequoia>
         let decryption_result = sequoia.decrypt()
             .add_designated_signer((*sender_attributes.0).clone())
             .add_secret_keys(secret_keys.clone())
-            .session_keys(session_keys.clone())
+            .add_session_keys(session_keys.clone())
             .signatures(1)
             .decrypt(
                 dup,
