@@ -258,7 +258,7 @@ pub mod output {
         /// (not necessarily a self-signed user ID) could be
         /// authenticated for the signer's certificate using the web
         /// of trust, or the certificate is considered authenticated
-        /// (see [`Builder::designated_signers`]).
+        /// (see [`Builder::add_designated_signer`]).
         #[non_exhaustive]
         #[derive(Debug)]
         pub struct Verified {
@@ -276,7 +276,7 @@ pub mod output {
 
             /// Direct authentication information.
             ///
-            /// See [`Builder::designated_signers`].
+            /// See [`Builder::add_designated_signer`].
             pub direct: Option<Direct>,
         }
 
@@ -303,7 +303,7 @@ pub mod output {
 
             /// Direct authentication information.
             ///
-            /// See [`Builder::designated_signers`].
+            /// See [`Builder::add_designated_signer`].
             pub direct: Option<Direct>,
         }
 
@@ -436,7 +436,7 @@ pub mod output {
         /// (not necessarily a self-signed user ID) could be
         /// authenticated for the signer's certificate using the web
         /// of trust, or the certificate is considered authenticated
-        /// (see [`Builder::designated_signers`]).
+        /// (see [`Builder::add_designated_signer`]).
         pub fn verified(&self) -> bool {
             matches!(self, SignatureStatus::Verified(_))
         }
@@ -556,7 +556,7 @@ pub mod output {
         /// (not necessarily a self-signed user ID) could be
         /// authenticated for the signer's certificate using the web
         /// of trust, or the certificate is considered authenticated
-        /// (see [`Builder::designated_signers`]).
+        /// (see [`Builder::add_designated_signer`]).
         pub fn verified(&self) -> bool {
             self.status.verified()
         }
@@ -666,7 +666,7 @@ pub mod output {
         /// (not necessarily a self-signed user ID) could be
         /// authenticated for the signer's certificate using the web
         /// of trust, or the certificate is considered authenticated
-        /// (see [`Builder::designated_signers`]).
+        /// (see [`Builder::add_designated_signer`]).
         pub authenticated: bool,
 
         /// The number of authenticated signatures.
@@ -797,10 +797,10 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    /// Sets the designated signers.
+    /// Adds a certificate to the list of designated signers.
     ///
-    /// The specified certificates (and no other certificates) are
-    /// considered authenticated.
+    /// The specified designated signers (and no other certificates)
+    /// are considered authenticated.
     ///
     /// By default, signer certificates are authenticated using the
     /// web of trust using certificates from the certificate store
@@ -811,8 +811,27 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     ///   [`SequoiaBuilder::stateless`]: crate::SequoiaBuilder::stateless
     ///   [`SequoiaBuiler::add_keyring`]: crate::SequoiaBuilder::add_keyring
-    pub fn designated_signers(mut self, certs: Vec<Cert>) -> Self {
-        self.params.designated_signers = Some(certs);
+    pub fn add_designated_signer(self, cert: Cert) -> Self
+    {
+        self.add_designated_signers(std::iter::once(cert))
+    }
+
+    /// Adds certificates to the list of designated signers.
+    ///
+    /// See [`Builder::add_designated_signer`] for details.
+    ///
+    /// If you specify an empty set of designated signers, then the
+    /// web of trust will be disabled, and no signatures will be
+    /// authenticated.
+    pub fn add_designated_signers(mut self, certs: impl IntoIterator<Item=Cert>)
+        -> Self
+    {
+        if let Some(s) = self.params.designated_signers.as_mut() {
+            s.extend(certs);
+        } else {
+            self.params.designated_signers
+                = Some(certs.into_iter().collect())
+        }
 
         self
     }
@@ -839,7 +858,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// Returns `Ok` if the message could be verified according to the
     /// policy.  (You can configure the signing policy using
-    /// [`Builder::signatures`] and [`Builder::designated_signers`].)
+    /// [`Builder::signatures`] and [`Builder::add_designated_signer`].)
     ///
     /// The verified data is written to `output`.  If you don't plan
     /// to consume the verified data, you can pass pass an instance of
@@ -873,7 +892,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// Returns `Ok` if the message could be verified according to the
     /// policy.  (You can configure the signing policy using
-    /// [`Builder::signatures`] and [`Builder::designated_signers`].)
+    /// [`Builder::signatures`] and [`Builder::add_designated_signer`].)
     ///
     /// The verified data is written to `output`.  If you don't plan
     /// to consume the verified data, you can pass pass an instance of

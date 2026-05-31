@@ -23,7 +23,7 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
     let mut verifier = sq.sequoia.verify()
         .signatures(signatures);
     if ! signers.is_empty() {
-        verifier = verifier.designated_signers(signers);
+        verifier = verifier.add_designated_signers(signers);
     }
 
     let stream = Stream::new(&sq, VerifyContext::Verify);

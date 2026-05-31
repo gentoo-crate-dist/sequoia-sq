@@ -641,7 +641,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
     let mut all_signers = signers;
     all_signers.extend_from_slice(&mut self_auth_signers);
     if ! all_signers.is_empty() {
-        verifier = verifier.designated_signers(all_signers);
+        verifier = verifier.add_designated_signers(all_signers);
     }
 
     let stream = Stream::new(&sq, VerifyContext::Download);

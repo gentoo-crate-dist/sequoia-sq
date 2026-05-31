@@ -1371,8 +1371,7 @@ impl<'sequoia> Builder<'sequoia>
         let mut decryption_output = Vec::new();
         let mut plaintext = Vec::new();
         let decryption_result = sequoia.decrypt()
-            .designated_signers(
-                vec![ (*sender_attributes.0).clone() ])
+            .add_designated_signer((*sender_attributes.0).clone())
             .secret_keys(secret_keys.clone())
             .session_keys(session_keys.clone())
             .signatures(1)

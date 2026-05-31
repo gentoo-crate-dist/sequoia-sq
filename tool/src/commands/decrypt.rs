@@ -47,7 +47,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
         .secret_keys(secret_keys)
         .session_keys(session_keys);
     if ! signers.is_empty() {
-        decryptor = decryptor.designated_signers(signers);
+        decryptor = decryptor.add_designated_signers(signers);
     }
 
     let result = decryptor.decrypt(&mut input, &mut output, prompt, stream);

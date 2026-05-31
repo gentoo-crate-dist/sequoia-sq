@@ -268,7 +268,7 @@ impl<'sequoia> Params<'sequoia> {
 
     /// Returns the set of designated signers.
     ///
-    /// See [`Builder::designated_signers`].
+    /// See [`Builder::add_designated_signer`].
     pub fn designated_signers(&self) -> Option<&[Cert]> {
         self.vparams.designated_signers()
     }
@@ -328,10 +328,10 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    /// Sets the designated signers.
+    /// Adds a certificate to the list of designated signers.
     ///
-    /// The specified certificates (and no other certificates) are
-    /// considered authenticated.
+    /// The specified designated signers (and no other certificates)
+    /// are considered authenticated.
     ///
     /// By default, signer certificates are authenticated using the
     /// web of trust using certificates from the certificate store
@@ -345,8 +345,27 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     ///   [`SequoiaBuilder::stateless`]: crate::SequoiaBuilder::stateless
     ///   [`SequoiaBuiler::add_keyring`]: crate::SequoiaBuilder::add_keyring
-    pub fn designated_signers(mut self, certs: Vec<Cert>) -> Self {
-        self.params.vparams.designated_signers = Some(certs);
+    pub fn add_designated_signer(self, cert: Cert) -> Self
+    {
+        self.add_designated_signers(std::iter::once(cert))
+    }
+
+    /// Adds certificates to the list of designated signers.
+    ///
+    /// See [`Builder::add_designated_signer`] for details.
+    ///
+    /// If you specify an empty set of designated signers, then the
+    /// web of trust will be disabled, and no signatures will be
+    /// authenticated.
+    pub fn add_designated_signers(mut self, certs: impl IntoIterator<Item=Cert>)
+        -> Self
+    {
+        if let Some(s) = self.params.vparams.designated_signers.as_mut() {
+            s.extend(certs);
+        } else {
+            self.params.vparams.designated_signers
+                = Some(certs.into_iter().collect())
+        }
 
         self
     }
@@ -489,7 +508,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// Since this function does not process the content of the
     /// encryption container, it also does not verify the signatures.
     /// Thus, the signing policy parameters ([`Builder::signatures`]
-    /// and [`Builder::designated_signers`]) are ignored.
+    /// and [`Builder::add_designated_signer`]) are ignored.
     ///
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
@@ -778,7 +797,7 @@ pub enum Output {
     /// will succeed.  In particular, if the message is truncated, the
     /// ciphertext is corrupted, or the authentication policy (as
     /// controlled by [`Builder::signatures`] and
-    /// [`Builder::designated_signers`] isn't satisfied, this will be
+    /// [`Builder::add_designated_signer`] isn't satisfied, this will be
     /// emitted and the operation will then fail.
     ///
     /// This will be emitted at most once.
@@ -1753,7 +1772,7 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
-            .designated_signers(vec![ bob.clone() ])
+            .add_designated_signer(bob.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
@@ -1821,7 +1840,21 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
-            .designated_signers(vec![ alice.clone() ])
+            .add_designated_signer(alice.clone())
+            .decrypt(
+                std::io::Cursor::new(&ciphertext),
+                &mut plaintext,
+                Cancel::new(),
+                &mut output)
+            .expect_err("fail to decrypt");
+
+        // Fail to decrypt by designating the empty set of signers.
+        // If we designate a signer then we don't use the certificate
+        // store.
+        let mut plaintext = Vec::new();
+        let mut output = Vec::new();
+        sq.decrypt()
+            .add_designated_signers(std::iter::empty())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,

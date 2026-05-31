@@ -38,7 +38,7 @@
 //!         ())?;
 //! #
 //! # sequoia.verify()
-//! #     .designated_signers(vec![ cert ])
+//! #     .add_designated_signers(vec![ cert ])
 //! #     .inline_signature(
 //! #         std::io::Cursor::new(signed_message),
 //! #         std::io::empty(),
