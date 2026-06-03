@@ -137,7 +137,7 @@ pub struct Sequoia {
     /// password cache doesn't contain the correct password, or the
     /// key is protected by a retry counter, the user is prompted to
     /// unlock the key.  The correct password is added to the cache.
-    pub password_cache: Mutex<Vec<Password>>,
+    password_cache: Mutex<Vec<Password>>,
 }
 
 impl Sequoia {
