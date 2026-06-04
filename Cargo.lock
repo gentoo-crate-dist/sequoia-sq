@@ -3637,8 +3637,10 @@ dependencies = [
  "clap",
  "dirs 6.0.0",
  "filetime",
+ "fs_extra",
  "gethostname",
  "humantime",
+ "indicatif",
  "libc",
  "once_cell",
  "regex",
@@ -3656,6 +3658,7 @@ dependencies = [
  "terminal_size",
  "textwrap",
  "thiserror 2.0.12",
+ "tokio",
  "toml_edit",
 ]
 

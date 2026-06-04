@@ -6,6 +6,8 @@ use sequoia_net as net;
 
 use crate::Result;
 
+pub mod search;
+
 /// User agent for http communications.
 pub const USER_AGENT: &'static str = concat!("sq/", env!("CARGO_PKG_VERSION"));
 
