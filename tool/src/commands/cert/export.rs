@@ -11,11 +11,11 @@ use sequoia::cert_store;
 use cert_store::Store;
 
 use sequoia::types::TrustThreshold;
+use sequoia::cert::cert_exportable;
 
 use crate::{
     Sq,
     print_error_chain,
-    utils::cert_exportable,
 };
 
 use crate::cli::cert::export;

@@ -33,7 +33,6 @@ mod sq;
 use sq::Sq;
 
 mod common;
-pub mod utils;
 
 mod cli;
 use cli::types::Version;

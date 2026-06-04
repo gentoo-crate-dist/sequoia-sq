@@ -44,6 +44,7 @@ use cert_store::Store;
 use cert_store::StoreUpdate;
 use cert_store::store::UserIDQueryParams;
 
+use sequoia::cert::cert_exportable;
 use sequoia::provenance::certify_downloads;
 use sequoia::types::Convert;
 use sequoia::types::TrustThreshold;
@@ -56,7 +57,6 @@ use crate::{
     output::pluralize::Pluralize,
     Sq,
     print_error_chain,
-    utils::cert_exportable,
 };
 
 use crate::cli;
