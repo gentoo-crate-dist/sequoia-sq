@@ -50,6 +50,7 @@ pub mod decrypt;
 pub mod encrypt;
 pub mod inspect;
 pub mod key;
+pub mod network;
 pub mod pki;
 pub mod provenance;
 mod shadow_ca;

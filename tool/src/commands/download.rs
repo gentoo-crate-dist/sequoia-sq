@@ -34,6 +34,8 @@ use openpgp::parse::PacketParserResult;
 use openpgp::parse::Parse;
 use openpgp::types::KeyFlags;
 
+use sequoia::network::CONNECT_TIMEOUT;
+use sequoia::network::USER_AGENT;
 use sequoia::types::TrustAmount;
 use sequoia::types::TrustThreshold;
 
@@ -42,8 +44,6 @@ use crate::Sq;
 use crate::cli::download;
 use crate::cli::types::Query;
 use crate::cli::types::cert_designator::CertDesignator;
-use crate::commands::network::CONNECT_TIMEOUT;
-use crate::commands::network::USER_AGENT;
 use crate::common::key_handle_dealias;
 use crate::common::pki::output::list::ListContext;
 use crate::common::ui;

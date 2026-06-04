@@ -5,7 +5,6 @@ use std::fmt;
 use std::fs::{self, DirEntry};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Context;
 use clap::ArgMatches;
@@ -47,6 +46,7 @@ use cert_store::store::UserIDQueryParams;
 use sequoia::cert::cert_exportable;
 use sequoia::provenance::certify_downloads;
 use sequoia::types::Convert;
+use sequoia::network::http_client;
 use sequoia::types::TrustThreshold;
 use sequoia::types::import_stats::ImportStats;
 
@@ -60,15 +60,6 @@ use crate::{
 };
 
 use crate::cli;
-
-/// User agent for http communications.
-pub const USER_AGENT: &'static str = concat!("sq/", env!("CARGO_PKG_VERSION"));
-
-/// How long to wait for the initial http connection.
-pub const CONNECT_TIMEOUT: Duration = Duration::new(5, 0);
-
-/// How long to wait for each individual http request.
-pub const REQUEST_TIMEOUT: Duration = Duration::new(5, 0);
 
 pub fn dispatch(sq: Sq, c: cli::network::Command, matches: &ArgMatches)
                 -> Result<()>
@@ -1477,13 +1468,4 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
     }
 
     Ok(())
-}
-
-/// Makes a http client.
-fn http_client() -> Result<net::reqwest::Client> {
-    Ok(net::reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-	.connect_timeout(CONNECT_TIMEOUT)
-	.timeout(REQUEST_TIMEOUT)
-        .build()?)
 }
