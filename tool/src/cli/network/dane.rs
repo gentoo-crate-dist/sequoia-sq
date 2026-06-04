@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
 
+use sequoia::types::ResourceRecordType;
+
 use crate::cli::types::ClapData;
 use crate::cli::types::FileOrCertStore;
 use crate::cli::types::FileOrStdout;
@@ -137,14 +139,6 @@ to the `--domain` parameter that can be fully authenticated.",
         help = "Change the emitted resource record type",
     )]
     pub typ: ResourceRecordType,
-}
-
-#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ResourceRecordType {
-    #[default]
-    #[clap(name = "openpgp")]
-    OpenPGP,
-    Generic,
 }
 
 #[derive(Debug, Args)]

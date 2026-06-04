@@ -27,6 +27,8 @@ pub use preferred_userid::PreferredUserID;
 mod query;
 pub use query::Query;
 pub use query::QueryKind;
+mod resource_record_type;
+pub use resource_record_type::ResourceRecordType;
 mod safe;
 pub use safe::Safe;
 mod session_key;

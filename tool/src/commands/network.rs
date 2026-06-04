@@ -1427,7 +1427,7 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             for cert in certs {
                 let vc = cert.with_policy(sq.policy(), sq.time())?;
 
-                use cli::network::dane::ResourceRecordType;
+                use sequoia::types::ResourceRecordType;
                 let records = match c.typ {
                     ResourceRecordType::OpenPGP =>
                         dane::generate(&vc, &c.domain, c.ttl, c.size_limit)?,
