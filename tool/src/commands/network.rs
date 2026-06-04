@@ -30,7 +30,6 @@ use sequoia::cert_store;
 use cert_store::Store;
 
 use sequoia::network::http_client;
-use sequoia::network::search;
 use sequoia::types::TrustThreshold;
 
 use crate::{
@@ -112,8 +111,8 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        search::search(
-            &sq.sequoia, sq.batch, iterations, default_servers, servers,
+        sq.sequoia.network_search().search(
+            sq.batch, iterations, default_servers, servers,
             use_wkd, use_dane, c.all, c.query,
             output, prompt).await
     })
@@ -154,8 +153,8 @@ pub fn dispatch_keyserver(
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
-                search::keyserver_search(
-                    &sq.sequoia, sq.batch, default_servers, servers,
+                sq.sequoia.network_search().keyserver_search(
+                    sq.batch, default_servers, servers,
                     c.all, c.query, output, prompt).await
             })?;
         }
@@ -260,8 +259,8 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
-                search::wkd_search(
-                    &sq.sequoia, sq.batch, c.all, c.addresses,
+                sq.sequoia.network_search().wkd_search(
+                    sq.batch, c.all, c.addresses,
                     output, prompt).await
             })?;
         }
@@ -625,8 +624,8 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
-                search::dane_search(
-                    &sq.sequoia, sq.batch, c.all, c.addresses,
+                sq.sequoia.network_search().dane_search(
+                    sq.batch, c.all, c.addresses,
                     output, prompt).await
             })?;
         }
