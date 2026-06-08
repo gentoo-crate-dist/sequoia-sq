@@ -720,6 +720,46 @@ impl<'a> Builder<'a> {
             sequoia,
         } = &self.params;
 
+        let queries = if all {
+            Query::all_certs(sequoia)?
+        } else {
+            Query::parse(&query)?
+        };
+
+        self.search_(batch, iterations, default_servers, servers,
+                     true, // query_key_servers
+                     query_wkd,
+                     query_dane,
+                     true, // query_web
+                     true, // query_cert_store
+                     queries, output, prompt).await?;
+
+        Ok(())
+    }
+
+    /// Search for certificates on the network.
+    async fn search_<P>(&self,
+                        batch: bool,
+                        iterations: u8,
+                        default_servers: bool,
+                        servers: Vec<Arc<KeyServer>>,
+                        query_key_servers: bool,
+                        query_wkd: bool,
+                        query_dane: bool,
+                        query_web: bool,
+                        query_cert_store: bool,
+                        mut queries: Vec<Query>,
+                        output: Option<(&mut dyn std::io::Write,
+                                        Option<&Path>)>,
+                        prompt: P)
+        -> Result<()>
+    where
+        P: Prompt
+    {
+        let &Params {
+            sequoia,
+        } = &self.params;
+
         if output.is_none() {
             // We're going to save the output to the certificate store.
             // Make sure it is enabled.
@@ -732,11 +772,6 @@ impl<'a> Builder<'a> {
         let mut seen_fps = HashSet::new();
         let mut seen_ids = HashSet::new();
         let mut seen_urls = HashSet::new();
-        let mut queries = if all {
-            Query::all_certs(sequoia)?
-        } else {
-            Query::parse(&query)?
-        };
         let mut results = Default::default();
         let mut pb = Response::progress_bar(sequoia, batch);
 
@@ -763,105 +798,112 @@ impl<'a> Builder<'a> {
                 }
                 converged = false;
 
-                if let Some(query) = query.as_keyserver_query() {
-                    #[expect(
-                        clippy::unnecessary_to_owned,
-                        reason = "false positive: needs to be cloned to be used in the spawned task"
-                    )]
-                    for ks in servers.iter().cloned() {
+                if query_key_servers {
+                    if let Some(query) = query.as_keyserver_query() {
+                        #[expect(
+                            clippy::unnecessary_to_owned,
+                            reason = "false positive: needs to be cloned to be used in the spawned task"
+                        )]
+                        for ks in servers.iter().cloned() {
+                            pb.inc_length(1);
+                            let query = query.clone();
+                            requests.spawn(async move {
+                                let results = match query.clone() {
+                                    Query::Handle(h) => ks.get(h).await,
+                                    Query::Address(a) => ks.search(a).await,
+                                    Query::Url(_) => unreachable!(),
+                                };
+                                Response {
+                                    query,
+                                    results,
+                                    method: Method::KeyServer(
+                                        ks.url().as_str().to_string()),
+                                }
+                            });
+                        }
+                    }
+                }
+
+                if query_wkd {
+                    if let Some(address) = query.as_address() {
+                        let a = address.to_string();
+                        let http_client = http_client.clone();
                         pb.inc_length(1);
-                        let query = query.clone();
                         requests.spawn(async move {
-                            let results = match query.clone() {
-                                Query::Handle(h) => ks.get(h).await,
-                                Query::Address(a) => ks.search(a).await,
-                                Query::Url(_) => unreachable!(),
-                            };
+                            let results =
+                                wkd::get(&http_client, &a).await;
                             Response {
-                                query,
+                                query: Query::Address(a),
                                 results,
-                                method: Method::KeyServer(
-                                    ks.url().as_str().to_string()),
+                                method: Method::WKD,
                             }
                         });
                     }
                 }
 
-                if let Some(address) = query.as_address()
-                    .filter(|_| query_wkd)
-                {
-                    let a = address.to_string();
-                    let http_client = http_client.clone();
-                    pb.inc_length(1);
-                    requests.spawn(async move {
-                        let results =
-                            wkd::get(&http_client, &a).await;
-                        Response {
-                            query: Query::Address(a),
-                            results,
-                            method: Method::WKD,
-                        }
-                    });
+                if query_dane {
+                    if let Some(address) = query.as_address() {
+                        let a = address.to_string();
+                        pb.inc_length(1);
+                        requests.spawn(async move {
+                            let results = dane::get(&a).await;
+                            Response {
+                                query: Query::Address(a),
+                                results,
+                                method: Method::DANE,
+                            }
+                        });
+                    }
                 }
 
-                if let Some(address) = query.as_address()
-                    .filter(|_| query_dane)
-                {
-                    let a = address.to_string();
-                    pb.inc_length(1);
-                    requests.spawn(async move {
-                        let results = dane::get(&a).await;
-                        Response {
-                            query: Query::Address(a),
-                            results,
-                            method: Method::DANE,
-                        }
-                    });
+                if query_web {
+                    if let Query::Url(url) = &query {
+                        let query = query.clone();
+                        let http_client = http_client.clone();
+                        let url = url.clone();
+                        pb.inc_length(1);
+                        requests.spawn(async move {
+                            Response {
+                                query,
+                                results: match http_client.get(url.clone()).send().await
+                                {
+                                    Ok(response) =>
+                                        response.bytes().await
+                                        .map_err(Into::into)
+                                        .and_then(|b| CertParser::from_bytes(&b)
+                                                  .map(|cp| cp.collect())),
+                                    Err(e) => Err(e.into()),
+                                },
+                                method: Method::Http(url),
+                            }
+                        });
+                    }
                 }
 
-                if let Query::Url(url) = &query {
-                    let query = query.clone();
-                    let http_client = http_client.clone();
-                    let url = url.clone();
-                    pb.inc_length(1);
-                    requests.spawn(async move {
-                        Response {
-                            query,
-                            results: match http_client.get(url.clone()).send().await
-                            {
-                                Ok(response) =>
-                                    response.bytes().await
-                                    .map_err(Into::into)
-                                    .and_then(|b| CertParser::from_bytes(&b)
-                                              .map(|cp| cp.collect())),
-                                Err(e) => Err(e.into()),
-                            },
-                            method: Method::Http(url),
-                        }
-                    });
-                }
+                if query_cert_store {
+                    // Finally, we also consult the certificate store
+                    // to discover more identifiers.  This is sync,
+                    // but we use the same mechanism to merge the
+                    // result back in.
+                    if let Some(store) = &cert_store {
+                        pb.inc_length(1);
+                        let mut email_query = UserIDQueryParams::new();
+                        email_query.set_email(true);
+                        email_query.set_ignore_case(true);
 
-                // Finally, we also consult the certificate store to
-                // discover more identifiers.  This is sync, but we use
-                // the same mechanism to merge the result back in.
-                if let Some(store) = &cert_store {
-                    pb.inc_length(1);
-                    let mut email_query = UserIDQueryParams::new();
-                    email_query.set_email(true);
-                    email_query.set_ignore_case(true);
-
-                    let results = match &query {
-                        Query::Handle(h) => store.lookup_by_cert(h),
-                        Query::Address(a) => store.select_userid(&email_query, a),
-                        Query::Url(_) => return,
-                    }.map(|r| r.into_iter().map(|c| c.to_cert().cloned()).collect());
-                    requests.spawn(async move {
-                        Response {
-                            query,
-                            results,
-                            method: Method::CertStore,
-                        }
-                    });
+                        let results = match &query {
+                            Query::Handle(h) => store.lookup_by_cert(h),
+                            Query::Address(a) => store.select_userid(&email_query, a),
+                            Query::Url(_) => return,
+                        }.map(|r| r.into_iter().map(|c| c.to_cert().cloned()).collect());
+                        requests.spawn(async move {
+                            Response {
+                                query,
+                                results,
+                                method: Method::CertStore,
+                            }
+                        });
+                    }
                 }
             });
 
@@ -908,50 +950,25 @@ impl<'a> Builder<'a> {
             sequoia,
         } = &self.params;
 
-        if output.is_none() {
-            // We're going to save the output to the certificate store.
-            // Make sure it is enabled.
-            sequoia.cert_store_or_else()?;
-        }
-
-        let mut pb = Response::progress_bar(&sequoia, batch);
         let queries = if all {
             Query::all_certs(&sequoia)?
         } else {
             Query::parse_keyserver_queries(&query)?
         };
 
-        let mut requests = tokio::task::JoinSet::new();
-        queries.into_iter().for_each(|query| {
-            #[expect(
-                clippy::unnecessary_to_owned,
-                reason = "false positive: needs to be cloned to be used in the spawned task"
-            )]
-            for ks in servers.iter().cloned() {
-                let query = query.clone();
-                pb.inc_length(1);
-                requests.spawn(async move {
-                    let results = match query.clone() {
-                        Query::Handle(h) => ks.get(h).await,
-                        Query::Address(a) => ks.search(a).await,
-                        Query::Url(_) => unreachable!(),
-                    };
-                    Response {
-                        query,
-                        results,
-                        method: Method::KeyServer(
-                            ks.url().as_str().to_string()),
-                    }
-                });
-            }
-        });
-
-        let mut certs = Default::default();
-        Response::collect(&sequoia, requests, &mut certs, output.is_none(),
-                          default_servers, &mut pb, &prompt).await?;
-        drop(pb);
-        Response::import_or_emit(sequoia, output, false, certs)?;
-        Ok(())
+        self.search_(
+            batch,
+            1, // Iterations.
+            default_servers,
+            servers,
+            true, // query_key_servers,
+            false, // query_wkd,
+            false, // query_dane,
+            false, // query_web,
+            false, // query_cert_store,
+            queries,
+            output,
+            prompt).await
     }
 
     pub async fn wkd_search<P>(&self,
@@ -969,43 +986,25 @@ impl<'a> Builder<'a> {
             sequoia,
         } = &self.params;
 
-        if output.is_none() {
-            // We're going to save the output to the certificate store.
-            // Make sure it is enabled.
-            sequoia.cert_store_or_else()?;
-        }
-
-        let mut pb = Response::progress_bar(&sequoia, batch);
-        let http_client = http_client()?;
         let queries = if all {
             Query::all_addresses(&sequoia)?
         } else {
             Query::parse_addresses(&addresses)?
         };
-        let mut requests = tokio::task::JoinSet::new();
-        queries.into_iter().for_each(|query| {
-            pb.inc_length(1);
-            let http_client = http_client.clone();
-            requests.spawn(async move {
-                let results = wkd::get(
-                    &http_client,
-                    query.as_address().expect("parsed only addresses"))
-                    .await;
-                Response {
-                    query,
-                    results,
-                    method: Method::WKD,
-                }
-            });
-        });
 
-        let mut certs = Default::default();
-        Response::collect(&sequoia, requests, &mut certs, output.is_none(),
-                          false, &mut pb, &prompt).await?;
-        drop(pb);
-        Response::import_or_emit(&sequoia, output, false, certs)?;
-
-        Ok(())
+        self.search_(
+            batch,
+            1, // Iterations.
+            false, // default_servers,
+            Vec::new(), // servers,
+            false, // query_key_servers,
+            true, // query_wkd,
+            false, // query_dane,
+            false, // query_web,
+            false, // query_cert_store,
+            queries,
+            output,
+            prompt).await
     }
 
     pub async fn dane_search<P>(&self,
@@ -1023,39 +1022,24 @@ impl<'a> Builder<'a> {
             sequoia,
         } = &self.params;
 
-        if output.is_none() {
-            // We're going to save the output to the certificate store.
-            // Make sure it is enabled.
-            sequoia.cert_store_or_else()?;
-        }
-
-        let mut pb = Response::progress_bar(&sequoia, batch);
         let queries = if all {
             Query::all_addresses(&sequoia)?
         } else {
             Query::parse_addresses(&addresses)?
         };
-        let mut requests = tokio::task::JoinSet::new();
-        queries.into_iter().for_each(|query| {
-            pb.inc_length(1);
-            requests.spawn(async move {
-                let results = dane::get(
-                    query.as_address().expect("parsed only addresses"))
-                    .await;
-                Response {
-                    query,
-                    results,
-                    method: Method::DANE,
-                }
-            });
-        });
 
-        let mut certs = Default::default();
-        Response::collect(&sequoia, requests, &mut certs, output.is_none(),
-                          false, &mut pb, &prompt).await?;
-        drop(pb);
-        Response::import_or_emit(sequoia, output, false, certs)?;
-
-        Ok(())
+        self.search_(
+            batch,
+            1, // Iterations.
+            false, // default_servers,
+            Vec::new(), // servers,
+            false, // query_key_servers,
+            false, // query_wkd,
+            true, // query_dane,
+            false, // query_web,
+            false, // query_cert_store,
+            queries,
+            output,
+            prompt).await
     }
 }
