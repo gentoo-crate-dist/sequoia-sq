@@ -86,6 +86,8 @@ static STANDARD_POLICY: &StandardPolicy = &StandardPolicy::new();
 static NULL_POLICY: &NullPolicy = unsafe { &NullPolicy::new() };
 const TRACE: bool = false;
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub struct Sequoia {
     /// The home directory.
     ///
