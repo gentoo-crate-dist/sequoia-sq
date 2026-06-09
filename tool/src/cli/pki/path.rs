@@ -118,7 +118,7 @@ use `--userid NAME`."))
 const EXAMPLES: Actions = Actions {
     actions: &[
         Action::example().comment(
-            "Verify that Alice ceritified a particular User ID for Bob's certificate.",
+            "Verify that Alice certified a particular User ID for Bob's certificate.",
         ).command(&[
             "sq", "pki", "path",
             "EB28F26E2739A4870ECC47726F0073F60FD0CBF0",
