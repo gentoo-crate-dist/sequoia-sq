@@ -669,12 +669,25 @@ impl Response {
 impl Sequoia {
     /// Search for certificates on the network.
     ///
+    /// By default, the search function will search all sources, and
+    /// will iterate up to three times.  Each iteration uses the
+    /// results of the previous iteration to generate related queries.
+    ///
     /// See [`Builder`] for details.
     pub fn network_search(&self) -> Builder<'_>
     {
         Builder {
             params: Params {
                 sequoia: self,
+                batch: false,
+                iterations: 3,
+                default_servers: true,
+                servers: Default::default(),
+                query_key_servers: true,
+                query_wkd: true,
+                query_dane: true,
+                query_web: true,
+                query_cert_store: true,
             }
         }
     }
@@ -685,12 +698,126 @@ impl Sequoia {
 /// The parameters passed to [`Sequoia::network_search`].
 pub struct Params<'a> {
     sequoia: &'a Sequoia,
+    batch: bool,
+    iterations: u8,
+    default_servers: bool,
+    servers: Vec<Arc<KeyServer>>,
+    query_key_servers: bool,
+    query_wkd: bool,
+    query_dane: bool,
+    query_web: bool,
+    query_cert_store: bool,
 }
 
 impl<'a> Params<'a> {
     /// Returns the sequoia instance.
     pub fn sequoia(&self) -> &'a Sequoia {
         self.sequoia
+    }
+
+    /// Transitional: whether we're operating in batch mode.
+    pub fn batch(&self) -> bool {
+        self.batch
+    }
+
+    /// Transitional: returns the default servers parameter.
+    pub fn default_servers(&self) -> bool {
+        self.default_servers
+    }
+
+    /// The number of times to iterate.
+    ///
+    /// The search function starts with one or more queries to
+    /// execute, and then uses the results to derive related queries,
+    /// which it then executes.  This parameter determines the maximum
+    /// number of times the function will iterate.
+    ///
+    /// Consider searching for a certificate by fingerprint.  The
+    /// search function can query key servers, but it cannot search in
+    /// WKDs or using DANE, because they are keyed by email address,
+    /// not fingerprint.  These sources may contain important
+    /// information that is not available on the key servers either
+    /// because it hasn't yet been propagate to them or it was
+    /// stripped due to the server's policy or a bad actor.  To
+    /// provide a more complete result, the search function generates
+    /// queries based on the certificates that were found in the
+    /// previous iteration, and then executes those queries in the
+    /// next iteration.  In this case, it would generate a query for
+    /// each self-signed user ID.  This approach is similar to how a
+    /// web crawler works: after fetching a web page, it extracts the
+    /// links, and then visits those web pages.
+    ///
+    /// By checking multiple sources, the search function is more
+    /// resilient to an attacker who wants to withhold information:
+    /// the attacker needs to control many sources, not just one.
+    ///
+    /// By default, the search function iterates three times or until
+    /// an iteration does not result in a new queries, whichever
+    /// happens first.
+    pub fn iterations(&self) -> u8 {
+        self.iterations
+    }
+
+    /// Returns the configured key servers.
+    pub fn key_servers(&self) -> impl Iterator<Item=&Arc<KeyServer>> {
+        self.servers.iter()
+    }
+
+    /// Whether to query key servers.
+    ///
+    /// Key servers can be queried by address, and by fingerprint.
+    ///
+    /// See
+    /// [draft-ietf-openpgp-hkp-01](https://datatracker.ietf.org/doc/draft-ietf-openpgp-hkp/)
+    /// for more information.
+    pub fn query_key_servers(&self) -> bool {
+        self.query_key_servers
+    }
+
+    /// Whether to query WKD servers.
+    ///
+    /// WKD stands for web key directory.  A WKD directory can be
+    /// queried by address for the domain that it manages.  A WKD is
+    /// stored on a web server, and it only serves certificates for
+    /// the same domain.  As such, it can be seen as a weak authority
+    /// for the certificates that it serves.
+    ///
+    /// See
+    /// [draft-koch-openpgp-webkey-service](https://datatracker.ietf.org/doc/draft-koch-openpgp-webkey-service/)
+    /// for more information.
+    pub fn query_wkd(&self) -> bool {
+        self.query_wkd
+    }
+
+    /// Whether to use DANE.
+    ///
+    /// DANE stands for DNS-Based Authentication of Named Entities.
+    /// It defines a way to store OpenPGP certificates in DNS, and
+    /// query them.  It is protected by DNSSEC.  As such, it can be
+    /// seen as a weak authority for the certificates that it serves.
+    ///
+    /// See [RFC 7929](https://datatracker.ietf.org/doc/rfc7929/) for
+    /// more information.
+    pub fn query_dane(&self) -> bool {
+        self.query_dane
+    }
+
+    /// Whether to query the web.
+    ///
+    /// Fetches a web page and extracts any certificates it finds.
+    ///
+    /// The web is the only backend that resolves URLs.
+    pub fn query_web(&self) -> bool {
+        self.query_web
+    }
+
+    /// Whether to query the local certificate store.
+    ///
+    /// When enabled, the local certificate store is queried.  This is
+    /// useful to prime the query.  See [`Builder::iterations`] for
+    /// why this is useful.
+    pub fn query_cert_store(&self) -> bool {
+        self.query_cert_store
     }
 }
 
@@ -707,14 +834,174 @@ impl<'a> Builder<'a> {
         &self.params
     }
 
+    /// Transitional: whether we're operating in batch mode.
+    pub fn batch(mut self, batch: bool) -> Self {
+        self.params.batch = batch;
+        self
+    }
+
+    /// Transitional: returns the default servers parameter.
+    pub fn default_servers(mut self, default_servers: bool) -> Self {
+        self.params.default_servers = default_servers;
+        self
+    }
+
+    /// The number of times to iterate.
+    ///
+    /// The search function starts with one or more queries to
+    /// execute, and then uses the results to derive related queries,
+    /// which it then executes.  This parameter determines the maximum
+    /// number of times the function will iterate.
+    ///
+    /// Consider searching for a certificate by fingerprint.  The
+    /// search function can query key servers, but it cannot search in
+    /// WKDs or using DANE, because they are keyed by email address,
+    /// not fingerprint.  These sources may contain important
+    /// information that is not available on the key servers either
+    /// because it hasn't yet been propagate to them or it was
+    /// stripped due to the server's policy or a bad actor.  To
+    /// provide a more complete result, the search function generates
+    /// queries based on the certificates that were found in the
+    /// previous iteration, and then executes those queries in the
+    /// next iteration.  In this case, it would generate a query for
+    /// each self-signed user ID.  This approach is similar to how a
+    /// web crawler works: after fetching a web page, it extracts the
+    /// links, and then visits those web pages.
+    ///
+    /// By checking multiple sources, the search function is more
+    /// resilient to an attacker who wants to withhold information:
+    /// the attacker needs to control many sources, not just one.
+    ///
+    /// By default, the search function iterates three times or until
+    /// an iteration does not result in a new queries, whichever
+    /// happens first.
+    pub fn iterations(mut self, iterations: u8) -> Self {
+        self.params.iterations = iterations;
+        self
+    }
+
+    /// Sets the set of key servers to query.
+    ///
+    /// This clears any key servers.  To add to the set of key
+    /// servers, use [`Builder::add_key_servers`].
+    pub fn set_key_servers(mut self,
+                           key_servers: impl IntoIterator<Item=Arc<KeyServer>>)
+        -> Self
+    {
+        self.params.servers = key_servers.into_iter().collect();
+        self
+    }
+
+    /// Adds the key server to the set of key servers to query.
+    pub fn add_key_server(mut self, key_server: Arc<KeyServer>) -> Self {
+        self.params.servers.extend(std::iter::once(key_server));
+        self
+    }
+
+    /// Adds the key servers to the set of key servers to query.
+    pub fn add_key_servers(mut self,
+                           key_servers: impl IntoIterator<Item=Arc<KeyServer>>)
+        -> Self
+    {
+        self.params.servers.extend(key_servers.into_iter());
+        self
+    }
+
+    /// Clears the set of key servers to query.
+    ///
+    /// Normally, you'll use this to clear the default key servers and
+    /// then follow up with a call to [`Builder::add_key_server`] or
+    /// [`Builder::add_key_servers`] to configure the key servers that
+    /// you want to use.
+    ///
+    /// If you only want to disable the use of key servers, then use
+    /// [`Builder::query_key_servers`].
+    pub fn clear_key_server(mut self) -> Self {
+        self.params.servers = Vec::new();
+        self
+    }
+
+    /// Clears the sources to query.
+    ///
+    /// By default, all sources are queried.  This clears all of the
+    /// sources.  You should follow up by enabling the sources that
+    /// you want to query, e.g., by calling
+    /// [`Builder::query_key_servers`].
+    ///
+    /// It's better to use this function than to clear all sources
+    /// manually in case a new source is added in the future.
+    pub fn clear_sources(mut self) -> Self {
+        self.params.query_key_servers = false;
+        self.params.query_wkd = false;
+        self.params.query_dane = false;
+        self.params.query_web = false;
+        self.params.query_cert_store = false;
+        self
+    }
+
+    /// Whether to query key servers.
+    ///
+    /// Key servers can be queried by address, and by fingerprint.
+    ///
+    /// See
+    /// [draft-ietf-openpgp-hkp-01](https://datatracker.ietf.org/doc/draft-ietf-openpgp-hkp/)
+    /// for more information.
+    pub fn query_key_servers(mut self, query_key_servers: bool) -> Self {
+        self.params.query_key_servers = query_key_servers;
+        self
+    }
+
+    /// Whether to query WKD servers.
+    ///
+    /// WKD stands for web key directory.  A WKD directory can be
+    /// queried by address for the domain that it manages.  A WKD is
+    /// stored on a web server, and it only serves certificates for
+    /// the same domain.  As such, it can be seen as a weak authority
+    /// for the certificates that it serves.
+    /// See
+    /// [draft-koch-openpgp-webkey-service](https://datatracker.ietf.org/doc/draft-koch-openpgp-webkey-service/)
+    /// for more information.
+    pub fn query_wkd(mut self, query_wkd: bool) -> Self {
+        self.params.query_wkd = query_wkd;
+        self
+    }
+
+    /// Whether to use DANE.
+    ///
+    /// DANE stands for DNS-Based Authentication of Named Entities.
+    /// It defines a way to store OpenPGP certificates in DNS, and
+    /// query them.  It is protected by DNSSEC.  As such, it can be
+    /// seen as a weak authority for the certificates that it serves.
+    ///
+    /// See [RFC 7929](https://datatracker.ietf.org/doc/rfc7929/) for
+    /// more information.
+    pub fn query_dane(mut self, query_dane: bool) -> Self {
+        self.params.query_dane = query_dane;
+        self
+    }
+
+    /// Whether to query the web.
+    ///
+    /// Fetches a web page and extracts any certificates it finds.
+    ///
+    /// The web is the only backend that resolves URLs.
+    pub fn query_web(mut self, query_web: bool) -> Self {
+        self.params.query_web = query_web;
+        self
+    }
+
+    /// Whether to query the local certificate store.
+    ///
+    /// When enabled, the local certificate store is queried.  This is
+    /// useful to prime the query.  See [`Builder::iterations`] for
+    /// why this is useful.
+    pub fn query_cert_store(mut self, query_cert_store: bool) -> Self {
+        self.params.query_cert_store = query_cert_store;
+        self
+    }
+
     /// Search for certificates on the network.
     pub async fn search<P>(&self,
-                           batch: bool,
-                           iterations: u8,
-                           default_servers: bool,
-                           servers: Vec<Arc<KeyServer>>,
-                           query_wkd: bool,
-                           query_dane: bool,
                            queries: Vec<Query>,
                            output: Option<(&mut dyn std::io::Write,
                                            Option<&Path>)>,
@@ -723,28 +1010,13 @@ impl<'a> Builder<'a> {
     where
         P: Prompt
     {
-        self.search_(batch, iterations, default_servers, servers,
-                     true, // query_key_servers
-                     query_wkd,
-                     query_dane,
-                     true, // query_web
-                     true, // query_cert_store
-                     queries, output, prompt).await?;
+        self.search_(queries, output, prompt).await?;
 
         Ok(())
     }
 
     /// Search for certificates on the network.
     async fn search_<P>(&self,
-                        batch: bool,
-                        iterations: u8,
-                        default_servers: bool,
-                        servers: Vec<Arc<KeyServer>>,
-                        query_key_servers: bool,
-                        query_wkd: bool,
-                        query_dane: bool,
-                        query_web: bool,
-                        query_cert_store: bool,
                         mut queries: Vec<Query>,
                         output: Option<(&mut dyn std::io::Write,
                                         Option<&Path>)>,
@@ -755,6 +1027,15 @@ impl<'a> Builder<'a> {
     {
         let &Params {
             sequoia,
+            batch,
+            iterations,
+            default_servers,
+            ref servers,
+            query_key_servers,
+            query_wkd,
+            query_dane,
+            query_web,
+            query_cert_store,
         } = &self.params;
 
         if output.is_none() {
@@ -928,86 +1209,5 @@ impl<'a> Builder<'a> {
 
         Response::import_or_emit(sequoia, output, false, results)?;
         Ok(())
-    }
-
-    pub async fn keyserver_search<P>(&self,
-                                     batch: bool,
-                                     default_servers: bool,
-                                     servers: Vec<Arc<KeyServer>>,
-                                     queries: Vec<Query>,
-                                     output: Option<(&mut dyn std::io::Write,
-                                                     Option<&Path>)>,
-                                     prompt: P)
-        -> Result<()>
-    where
-        P: Prompt
-    {
-        let &Params {
-            sequoia: _,
-        } = &self.params;
-
-        self.search_(
-            batch,
-            1, // Iterations.
-            default_servers,
-            servers,
-            true, // query_key_servers,
-            false, // query_wkd,
-            false, // query_dane,
-            false, // query_web,
-            false, // query_cert_store,
-            queries,
-            output,
-            prompt).await
-    }
-
-    pub async fn wkd_search<P>(&self,
-                               batch: bool,
-                               queries: Vec<Query>,
-                               output: Option<(&mut dyn std::io::Write,
-                                               Option<&Path>)>,
-                               prompt: P)
-        -> Result<()>
-    where
-        P: Prompt
-    {
-        self.search_(
-            batch,
-            1, // Iterations.
-            false, // default_servers,
-            Vec::new(), // servers,
-            false, // query_key_servers,
-            true, // query_wkd,
-            false, // query_dane,
-            false, // query_web,
-            false, // query_cert_store,
-            queries,
-            output,
-            prompt).await
-    }
-
-    pub async fn dane_search<P>(&self,
-                                batch: bool,
-                                queries: Vec<Query>,
-                                output: Option<(&mut dyn std::io::Write,
-                                                Option<&Path>)>,
-                                prompt: P)
-        -> Result<()>
-    where
-        P: Prompt
-    {
-        self.search_(
-            batch,
-            1, // Iterations.
-            false, // default_servers,
-            Vec::new(), // servers,
-            false, // query_key_servers,
-            false, // query_wkd,
-            true, // query_dane,
-            false, // query_web,
-            false, // query_cert_store,
-            queries,
-            output,
-            prompt).await
     }
 }

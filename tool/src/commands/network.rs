@@ -117,11 +117,16 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
     let prompt = password::Prompt::new(&sq, true);
 
     let rt = tokio::runtime::Runtime::new()?;
+
     rt.block_on(async {
-        sq.sequoia.network_search().search(
-            sq.batch, iterations, default_servers, servers,
-            use_wkd, use_dane, queries,
-            output, prompt).await
+        sq.sequoia.network_search()
+            .batch(sq.batch)
+            .iterations(iterations)
+            .default_servers(default_servers)
+            .set_key_servers(servers)
+            .query_wkd(use_wkd)
+            .query_dane(use_dane)
+            .search(queries, output, prompt).await
     })
 }
 
@@ -166,9 +171,14 @@ pub fn dispatch_keyserver(
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
-                sq.sequoia.network_search().keyserver_search(
-                    sq.batch, default_servers, servers,
-                    queries, output, prompt).await
+                sq.sequoia.network_search()
+                    .batch(sq.batch)
+                    .iterations(1)
+                    .default_servers(default_servers)
+                    .set_key_servers(servers)
+                    .clear_sources()
+                    .query_key_servers(true)
+                    .search(queries, output, prompt).await
             })?;
         }
         Publish(c) => {
@@ -278,8 +288,13 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
-                sq.sequoia.network_search().wkd_search(
-                    sq.batch, queries, output, prompt).await
+                sq.sequoia.network_search()
+                    .batch(sq.batch)
+                    .iterations(1)
+                    .default_servers(false)
+                    .clear_sources()
+                    .query_wkd(true)
+                    .search(queries, output, prompt).await
             })?;
         }
         Publish(mut c) => {
@@ -648,8 +663,13 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
-                sq.sequoia.network_search().dane_search(
-                    sq.batch, queries, output, prompt).await
+                sq.sequoia.network_search()
+                    .batch(sq.batch)
+                    .iterations(1)
+                    .default_servers(false)
+                    .clear_sources()
+                    .query_dane(true)
+                    .search(queries, output, prompt).await
             })?;
         }
     }
