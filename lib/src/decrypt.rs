@@ -291,16 +291,6 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
-macro_rules! op {
-    () => {
-        |err| {
-            Error::OperationalError(
-                error::OperationalError::Other(
-                    Arc::new(anyhow::Error::from(err))))
-        }
-    }
-}
-
 /// Decrypt messages.
 ///
 /// This command builder is used to decrypt messages.

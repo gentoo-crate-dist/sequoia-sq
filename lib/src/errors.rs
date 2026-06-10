@@ -63,3 +63,13 @@ macro_rules! sys {
         }
     }
 }
+
+macro_rules! op {
+    () => {
+        |err| {
+            Error::OperationalError(
+                error::OperationalError::Other(
+                    Arc::new(anyhow::Error::from(err))))
+        }
+    }
+}
