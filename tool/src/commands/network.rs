@@ -30,6 +30,7 @@ use sequoia::cert_store;
 use cert_store::Store;
 
 use sequoia::network::http_client;
+use sequoia::network::search::Query;
 use sequoia::types::TrustThreshold;
 
 use crate::{
@@ -97,6 +98,12 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
         sq.config().resolve_network_search_use_dane(
             c.use_dane, c.use_dane_source);
 
+    let queries = if c.all {
+        Query::all_certs(&sq.sequoia)?
+    } else {
+        Query::parse(&c.query)?
+    };
+
     let mut output_;
     let output_path_;
     let output = if let Some(output) = c.output.as_ref() {
@@ -113,7 +120,7 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
     rt.block_on(async {
         sq.sequoia.network_search().search(
             sq.batch, iterations, default_servers, servers,
-            use_wkd, use_dane, c.all, c.query,
+            use_wkd, use_dane, queries,
             output, prompt).await
     })
 }
@@ -138,6 +145,12 @@ pub fn dispatch_keyserver(
     use crate::cli::network::keyserver::Subcommands::*;
     match c.subcommand {
         Search(c) => {
+            let queries = if c.all {
+                Query::all_certs(&sq.sequoia)?
+            } else {
+                Query::parse_keyserver_queries(&c.query)?
+            };
+
             let mut output_;
             let output_path_;
             let output = if let Some(output) = c.output.as_ref() {
@@ -155,7 +168,7 @@ pub fn dispatch_keyserver(
             rt.block_on(async {
                 sq.sequoia.network_search().keyserver_search(
                     sq.batch, default_servers, servers,
-                    c.all, c.query, output, prompt).await
+                    queries, output, prompt).await
             })?;
         }
         Publish(c) => {
@@ -244,6 +257,12 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
     use crate::cli::network::wkd::Subcommands::*;
     match c.subcommand {
         Search(c) => {
+            let queries = if c.all {
+                Query::all_addresses(&sq.sequoia)?
+            } else {
+                Query::parse_addresses(&c.addresses)?
+            };
+
             let mut output_;
             let output_path_;
             let output = if let Some(output) = c.output.as_ref() {
@@ -260,8 +279,7 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
 
             rt.block_on(async {
                 sq.sequoia.network_search().wkd_search(
-                    sq.batch, c.all, c.addresses,
-                    output, prompt).await
+                    sq.batch, queries, output, prompt).await
             })?;
         }
         Publish(mut c) => {
@@ -609,6 +627,12 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             }
         },
         Search(c) => {
+            let queries = if c.all {
+                Query::all_addresses(&sq.sequoia)?
+            } else {
+                Query::parse_addresses(&c.addresses)?
+            };
+
             let mut output_;
             let output_path_;
             let output = if let Some(output) = c.output.as_ref() {
@@ -625,8 +649,7 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
 
             rt.block_on(async {
                 sq.sequoia.network_search().dane_search(
-                    sq.batch, c.all, c.addresses,
-                    output, prompt).await
+                    sq.batch, queries, output, prompt).await
             })?;
         }
     }

@@ -715,8 +715,7 @@ impl<'a> Builder<'a> {
                            servers: Vec<Arc<KeyServer>>,
                            query_wkd: bool,
                            query_dane: bool,
-                           all: bool,
-                           query: Vec<String>,
+                           queries: Vec<Query>,
                            output: Option<(&mut dyn std::io::Write,
                                            Option<&Path>)>,
                            prompt: P)
@@ -724,16 +723,6 @@ impl<'a> Builder<'a> {
     where
         P: Prompt
     {
-        let &Params {
-            sequoia,
-        } = &self.params;
-
-        let queries = if all {
-            Query::all_certs(sequoia)?
-        } else {
-            Query::parse(&query)?
-        };
-
         self.search_(batch, iterations, default_servers, servers,
                      true, // query_key_servers
                      query_wkd,
@@ -945,8 +934,7 @@ impl<'a> Builder<'a> {
                                      batch: bool,
                                      default_servers: bool,
                                      servers: Vec<Arc<KeyServer>>,
-                                     all: bool,
-                                     query: Vec<String>,
+                                     queries: Vec<Query>,
                                      output: Option<(&mut dyn std::io::Write,
                                                      Option<&Path>)>,
                                      prompt: P)
@@ -955,14 +943,8 @@ impl<'a> Builder<'a> {
         P: Prompt
     {
         let &Params {
-            sequoia,
+            sequoia: _,
         } = &self.params;
-
-        let queries = if all {
-            Query::all_certs(&sequoia)?
-        } else {
-            Query::parse_keyserver_queries(&query)?
-        };
 
         self.search_(
             batch,
@@ -981,8 +963,7 @@ impl<'a> Builder<'a> {
 
     pub async fn wkd_search<P>(&self,
                                batch: bool,
-                               all: bool,
-                               addresses: Vec<String>,
+                               queries: Vec<Query>,
                                output: Option<(&mut dyn std::io::Write,
                                                Option<&Path>)>,
                                prompt: P)
@@ -990,16 +971,6 @@ impl<'a> Builder<'a> {
     where
         P: Prompt
     {
-        let &Params {
-            sequoia,
-        } = &self.params;
-
-        let queries = if all {
-            Query::all_addresses(&sequoia)?
-        } else {
-            Query::parse_addresses(&addresses)?
-        };
-
         self.search_(
             batch,
             1, // Iterations.
@@ -1017,8 +988,7 @@ impl<'a> Builder<'a> {
 
     pub async fn dane_search<P>(&self,
                                 batch: bool,
-                                all: bool,
-                                addresses: Vec<String>,
+                                queries: Vec<Query>,
                                 output: Option<(&mut dyn std::io::Write,
                                                 Option<&Path>)>,
                                 prompt: P)
@@ -1026,16 +996,6 @@ impl<'a> Builder<'a> {
     where
         P: Prompt
     {
-        let &Params {
-            sequoia,
-        } = &self.params;
-
-        let queries = if all {
-            Query::all_addresses(&sequoia)?
-        } else {
-            Query::parse_addresses(&addresses)?
-        };
-
         self.search_(
             batch,
             1, // Iterations.
