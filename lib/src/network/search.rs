@@ -170,10 +170,15 @@ fn serialize_keyring(sequoia: &Sequoia,
     Ok(())
 }
 
+/// The type of query.
+#[non_exhaustive]
 #[derive(Clone)]
-enum Query {
+pub enum Query {
+    /// Search by key handle.
     Handle(KeyHandle),
+    /// Search for an email address.
     Address(String),
+    /// Fetch a URL.
     Url(Url),
 }
 
@@ -194,8 +199,8 @@ impl fmt::Display for Query {
 }
 
 impl Query {
-    /// Parses command line arguments to queries.
-    fn parse(args: &[String]) -> Result<Vec<Query>> {
+    /// Converts the search strings to queries.
+    pub fn parse(args: &[String]) -> Result<Vec<Query>> {
         args.iter().map(
             |q| if let Ok(h) = q.parse::<KeyHandle>() {
                 Ok(Query::Handle(h))
@@ -210,9 +215,11 @@ impl Query {
             }).collect::<Result<Vec<Query>>>()
     }
 
-    /// Parses command line arguments to queries suitable for key
-    /// servers.
-    fn parse_keyserver_queries(args: &[String]) -> Result<Vec<Query>> {
+    /// Parses strings to queries suitable for key servers.
+    ///
+    /// This detects fingerprints, key ID, and email addresses.
+    /// Anything else results in an error.
+    pub fn parse_keyserver_queries(args: &[String]) -> Result<Vec<Query>> {
         args.iter().map(
             |q| if let Ok(h) = q.parse::<KeyHandle>() {
                 Ok(Query::Handle(h))
@@ -227,7 +234,7 @@ impl Query {
 
     /// Returns all known addresses and fingerprints of exportable
     /// certificates as queries.
-    fn all_certs(sequoia: &Sequoia) -> Result<Vec<Query>> {
+    pub fn all_certs(sequoia: &Sequoia) -> Result<Vec<Query>> {
         if let Some(store) = sequoia.cert_store()? {
             let mut fingerprints = HashSet::new();
             let mut addresses = HashSet::new();
@@ -253,7 +260,7 @@ impl Query {
 
     /// Returns all known addresses of exportable certificates as
     /// queries.
-    fn all_addresses(sequoia: &Sequoia) -> Result<Vec<Query>> {
+    pub fn all_addresses(sequoia: &Sequoia) -> Result<Vec<Query>> {
         if let Some(store) = sequoia.cert_store()? {
             let mut addresses = store.certs()
                 .filter(
@@ -270,9 +277,10 @@ impl Query {
         }
     }
 
-    /// Parses command line arguments to queries that only contain
-    /// email addresses.
-    fn parse_addresses(args: &[String]) -> Result<Vec<Query>> {
+    /// Converts email addresses to queries.
+    ///
+    /// Arguments that are not email addresses result in an error.
+    pub fn parse_addresses(args: &[String]) -> Result<Vec<Query>> {
         args.iter().map(
             |q| if let Ok(Some(addr)) = UserID::from(q.as_str()).email() {
                 Ok(Query::Address(addr.to_string()))
