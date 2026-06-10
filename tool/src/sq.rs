@@ -128,7 +128,7 @@ impl Sq {
     ///
     /// If the cert store is disabled, returns `Ok(None)`.  If it is not yet
     /// open, opens it.
-    pub fn cert_store(&self) -> Result<Option<Arc<WotStore>>> {
+    pub fn cert_store(&self) -> Result<Option<Arc<WotStore>>, SystemError> {
         self.sequoia.cert_store()
     }
 

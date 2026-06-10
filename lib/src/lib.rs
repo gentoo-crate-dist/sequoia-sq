@@ -230,7 +230,14 @@ impl Sequoia {
     ///
     /// If the cert store is disabled, returns `Ok(None)`.  If it is not yet
     /// open, opens it.
-    pub fn cert_store(&self) -> Result<Option<Arc<WotStore>>> {
+    pub fn cert_store(&self) -> Result<Option<Arc<WotStore>>, SystemError> {
+        self.cert_store_()
+            .map_err(|err| {
+                SystemError::CertStoreError(err.into())
+            })
+    }
+
+    pub fn cert_store_(&self) -> Result<Option<Arc<WotStore>>> {
         if self.no_rw_cert_store()
             && self.keyrings.is_empty()
         {
@@ -389,7 +396,6 @@ impl Sequoia {
     /// If the cert store is disabled, returns an error.
     pub fn cert_store_or_else<'s>(&'s self) -> Result<Arc<WotStore>, SystemError> {
         self.cert_store()
-            .map_err(|err| errors::SystemError::CertStoreError(err.into()))
             .and_then(|cert_store| {
                 cert_store
                     .ok_or_else(|| {
