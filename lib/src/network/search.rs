@@ -7,8 +7,6 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::Context;
-
 use indicatif::ProgressBar;
 
 use tokio::task::JoinSet;
@@ -16,7 +14,6 @@ use tokio::task::JoinSet;
 use sequoia_openpgp as openpgp;
 use openpgp::Fingerprint;
 use openpgp::KeyHandle;
-use openpgp::Result;
 use openpgp::armor;
 use openpgp::cert::Cert;
 use openpgp::cert::CertParser;
@@ -37,7 +34,9 @@ use cert_store::Store;
 use cert_store::StoreUpdate;
 use cert_store::store::UserIDQueryParams;
 
+use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::cert::cert_exportable;
 use crate::network::http_client;
 use crate::prompt::Prompt;
@@ -50,30 +49,32 @@ use crate::types::import_stats::ImportStats;
 /// Import the certificates into the local certificate store.
 ///
 /// This does not certify the certificates.
-fn import_certs(sequoia: &Sequoia, certs: Vec<Cert>) -> Result<()> {
+fn import_certs(sequoia: &Sequoia, certs: Vec<Cert>) -> Result<(), Error> {
     if certs.is_empty() {
         // No need to do and say anything.
         return Ok(());
     }
 
-    let cert_store = sequoia.cert_store_or_else()
-        .context("Inserting results")?;
+    let cert_store = sequoia.cert_store_or_else()?;
 
     let mut stats = ImportStats::default();
 
     let o = &mut std::io::stderr();
 
     for cert in certs.iter() {
-        cert_store.update_by(Arc::new(cert.clone().into()), &mut stats)
-            .with_context(|| {
-                let sanitized_userid = sequoia.best_userid(&cert, true);
-
-                format!("Inserting {}, {}",
-                        cert.fingerprint(), sanitized_userid.display())
+        let cert = Arc::new(cert.clone().into());
+        cert_store.update_by(Arc::clone(&cert), &mut stats)
+            .map_err(|err| {
+                Error::OperationalError(
+                    error::OperationalError::UpdatingCert(
+                        error::UpdatingCert {
+                            cert,
+                            error: Arc::new(err),
+                        }))
             })?;
     }
 
-    stats.print_summary(o, &sequoia)?;
+    stats.print_summary(o, &sequoia).map_err(op!())?;
 
     for vcert in certs.iter()
         .filter_map(|cert| cert.with_policy(sequoia.policy(), sequoia.time()).ok())
@@ -118,56 +119,69 @@ fn serialize_keyring(sequoia: &Sequoia,
                      mut output: (&mut dyn std::io::Write, Option<&Path>),
                      certs: Vec<Cert>,
                      binary: bool)
-    -> openpgp::Result<()>
+    -> Result<(), Error>
 {
-    if certs.len() > 1 {
-        let mut hint = sequoia.hint(format_args!(
-            "To extract a particular certificate from {}, use any of:",
-            output.1.map(|p| p.display().to_string())
-                .unwrap_or_else(|| "the stream".into())));
+    let doit = || {
+        if certs.len() > 1 {
+            let mut hint = sequoia.hint(format_args!(
+                "To extract a particular certificate from {}, use any of:",
+                output.1.map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "the stream".into())));
 
-        let path = output.1.map(|p| p.display().to_string())
+            let path = output.1.map(|p| p.display().to_string())
                 .unwrap_or_else(|| "...".into());
-        for cert in &certs {
-            hint = hint.sq()
-                .arg("cert").arg("export")
-                .arg_value("--keyring", &path)
-                .arg_value("--cert", cert.fingerprint())
-                .done();
+            for cert in &certs {
+                hint = hint.sq()
+                    .arg("cert").arg("export")
+                    .arg_value("--keyring", &path)
+                    .arg_value("--cert", cert.fingerprint())
+                    .done();
+            }
         }
-    }
 
-    // Handle the easy options first.  No armor no cry:
-    if binary {
+        // Handle the easy options first.  No armor no cry:
+        if binary {
+            for cert in certs {
+                cert.serialize(&mut output.0)?;
+            }
+            return Ok(());
+        }
+
+        // Just one Cert?  Ez:
+        if certs.len() == 1 {
+            return certs[0].armored().serialize(&mut output.0);
+        }
+
+        // Then, collect the headers.
+        let mut headers = Vec::new();
+        for (i, cert) in certs.iter().enumerate() {
+            headers.push(format!("Key #{}", i));
+            headers.append(&mut cert.armor_headers());
+        }
+
+        let headers: Vec<_> = headers.iter()
+            .map(|value| ("Comment", value.as_str()))
+            .collect();
+        let mut output = armor::Writer::with_headers(&mut output.0,
+                                                     armor::Kind::PublicKey,
+                                                     headers)?;
         for cert in certs {
-            cert.serialize(&mut output.0)?;
+            cert.serialize(&mut output)?;
         }
-        return Ok(());
-    }
+        output.finalize()?;
 
-    // Just one Cert?  Ez:
-    if certs.len() == 1 {
-        return certs[0].armored().serialize(&mut output.0);
-    }
+        Ok(())
+    };
 
-    // Then, collect the headers.
-    let mut headers = Vec::new();
-    for (i, cert) in certs.iter().enumerate() {
-        headers.push(format!("Key #{}", i));
-        headers.append(&mut cert.armor_headers());
-    }
-
-    let headers: Vec<_> = headers.iter()
-        .map(|value| ("Comment", value.as_str()))
-        .collect();
-    let mut output = armor::Writer::with_headers(&mut output.0,
-                                                 armor::Kind::PublicKey,
-                                                 headers)?;
-    for cert in certs {
-        cert.serialize(&mut output)?;
-    }
-    output.finalize()?;
-    Ok(())
+    // Convert anyhow::Error into Error.
+    doit()
+        .map_err(|err| {
+            Error::OperationalError(
+                error::OperationalError::SerializingKeyring(
+                    error::SerializingKeyring {
+                        error: Arc::new(err),
+                    }))
+        })
 }
 
 /// The type of query.
@@ -310,7 +324,7 @@ impl Query {
 }
 
 /// The source of a request.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum Source {
     KeyServer(String),
@@ -449,7 +463,7 @@ impl Source {
 struct Response {
     query: Query,
     source: Source,
-    results: Result<Vec<Result<Cert>>>,
+    results: Result<Vec<Result<Cert, Error>>, Error>,
 }
 
 impl Response {
@@ -479,7 +493,7 @@ impl Response {
         pb: &mut ProgressBar,
         prompt: P,
     )
-        -> Result<Vec<Fingerprint>>
+        -> Result<Vec<Fingerprint>, Error>
     where
         P: Prompt
     {
@@ -491,14 +505,14 @@ impl Response {
                  new: &mut Vec<Fingerprint>,
                  source: Source,
                  cert: Cert)
-                 -> Result<()>
+                 -> Result<(), Error>
         {
             use std::collections::btree_map::Entry;
             match acc.entry(cert.fingerprint()) {
                 Entry::Occupied(e) => {
                     let (e, m) = e.into_mut();
                     let n_uids = e.userids().count();
-                    *e = e.clone().merge_public(cert)?;
+                    *e = e.clone().merge_public(cert).map_err(op!())?;
                     if e.userids().count() > n_uids {
                         new.push(e.fingerprint());
                     }
@@ -515,14 +529,14 @@ impl Response {
         let mut errors = Vec::new();
         while let Some(response) = responses.join_next().await {
             pb.inc(1);
-            let response = response?;
+            let response = response.map_err(op!())?;
             match response.results {
                 Ok(returned_certs) => for cert in returned_certs {
                     match cert {
                         Ok(cert) => if ! certify {
                             merge(certs, &mut new,
                                   response.source.clone(), cert)?;
-                        } else { pb.suspend(|| -> Result<()> {
+                        } else { pb.suspend(|| -> Result<(), Error> {
                             if let Some(ca) = response.source.ca(sequoia)
                             {
                                 for cert in certify_downloads(
@@ -555,7 +569,10 @@ impl Response {
         }
 
         if certs.is_empty() {
-            Err(anyhow::anyhow!("No cert found."))
+            Err(Error::OperationalError(
+                error::OperationalError::NotFound(
+                    error::NotFound {
+                    })))
         } else {
             Ok(new)
         }
@@ -566,7 +583,7 @@ impl Response {
                       output: Option<(&mut dyn std::io::Write, Option<&Path>)>,
                       binary: bool,
                       certs: BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>)
-                      -> Result<()>
+                      -> Result<(), Error>
     {
         make_qprintln!(sequoia.config.quiet());
 
@@ -668,6 +685,125 @@ impl Response {
     }
 }
 
+/// Data structures related to [`Error`].
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+pub mod error {
+    use super::*;
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+
+    /// We failed to update a certificate on the certificate store.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Inserting {}", .cert.fingerprint())]
+    pub struct UpdatingCert {
+        /// The certificate being written to the certificate store.
+        pub cert: Arc<LazyCert<'static>>,
+
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// We failed to serialize the keyring.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Error serializing keyring")]
+    pub struct SerializingKeyring {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// We failed to execute the query.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Error executing query {} against {}",
+            .query, .source)]
+    pub struct ExecutingQuery {
+        pub query: Query,
+        pub source: Source,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// The query did not match any certificates.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("No certificate found.")]
+    pub struct NotFound {
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        UpdatingCert(UpdatingCert),
+
+        #[error(transparent)]
+        SerializingKeyring(SerializingKeyring),
+
+        #[error(transparent)]
+        ExecutingQuery(ExecutingQuery),
+
+        #[error(transparent)]
+        NotFound(NotFound),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to generating a searching the network for certificates.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+}
+
 impl Sequoia {
     /// Search for certificates on the network.
     ///
@@ -1008,7 +1144,7 @@ impl<'a> Builder<'a> {
                            output: Option<(&mut dyn std::io::Write,
                                            Option<&Path>)>,
                            prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         P: Prompt
     {
@@ -1023,7 +1159,7 @@ impl<'a> Builder<'a> {
                         output: Option<(&mut dyn std::io::Write,
                                         Option<&Path>)>,
                         prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         P: Prompt
     {
@@ -1046,7 +1182,7 @@ impl<'a> Builder<'a> {
             sequoia.cert_store_or_else()?;
         }
 
-        let http_client = http_client()?;
+        let http_client = http_client().map_err(op!())?;
 
         let mut seen_emails = HashSet::new();
         let mut seen_fps = HashSet::new();
@@ -1078,6 +1214,45 @@ impl<'a> Builder<'a> {
                 }
                 converged = false;
 
+                // Map anyhow::Error to Error.
+                let massage_query_results = |results: Result<Vec<Result<Cert>>>,
+                                             query: Query,
+                                             source: Source|
+                    -> Result<Vec<Result<Cert, Error>>, Error>
+                {
+                    let results = match results {
+                        Ok(results) => results,
+                        Err(err) => {
+                            return Err(Error::OperationalError(
+                                error::OperationalError::ExecutingQuery(
+                                    error::ExecutingQuery {
+                                        query: query.clone(),
+                                        source: source.clone(),
+                                        error: err.into(),
+                                    })));
+                        }
+                    };
+
+                    let results = results
+                        .into_iter()
+                        .map(|result| {
+                            match result {
+                                Ok(result) => Ok(result),
+                                Err(err) => {
+                                    Err(Error::OperationalError(
+                                        error::OperationalError::ExecutingQuery(
+                                            error::ExecutingQuery {
+                                                query: query.clone(),
+                                                source: source.clone(),
+                                                error: err.into(),
+                                            })))
+                                }
+                            }
+                        })
+                        .collect();
+                    Ok(results)
+                };
+
                 if query_key_servers {
                     if let Some(query) = query.as_keyserver_query() {
                         #[expect(
@@ -1085,19 +1260,22 @@ impl<'a> Builder<'a> {
                             reason = "false positive: needs to be cloned to be used in the spawned task"
                         )]
                         for ks in servers.iter().cloned() {
-                            pb.inc_length(1);
                             let query = query.clone();
+                            let source = Source::KeyServer(
+                                ks.url().as_str().to_string());
+                            pb.inc_length(1);
                             requests.spawn(async move {
                                 let results = match query.clone() {
                                     Query::Handle(h) => ks.get(h).await,
                                     Query::Address(a) => ks.search(a).await,
                                     Query::Url(_) => unreachable!(),
                                 };
+                                let results = massage_query_results(
+                                    results, query.clone(), source.clone());
                                 Response {
                                     query,
                                     results,
-                                    source: Source::KeyServer(
-                                        ks.url().as_str().to_string()),
+                                    source,
                                 }
                             });
                         }
@@ -1106,14 +1284,18 @@ impl<'a> Builder<'a> {
 
                 if query_wkd {
                     if let Some(address) = query.as_address() {
+                        let query = query.clone();
                         let a = address.to_string();
                         let http_client = http_client.clone();
                         pb.inc_length(1);
                         requests.spawn(async move {
                             let results =
                                 wkd::get(&http_client, &a).await;
+                            let results = massage_query_results(
+                                results, query.clone(), Source::WKD);
+
                             Response {
-                                query: Query::Address(a),
+                                query,
                                 results,
                                 source: Source::WKD,
                             }
@@ -1123,12 +1305,15 @@ impl<'a> Builder<'a> {
 
                 if query_dane {
                     if let Some(address) = query.as_address() {
+                        let query = query.clone();
                         let a = address.to_string();
                         pb.inc_length(1);
                         requests.spawn(async move {
                             let results = dane::get(&a).await;
+                            let results = massage_query_results(
+                                results, query.clone(), Source::DANE);
                             Response {
-                                query: Query::Address(a),
+                                query,
                                 results,
                                 source: Source::DANE,
                             }
@@ -1143,18 +1328,23 @@ impl<'a> Builder<'a> {
                         let url = url.clone();
                         pb.inc_length(1);
                         requests.spawn(async move {
+                            let source = Source::Http(url.clone());
+
+                            let results = match http_client.get(url.clone()).send().await
+                            {
+                                Ok(response) =>
+                                    response.bytes().await
+                                    .map_err(Into::into)
+                                    .and_then(|b| CertParser::from_bytes(&b)
+                                              .map(|cp| cp.collect())),
+                                Err(e) => Err(e.into()),
+                            };
+                            let results = massage_query_results(
+                                results, query.clone(), source.clone());
                             Response {
                                 query,
-                                results: match http_client.get(url.clone()).send().await
-                                {
-                                    Ok(response) =>
-                                        response.bytes().await
-                                        .map_err(Into::into)
-                                        .and_then(|b| CertParser::from_bytes(&b)
-                                                  .map(|cp| cp.collect())),
-                                    Err(e) => Err(e.into()),
-                                },
-                                source: Source::Http(url),
+                                results,
+                                source,
                             }
                         });
                     }
@@ -1176,6 +1366,8 @@ impl<'a> Builder<'a> {
                             Query::Address(a) => store.select_userid(&email_query, a),
                             Query::Url(_) => return,
                         }.map(|r| r.into_iter().map(|c| c.to_cert().cloned()).collect());
+                        let results = massage_query_results(
+                            results, query.clone(), Source::CertStore);
                         requests.spawn(async move {
                             Response {
                                 query,

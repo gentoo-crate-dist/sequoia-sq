@@ -127,7 +127,9 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
             .query_wkd(use_wkd)
             .query_dane(use_dane)
             .search(queries, output, prompt).await
-    })
+    })?;
+
+    Ok(())
 }
 
 pub fn dispatch_keyserver(
