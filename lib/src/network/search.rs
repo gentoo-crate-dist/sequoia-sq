@@ -475,112 +475,6 @@ impl Response {
             ProgressBar::new(0)
         }
     }
-
-    /// Either writes out a keyring or imports the certs.
-    fn import_or_emit(sequoia: &Sequoia,
-                      output: Option<(&mut dyn std::io::Write, Option<&Path>)>,
-                      binary: bool,
-                      certs: BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>)
-                      -> Result<(), Error>
-    {
-        make_qprintln!(sequoia.config.quiet());
-
-        qprintln!("\nFound {} related to the query:\n",
-                  certs.len().of("certificate"));
-
-        let mut certs = certs.into_values()
-            .map(|(cert, sources)| {
-                let userid = sequoia.best_userid(&cert, true);
-                (userid, cert, sources)
-            })
-            .collect::<Vec<_>>();
-
-        // Reverse sort, i.e., most authenticated first.
-        certs.sort_unstable_by_key(|cert| usize::MAX - cert.0.trust_amount());
-
-        for (i, (userid, cert, sources)) in certs.iter().enumerate() {
-            if i > 0 {
-                qprintln!();
-            }
-
-            // Emit metadata.
-            qprintln!(initial_indent = " - ", "{}",
-                      cert.fingerprint());
-            qprintln!(initial_indent = "   - ", "{}", userid.display());
-            qprintln!(initial_indent = "   - ", "created {}",
-                      cert.primary_key().key().creation_time().convert());
-
-            match cert.with_policy(sequoia.policy(), sequoia.time()) {
-                Ok(vcert) => {
-                    if let Err(e) = vcert.alive() {
-                        qprintln!(initial_indent = "   - ", "not live: {}", e);
-                    }
-                    match vcert.revocation_status() {
-                        RevocationStatus::Revoked(sigs) => for s in sigs {
-                            if let Some((reason, message)) =
-                                s.reason_for_revocation()
-                            {
-                                qprintln!(initial_indent = "   - ",
-                                          "revoked: {}, {}", reason,
-                                          Safe(message));
-                            } else {
-                                qprintln!(initial_indent = "   - ",
-                                          "revoked");
-                            }
-                        },
-
-                        RevocationStatus::CouldBe(sigs) => for s in sigs {
-                            if let Some((reason, message)) =
-                                s.reason_for_revocation()
-                            {
-                                qprintln!(initial_indent = "   - ",
-                                          "possibly revoked: {}, {}", reason,
-                                          Safe(message));
-                            } else {
-                                qprintln!(initial_indent = "   - ",
-                                          "possibly revoked");
-                            }
-
-                            match sequoia.lookup()
-                                .keyflags(None)
-                                .or_by_primary(false)
-                                .lookup(s.get_issuers(), true)
-                            {
-                                Ok(issuers) => for issuer in issuers {
-                                    qprintln!(initial_indent = "     - ",
-                                              "by {}, {}",
-                                              issuer.fingerprint(),
-                                              sequoia.best_userid(&issuer, true)
-                                              .display());
-                                },
-                                Err(_) =>
-                                    qprintln!(initial_indent = "     - ",
-                                              "by {}", s.get_issuers()[0]),
-                            }
-                        },
-
-                        RevocationStatus::NotAsFarAsWeKnow => (),
-                    }
-                },
-                Err(e) =>
-                    qprintln!(initial_indent = "   - ", "not valid: {}", e),
-            }
-
-            qprintln!(initial_indent = "   - ", "found via: {}",
-                      sources.into_iter().map(|m| m.to_string())
-                      .collect::<Vec<_>>().join(", "));
-        }
-
-        let certs = certs.into_iter().map(|(_, cert, _)| cert).collect();
-
-        if let Some(output) = output {
-            serialize_keyring(&sequoia, output, certs, binary)?;
-        } else {
-            import_certs(&sequoia, certs)?;
-        }
-
-        Ok(())
-    }
 }
 
 /// Data structures related to [`Error`].
@@ -1074,6 +968,8 @@ impl<'a> Builder<'a> {
             query_cert_store,
         } = &self.params;
 
+        make_qprintln!(sequoia.config.quiet());
+
         if output.is_none() {
             // We're going to save the output to the certificate store.
             // Make sure it is enabled.
@@ -1084,6 +980,10 @@ impl<'a> Builder<'a> {
         // certificate store.
         let certify = output.is_none();
         let silent_errors = default_servers;
+
+        // Whether to output ASCII-armored keyrings or binary-encoded
+        // keyrings.
+        let binary = false;
 
         let http_client = http_client().map_err(op!())?;
 
@@ -1395,7 +1295,102 @@ impl<'a> Builder<'a> {
 
         drop(pb);
 
-        Response::import_or_emit(sequoia, output, false, certs)?;
+        // Write out a keyring or import the certs.
+
+        qprintln!("\nFound {} related to the query:\n",
+                  certs.len().of("certificate"));
+
+        let mut certs = certs.into_values()
+            .map(|(cert, sources)| {
+                let userid = sequoia.best_userid(&cert, true);
+                (userid, cert, sources)
+            })
+            .collect::<Vec<_>>();
+
+        // Reverse sort, i.e., most authenticated first.
+        certs.sort_unstable_by_key(|cert| usize::MAX - cert.0.trust_amount());
+
+        for (i, (userid, cert, sources)) in certs.iter().enumerate() {
+            if i > 0 {
+                qprintln!();
+            }
+
+            // Emit metadata.
+            qprintln!(initial_indent = " - ", "{}",
+                      cert.fingerprint());
+            qprintln!(initial_indent = "   - ", "{}", userid.display());
+            qprintln!(initial_indent = "   - ", "created {}",
+                      cert.primary_key().key().creation_time().convert());
+
+            match cert.with_policy(sequoia.policy(), sequoia.time()) {
+                Ok(vcert) => {
+                    if let Err(e) = vcert.alive() {
+                        qprintln!(initial_indent = "   - ", "not live: {}", e);
+                    }
+                    match vcert.revocation_status() {
+                        RevocationStatus::Revoked(sigs) => for s in sigs {
+                            if let Some((reason, message)) =
+                                s.reason_for_revocation()
+                            {
+                                qprintln!(initial_indent = "   - ",
+                                          "revoked: {}, {}", reason,
+                                          Safe(message));
+                            } else {
+                                qprintln!(initial_indent = "   - ",
+                                          "revoked");
+                            }
+                        },
+
+                        RevocationStatus::CouldBe(sigs) => for s in sigs {
+                            if let Some((reason, message)) =
+                                s.reason_for_revocation()
+                            {
+                                qprintln!(initial_indent = "   - ",
+                                          "possibly revoked: {}, {}", reason,
+                                          Safe(message));
+                            } else {
+                                qprintln!(initial_indent = "   - ",
+                                          "possibly revoked");
+                            }
+
+                            match sequoia.lookup()
+                                .keyflags(None)
+                                .or_by_primary(false)
+                                .lookup(s.get_issuers(), true)
+                            {
+                                Ok(issuers) => for issuer in issuers {
+                                    qprintln!(initial_indent = "     - ",
+                                              "by {}, {}",
+                                              issuer.fingerprint(),
+                                              sequoia.best_userid(&issuer, true)
+                                              .display());
+                                },
+                                Err(_) =>
+                                    qprintln!(initial_indent = "     - ",
+                                              "by {}", s.get_issuers()[0]),
+                            }
+                        },
+
+                        RevocationStatus::NotAsFarAsWeKnow => (),
+                    }
+                },
+                Err(e) =>
+                    qprintln!(initial_indent = "   - ", "not valid: {}", e),
+            }
+
+            qprintln!(initial_indent = "   - ", "found via: {}",
+                      sources.into_iter().map(|m| m.to_string())
+                      .collect::<Vec<_>>().join(", "));
+        }
+
+        let certs = certs.into_iter().map(|(_, cert, _)| cert).collect();
+
+        if let Some(output) = output {
+            serialize_keyring(&sequoia, output, certs, binary)?;
+        } else {
+            import_certs(&sequoia, certs)?;
+        }
+
         Ok(())
     }
 }
