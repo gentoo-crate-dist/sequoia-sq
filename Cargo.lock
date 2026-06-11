@@ -3640,7 +3640,6 @@ dependencies = [
  "fs_extra",
  "gethostname",
  "humantime",
- "indicatif",
  "libc",
  "once_cell",
  "regex",

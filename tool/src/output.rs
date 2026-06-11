@@ -12,6 +12,7 @@ pub mod decrypt;
 pub mod encrypt;
 pub mod hint;
 pub mod key;
+pub mod network;
 pub mod pki;
 pub mod pluralize;
 pub mod sign;

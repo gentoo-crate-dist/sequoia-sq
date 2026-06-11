@@ -40,6 +40,7 @@ use crate::{
 };
 use crate::common::password;
 use crate::cli;
+use crate::output::network::search::Stream;
 
 pub fn dispatch(sq: Sq, c: cli::network::Command, matches: &ArgMatches)
                 -> Result<()>
@@ -100,28 +101,30 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
     };
 
     let mut output_;
-    let output_path_;
-    let output = if let Some(output) = c.output.as_ref() {
+    let (output, output_path) = if let Some(output) = c.output.as_ref() {
         output_ = output.create_safe(&sq)?;
-        output_path_ = output.path();
-        Some((&mut output_ as &mut _, output_path_.map(|p| p.as_path())))
+        let output_path = output.path().map(|p| p.clone());
+        (Some(&mut output_ as &mut _), Some(output_path))
     } else {
-        None
+        (None, None)
     };
 
     let prompt = password::Prompt::new(&sq, true);
 
     let rt = tokio::runtime::Runtime::new()?;
 
+    let mut stream = Stream::new(
+        &sq,
+        default_servers,
+        output_path);
+
     rt.block_on(async {
         sq.sequoia.network_search()
-            .batch(sq.batch)
             .iterations(iterations)
-            .default_servers(default_servers)
             .set_key_servers(servers)
             .query_wkd(use_wkd)
             .query_dane(use_dane)
-            .search(queries, output, prompt).await
+            .search(queries, output, &mut stream, prompt).await
     })?;
 
     Ok(())
@@ -151,28 +154,30 @@ pub fn dispatch_keyserver(
             };
 
             let mut output_;
-            let output_path_;
-            let output = if let Some(output) = c.output.as_ref() {
+            let (output, output_path) = if let Some(output) = c.output.as_ref() {
                 output_ = output.create_safe(&sq)?;
-                output_path_ = output.path();
-                Some((&mut output_ as &mut _, output_path_.map(|p| p.as_path())))
+                let output_path = output.path().map(|p| p.clone());
+                (Some(&mut output_ as &mut _), Some(output_path))
             } else {
-                None
+                (None, None)
             };
 
             let prompt = password::Prompt::new(&sq, true);
+
+            let mut stream = Stream::new(
+                &sq,
+                default_servers,
+                output_path);
 
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
                 sq.sequoia.network_search()
-                    .batch(sq.batch)
                     .iterations(1)
-                    .default_servers(default_servers)
                     .set_key_servers(servers)
                     .clear_sources()
                     .query_key_servers(true)
-                    .search(queries, output, prompt).await
+                    .search(queries, output, &mut stream, prompt).await
             })?;
         }
         Publish(c) => {
@@ -275,27 +280,29 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
             };
 
             let mut output_;
-            let output_path_;
-            let output = if let Some(output) = c.output.as_ref() {
+            let (output, output_path) = if let Some(output) = c.output.as_ref() {
                 output_ = output.create_safe(&sq)?;
-                output_path_ = output.path();
-                Some((&mut output_ as &mut _, output_path_.map(|p| p.as_path())))
+                let output_path = output.path().map(|p| p.clone());
+                (Some(&mut output_ as &mut _), Some(output_path))
             } else {
-                None
+                (None, None)
             };
 
             let prompt = password::Prompt::new(&sq, true);
+
+            let mut stream = Stream::new(
+                &sq,
+                true,
+                output_path);
 
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
                 sq.sequoia.network_search()
-                    .batch(sq.batch)
                     .iterations(1)
-                    .default_servers(false)
                     .clear_sources()
                     .query_wkd(true)
-                    .search(queries, output, prompt).await
+                    .search(queries, output, &mut stream, prompt).await
             })?;
         }
         Publish(mut c) => {
@@ -650,27 +657,29 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             };
 
             let mut output_;
-            let output_path_;
-            let output = if let Some(output) = c.output.as_ref() {
+            let (output, output_path) = if let Some(output) = c.output.as_ref() {
                 output_ = output.create_safe(&sq)?;
-                output_path_ = output.path();
-                Some((&mut output_ as &mut _, output_path_.map(|p| p.as_path())))
+                let output_path = output.path().map(|p| p.clone());
+                (Some(&mut output_ as &mut _), Some(output_path))
             } else {
-                None
+                (None, None)
             };
 
             let prompt = password::Prompt::new(&sq, true);
+
+            let mut stream = Stream::new(
+                &sq,
+                true,
+                output_path);
 
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
                 sq.sequoia.network_search()
-                    .batch(sq.batch)
                     .iterations(1)
-                    .default_servers(false)
                     .clear_sources()
                     .query_dane(true)
-                    .search(queries, output, prompt).await
+                    .search(queries, output, &mut stream, prompt).await
             })?;
         }
     }

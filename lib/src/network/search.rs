@@ -2,13 +2,9 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::fmt;
-use std::path::Path;
 use std::sync::Arc;
-
-use indicatif::ProgressBar;
 
 use tokio::task::JoinSet;
 
@@ -21,7 +17,6 @@ use openpgp::cert::CertParser;
 use openpgp::packet::UserID;
 use openpgp::parse::Parse;
 use openpgp::serialize::Serialize;
-use openpgp::types::RevocationStatus;
 
 use sequoia_net as net;
 use net::KeyServer;
@@ -35,6 +30,7 @@ use cert_store::Store;
 use cert_store::StoreUpdate;
 use cert_store::store::UserIDQueryParams;
 
+use crate::Ca;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
@@ -43,9 +39,6 @@ use crate::config::DEFAULT_KEYSERVERS;
 use crate::network::http_client;
 use crate::prompt::Prompt;
 use crate::provenance::certify_downloads;
-use crate::transitional::output::pluralize::Pluralize;
-use crate::types::Convert;
-use crate::types::Safe;
 use crate::types::import_stats::ImportStats;
 
 /// The type of query.
@@ -211,125 +204,84 @@ impl fmt::Display for Source {
 }
 
 impl Source {
-    // Returns the CA's certificate.
-    //
-    // This doesn't return an error, because not all sources have
-    // shadow CAs, and a missing CA is not a hard error.
+    /// Returns the CA's certificate.
+    ///
+    /// Returns `Ok(None)` if the source does not have a shadow CA, or
+    /// the certificate store is disabled.
     fn ca(&self, sequoia: &Sequoia)
-        -> Option<Arc<LazyCert<'static>>>
+        -> Result<Option<Ca>>
     {
-        make_qprintln!(sequoia.config.quiet());
-
-        let ca = || -> Result<_> {
-            let cert_store = sequoia.cert_store_or_else()?;
-            let certd = cert_store.certd()
-                .ok_or_else(|| anyhow::anyhow!(
-                    "A local trust root and other special certificates are \
-                     only available when using an OpenPGP certificate \
-                     directory"))?;
-            let (cert, created) = match self {
-                Source::KeyServer(url) => {
-                    let result = certd.shadow_ca_keyserver(url)?;
-
-                    match result {
-                        Some((cert, created)) => (cert, created),
-                        None => {
-                            if sequoia.config.verbose() {
-                                weprintln!(
-                                    "Not recording provenance information: \
-                                     {} is not known to be a verifying \
-                                     keyserver",
-                                    url);
-                            }
-                            return Ok(None);
-                        }
-                    }
-                }
-                Source::WKD => certd.shadow_ca_wkd()?,
-                Source::DANE => certd.shadow_ca_dane()?,
-                Source::Http(url) =>
-                    if let Some(r) = certd.shadow_ca_for_url(url.as_ref())? {
-                        r
-                    } else {
-                        return Ok(None);
-                    },
-                Source::CertStore => return Ok(None),
-            };
-
-            // Check that the data is a valid certificate.  If not,
-            // bail sooner rather than later.
-            let _ = cert.to_cert()?;
-
-            Ok(Some((cert, created)))
+        let Ok(cert_store) = sequoia.cert_store_or_else() else {
+            return Ok(None);
+        };
+        let Some(_) = cert_store.certd() else {
+            return Ok(None);
         };
 
-        let (cert, created) = match ca() {
-            Ok(Some((cert, created))) => (cert, created),
-            Ok(None) => return None,
-            Err(err) => {
-                let print_err = || {
-                    weprintln!(
-                        "Not recording provenance information: {}",
-                        err);
-                };
-
-                if sequoia.config.verbose() {
-                    print_err();
-                } else {
-                    use std::sync::Once;
-                    static MSG: Once = Once::new();
-                    MSG.call_once(print_err);
-                }
-
-                return None;
+        let result = match self {
+            Source::KeyServer(url) => {
+                sequoia.shadow_ca_keyserver(url)?
             }
+            Source::WKD => Some(sequoia.shadow_ca_wkd()?),
+            Source::DANE => Some(sequoia.shadow_ca_dane()?),
+            Source::Http(url) =>
+                if let Some(r) = sequoia.shadow_ca_for_url(url.as_ref())? {
+                    Some(r)
+                } else {
+                    return Ok(None);
+                },
+            Source::CertStore => return Ok(None),
         };
 
-        if ! created {
-            // We didn't create it.
-            return Some(cert);
+        // Check that the data is a valid certificate.  If not,
+        // bail sooner rather than later.
+        if let Some(ca) = result.as_ref() {
+            let _ = ca.cert().to_cert()?;
         }
 
-        if sequoia.config.verbose() {
-            weprintln!(
-                "Created the local CA {} for certifying \
-                 certificates downloaded from this service.  \
-                 Use `sq pki link authorize --unconstrained --amount N {}` \
-                 to change how much it is trusted.  Or \
-                 `sq pki link retract {}` to disable it.",
-                if let Ok(uid) = cert.to_cert()
-                    .and_then(|c| sequoia.best_userid(c, false).userid()
-                              .map(ToString::to_string))
-                {
-                    // We really want the self-signed, primary user
-                    // ID.
-                    uid
-                } else {
-                    "invalid data".to_string()
-                },
-                cert.fingerprint(), cert.fingerprint());
-        } else {
-            use std::sync::Once;
-            static MSG: Once = Once::new();
-            MSG.call_once(|| {
-                qprintln!("Note: Created a local CA to record \
-                           provenance information.\n\
-                           Note: See `sq pki link list --ca` \
-                           and `sq pki link --help` for more \
-                           information.");
-            });
-        }
+        Ok(result)
+    }
+}
+
+/// The trait for collecting output.
+pub trait Stream {
+    /// Output from [`network_search`](Builder::search).
+    fn output(&mut self, params: &Params, output: Output) -> Result<()>;
+}
 
-        Some(cert)
+impl<T> Stream for Box<T>
+where
+    T: Stream + ?Sized
+{
+    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+        AsMut::as_mut(self).output(params, output)
     }
 }
 
-struct Response {
-    query: Query,
-    source: Source,
-    results: Result<Vec<Result<Cert, Error>>, Error>,
+impl<T> Stream for &mut T
+where
+    T: Stream + ?Sized
+{
+    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+        (*self).output(params, output)
+    }
 }
-
+
+/// Collects the output in the specified vector.
+impl Stream for &mut Vec<Output> {
+    fn output(&mut self, _params: &Params, output: Output) -> Result<()> {
+        self.push(output);
+        Ok(())
+    }
+}
+
+/// Discards the output.
+impl Stream for () {
+    fn output(&mut self, _params: &Params, _output: Output) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// Data structures related to [`Error`].
 ///
 /// The errors are divided into categories, and the categories contain
@@ -395,13 +347,6 @@ pub mod error {
         pub error: Arc<anyhow::Error>,
     }
 
-    /// The query did not match any certificates.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("No certificate found.")]
-    pub struct NotFound {
-    }
-
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -420,9 +365,6 @@ pub mod error {
 
         #[error(transparent)]
         ExecutingQuery(ExecutingQuery),
-
-        #[error(transparent)]
-        NotFound(NotFound),
 
         #[error(transparent)]
         Other(Arc<anyhow::Error>),
@@ -461,6 +403,238 @@ pub enum Error {
     /// a signature, but the secret key material is not available.
     #[error(transparent)]
     OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
+}
+
+impl Error {
+    /// Returns a clone of `Error`.
+    ///
+    /// This `panic`s if passed a `StreamOutputError`, which can't be
+    /// cloned.
+    fn clone_or_panic(&self) -> Self {
+        use Error::*;
+        match self {
+            ArgumentError(err) => ArgumentError(err.clone()),
+            SystemError(err) => SystemError(err.clone()),
+            OperationalError(err) => OperationalError(err.clone()),
+            StreamOutputError(_) => panic!("StreamOutputError unexpected"),
+        }
+    }
+}
+
+/// Data structures related to [`Output`].
+pub mod output {
+    use super::*;
+
+    /// A request has been queued.
+    ///
+    /// A query is turned into a request for each relevant source.
+    /// For instance, a query for an email address will be sent to
+    /// both the WKD and the DANE sources, if they are enabled.  As
+    /// such, there may be multiple results corresponding to the same
+    /// query.
+    ///
+    /// A query may also result in no requests if none of the enabled
+    /// sources can handle it.
+    #[non_exhaustive]
+    #[derive(Debug)]
+    pub struct RequestQueued {
+        pub query: Query,
+        pub source: Source,
+
+        /// A mono-atomically increasing counter.
+        ///
+        /// This event can be paired with the [`Response`] event using
+        /// this field.
+        ///
+        /// The first request has a request ID of 0.  So this counter
+        /// also indicates the total number of requests that have been
+        /// queued prior to this one.
+        pub request: usize,
+    }
+
+    /// A response to a result.
+    ///
+    /// This is emitted when a request returns.  The certificates are
+    /// the data as returned by the source; they have not yet been
+    /// merged.
+    ///
+    /// A query is turned into a request for each relevant source.
+    /// For instance, a query for an email address will be sent to
+    /// both the WKD and the DANE sources, if they are enabled.  As
+    /// such, there may be multiple results corresponding to the same
+    /// query.
+    ///
+    /// If `results` is an error, the error is not fatal, but it can
+    /// be helpful to display it when debugging.
+    #[non_exhaustive]
+    #[derive(Debug)]
+    pub struct Response {
+        pub query: Query,
+        pub source: Source,
+
+        /// A mono-atomically increasing counter.
+        ///
+        /// This event can be paired with the [`RequestQueued`] event
+        /// using this field.
+        ///
+        /// The first request has a request ID of 0.  So this counter
+        /// also indicates the total number of requests that have been
+        /// queued prior to this one.
+        pub request: usize,
+
+        /// The response.
+        ///
+        /// The outer `Result` indicates whether the request failed
+        /// completely.  The inner `Result`s correspond to each of the
+        /// returned results.  For instance, a key server may return
+        /// multiple matching certificates, but one of those
+        /// certificates may be so corrupted that it can't be parsed.
+        /// In that case, the parse error will be stored instead of
+        /// the certificate that couldn't be parsed.
+        pub results: Result<Vec<Result<Cert, Error>>, Error>,
+    }
+
+    /// Information related to a particular source and certificate.
+    ///
+    /// This data structure is part of [`CertResult`].  See it for
+    /// details.
+    #[non_exhaustive]
+    #[derive(Debug)]
+    pub struct SourceInfo {
+        pub source: Source,
+
+        /// The shadow CA for this source that certified the
+        /// certificate on import.
+        ///
+        /// `None` means that there is no shadow CA associated with
+        /// this source.  This is always `None` if the certificate
+        /// store is disabled and shadow CAs are disabled.  But it is
+        /// also `None` for sources that provide no authentication
+        /// information.  For instance, a key server is only
+        /// associated with a shadow CA if the key server is known to
+        /// be a verifying key server.
+        ///
+        /// An error means that we were unable to get the shadow CA.
+        /// This is usually a sign of corruption.
+        ///
+        /// Note: a CA may be returned here even if it didn't certify
+        /// the certificate this time, but did in the past.
+        pub ca: Option<Result<Ca>>,
+    }
+
+    /// A final, merged certificate.
+    ///
+    /// This returns a merged certificate.  The certificate is the
+    /// result of merging the intermediate results.
+    ///
+    /// Note: when this is emitted, the certificate has not yet been
+    /// written out.
+    #[non_exhaustive]
+    #[derive(Debug)]
+    pub struct CertResult {
+        pub sources: Vec<SourceInfo>,
+        pub cert: Cert,
+    }
+
+    /// A report about the operation.
+    ///
+    /// This is emitted once after attempting to create the
+    /// certifications.
+    #[non_exhaustive]
+    #[derive(Debug)]
+    pub struct Report {
+        /// Statistics about certificates imported into the
+        /// certificate store.
+        ///
+        /// This is only updated when the certificates are imported
+        /// into the certificate store.
+        pub import_stats: ImportStats,
+    }
+
+    impl Report {
+        pub(super) fn new() -> Self {
+            Report {
+                import_stats: ImportStats::default(),
+            }
+        }
+    }
+}
+
+/// The variants of this enum are the different types of output that
+/// [`network_search`](Builder::search) emits.
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum Output {
+    /// An operational error occurred.
+    ///
+    /// This may be because the operation requires the certificate
+    /// store, but it is disabled.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    OperationalError(error::OperationalError),
+
+    /// Errors related to incorrectly calling the function.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    ArgumentError(error::ArgumentError),
+
+    /// A request has been queued.
+    ///
+    /// A query is turned into a request for each relevant source.
+    /// For instance, a query for an email address will be sent to
+    /// both the WKD and the DANE sources, if they are enabled.  As
+    /// such, there may be multiple results corresponding to the same
+    /// query.
+    ///
+    /// A query may also result in no requests if none of the enabled
+    /// sources can handle it.
+    RequestQueued(output::RequestQueued),
+
+    /// A response to a result.
+    ///
+    /// This is emitted when a request returns.  The certificates are
+    /// the data as returned by the source; they have not yet been
+    /// merged.
+    ///
+    /// A query is turned into a request for each relevant source.
+    /// For instance, a query for an email address will be sent to
+    /// both the WKD and the DANE sources, if they are enabled.  As
+    /// such, there may be multiple results corresponding to the same
+    /// query.
+    ///
+    /// If `results` is an error, the error is not fatal, but it can
+    /// be helpful to display it when debugging.
+    Response(output::Response),
+
+    /// We're about to emit the results.
+    ///
+    /// Note: this is emitted even if there are no results.
+    StartOfResults,
+
+    /// A final, merged result.
+    ///
+    /// This returns a final result.  The certificate is the result of
+    /// merging the intermediate results.
+    ///
+    /// Note: when this is emitted, the certificate has not yet been
+    /// written out.
+    CertResult(output::CertResult),
+
+    /// All of the certificate that will be returned have been
+    /// returned.
+    ///
+    /// Now's a good time to output any statistics.
+    EndOfResults,
+
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether anything is found or not.
+    Report(output::Report),
 }
 
 impl Sequoia {
@@ -476,9 +650,7 @@ impl Sequoia {
         Builder {
             params: Params {
                 sequoia: self,
-                batch: false,
                 iterations: 3,
-                default_servers: true,
                 servers: DEFAULT_KEYSERVERS
                     .iter()
                     .map(|s| Cow::Borrowed(*s))
@@ -498,9 +670,7 @@ impl Sequoia {
 /// The parameters passed to [`Sequoia::network_search`].
 pub struct Params<'a> {
     sequoia: &'a Sequoia,
-    batch: bool,
     iterations: u8,
-    default_servers: bool,
     servers: Vec<Cow<'static, str>>,
     query_key_servers: bool,
     query_wkd: bool,
@@ -513,16 +683,6 @@ impl<'a> Params<'a> {
     /// Returns the sequoia instance.
     pub fn sequoia(&self) -> &'a Sequoia {
         self.sequoia
-    }
-
-    /// Transitional: whether we're operating in batch mode.
-    pub fn batch(&self) -> bool {
-        self.batch
-    }
-
-    /// Transitional: returns the default servers parameter.
-    pub fn default_servers(&self) -> bool {
-        self.default_servers
     }
 
     /// The number of times to iterate.
@@ -632,18 +792,6 @@ impl<'a> Builder<'a> {
     /// This is useful for examining the builder's configuration.
     pub fn params(&self) -> &Params<'_> {
         &self.params
-    }
-
-    /// Transitional: whether we're operating in batch mode.
-    pub fn batch(mut self, batch: bool) -> Self {
-        self.params.batch = batch;
-        self
-    }
-
-    /// Transitional: returns the default servers parameter.
-    pub fn default_servers(mut self, default_servers: bool) -> Self {
-        self.params.default_servers = default_servers;
-        self
     }
 
     /// The number of times to iterate.
@@ -813,35 +961,55 @@ impl<'a> Builder<'a> {
     }
 
     /// Search for certificates on the network.
-    pub async fn search<P>(&self,
-                           queries: Vec<Query>,
-                           output: Option<(&mut dyn std::io::Write,
-                                           Option<&Path>)>,
-                           prompt: P)
+    pub async fn search<S, P>(&self,
+                              queries: Vec<Query>,
+                              output: Option<&mut dyn std::io::Write>,
+                              stream: S,
+                              prompt: P)
         -> Result<(), Error>
     where
+        S: Stream,
         P: Prompt
     {
-        self.search_(queries, output, prompt).await?;
+        let mut stream = Box::new(stream) as Box<dyn Stream>;
 
-        Ok(())
+        let result = self.search_(queries, output, &mut stream, prompt).await;
+
+        match result {
+            Ok(report) => {
+                // Emit the report.
+                stream.output(
+                    self.params(),
+                    Output::Report(report))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Ok(())
+            }
+            Err(err) => {
+                if let &Error::StreamOutputError(_) = &err {
+                } else {
+                    stream.output(
+                        self.params(),
+                        Output::Report(output::Report::new()))
+                        .map_err(|err| Error::StreamOutputError(err))?;
+                }
+                Err(err)
+            }
+        }
     }
 
     /// Search for certificates on the network.
     async fn search_<P>(&self,
                         mut queries: Vec<Query>,
-                        output: Option<(&mut dyn std::io::Write,
-                                        Option<&Path>)>,
+                        output: Option<&mut dyn std::io::Write>,
+                        stream: &mut Box<dyn Stream + 'a>,
                         prompt: P)
-        -> Result<(), Error>
+        -> Result<output::Report, Error>
     where
         P: Prompt
     {
         let &Params {
             sequoia,
-            batch,
             iterations,
-            default_servers,
             ref servers,
             query_key_servers,
             query_wkd,
@@ -849,8 +1017,6 @@ impl<'a> Builder<'a> {
             query_web,
             query_cert_store,
         } = &self.params;
-
-        make_qprintln!(sequoia.config.quiet());
 
         if output.is_none() {
             // We're going to save the output to the certificate store.
@@ -861,7 +1027,6 @@ impl<'a> Builder<'a> {
         // Certify with the shadown CAs if we're saving to the
         // certificate store.
         let certify = output.is_none();
-        let silent_errors = default_servers;
 
         // Whether to output ASCII-armored keyrings or binary-encoded
         // keyrings.
@@ -869,16 +1034,14 @@ impl<'a> Builder<'a> {
 
         let http_client = http_client().map_err(op!())?;
 
+        let mut request_count = 0;
         let mut seen_emails = HashSet::new();
         let mut seen_fps = HashSet::new();
         let mut seen_ids = HashSet::new();
         let mut seen_urls = HashSet::new();
         let mut certs = BTreeMap::new();
-        let pb = if sequoia.config.verbose() || batch {
-            ProgressBar::hidden()
-        } else {
-            ProgressBar::new(0)
-        };
+
+        let mut report = output::Report::new();
 
         let servers = if query_key_servers {
             servers
@@ -905,7 +1068,7 @@ impl<'a> Builder<'a> {
 
             let mut requests = JoinSet::new();
             let mut converged = true;
-            std::mem::take(&mut queries).into_iter().for_each(|query| {
+            for query in std::mem::take(&mut queries).into_iter() {
                 let new = match &query {
                     Query::Handle(KeyHandle::Fingerprint(fp)) =>
                         seen_fps.insert(fp.clone()),
@@ -919,7 +1082,7 @@ impl<'a> Builder<'a> {
 
                 // Skip queries that we already did.
                 if ! new {
-                    return;
+                    continue;
                 }
                 converged = false;
 
@@ -972,7 +1135,17 @@ impl<'a> Builder<'a> {
                             let query = query.clone();
                             let source = Source::KeyServer(
                                 ks.url().as_str().to_string());
-                            pb.inc_length(1);
+
+                            stream.output(
+                                self.params(),
+                                Output::RequestQueued(
+                                    output::RequestQueued {
+                                        source: source.clone(),
+                                        query: query.clone(),
+                                        request: request_count,
+                                    }))
+                                .map_err(|err| Error::StreamOutputError(err))?;
+
                             requests.spawn(async move {
                                 let results = match query.clone() {
                                     Query::Handle(h) => ks.get(h).await,
@@ -981,12 +1154,14 @@ impl<'a> Builder<'a> {
                                 };
                                 let results = massage_query_results(
                                     results, query.clone(), source.clone());
-                                Response {
+                                output::Response {
                                     query,
-                                    results,
                                     source,
+                                    request: request_count,
+                                    results,
                                 }
                             });
+                            request_count += 1;
                         }
                     }
                 }
@@ -994,52 +1169,92 @@ impl<'a> Builder<'a> {
                 if query_wkd {
                     if let Some(address) = query.as_address() {
                         let query = query.clone();
+                        let source = Source::WKD;
+
+                        stream.output(
+                            self.params(),
+                            Output::RequestQueued(
+                                output::RequestQueued {
+                                    query: query.clone(),
+                                    source: source.clone(),
+                                    request: request_count,
+                                }))
+                            .map_err(|err| Error::StreamOutputError(err))?;
+
                         let a = address.to_string();
                         let http_client = http_client.clone();
-                        pb.inc_length(1);
+
                         requests.spawn(async move {
                             let results =
                                 wkd::get(&http_client, &a).await;
                             let results = massage_query_results(
-                                results, query.clone(), Source::WKD);
+                                results, query.clone(), source.clone());
 
-                            Response {
+                            output::Response {
                                 query,
+                                source,
+                                request: request_count,
                                 results,
-                                source: Source::WKD,
                             }
                         });
+                        request_count += 1;
                     }
                 }
 
                 if query_dane {
                     if let Some(address) = query.as_address() {
                         let query = query.clone();
+                        let source = Source::DANE;
+
+                        stream.output(
+                            self.params(),
+                            Output::RequestQueued(
+                                output::RequestQueued {
+                                    query: query.clone(),
+                                    source: source.clone(),
+                                    request: request_count,
+                                }))
+                            .map_err(|err| Error::StreamOutputError(err))?;
+
                         let a = address.to_string();
-                        pb.inc_length(1);
+
                         requests.spawn(async move {
                             let results = dane::get(&a).await;
                             let results = massage_query_results(
-                                results, query.clone(), Source::DANE);
-                            Response {
+                                results, query.clone(), source.clone());
+
+                            output::Response {
                                 query,
+                                source,
+                                request: request_count,
                                 results,
-                                source: Source::DANE,
                             }
                         });
+                        request_count += 1;
                     }
                 }
 
                 if query_web {
                     if let Query::Url(url) = &query {
                         let query = query.clone();
-                        let http_client = http_client.clone();
                         let url = url.clone();
-                        pb.inc_length(1);
-                        requests.spawn(async move {
-                            let source = Source::Http(url.clone());
+                        let source = Source::Http(url.clone());
 
-                            let results = match http_client.get(url.clone()).send().await
+                        stream.output(
+                            self.params(),
+                            Output::RequestQueued(
+                                output::RequestQueued {
+                                    query: query.clone(),
+                                    source: source.clone(),
+                                    request: request_count,
+                                }))
+                            .map_err(|err| Error::StreamOutputError(err))?;
+
+                        let http_client = http_client.clone();
+
+                        requests.spawn(async move {
+                            let results = match http_client.get(
+                                url.clone()).send().await
                             {
                                 Ok(response) =>
                                     response.bytes().await
@@ -1050,12 +1265,15 @@ impl<'a> Builder<'a> {
                             };
                             let results = massage_query_results(
                                 results, query.clone(), source.clone());
-                            Response {
+
+                            output::Response {
                                 query,
-                                results,
                                 source,
+                                request: request_count,
+                                results,
                             }
                         });
+                        request_count += 1;
                     }
                 }
 
@@ -1065,7 +1283,18 @@ impl<'a> Builder<'a> {
                     // but we use the same mechanism to merge the
                     // result back in.
                     if let Some(store) = &cert_store {
-                        pb.inc_length(1);
+                        let source = Source::CertStore;
+
+                        stream.output(
+                            self.params(),
+                            Output::RequestQueued(
+                                output::RequestQueued {
+                                    query: query.clone(),
+                                    source: source.clone(),
+                                    request: request_count,
+                                }))
+                            .map_err(|err| Error::StreamOutputError(err))?;
+
                         let mut email_query = UserIDQueryParams::new();
                         email_query.set_email(true);
                         email_query.set_ignore_case(true);
@@ -1073,36 +1302,43 @@ impl<'a> Builder<'a> {
                         let results = match &query {
                             Query::Handle(h) => store.lookup_by_cert(h),
                             Query::Address(a) => store.select_userid(&email_query, a),
-                            Query::Url(_) => return,
+                            Query::Url(_) => Ok(vec![]),
                         }.map(|r| r.into_iter().map(|c| c.to_cert().cloned()).collect());
                         let results = massage_query_results(
                             results, query.clone(), Source::CertStore);
+
                         requests.spawn(async move {
-                            Response {
+                            output::Response {
                                 query,
+                                source,
+                                request: request_count,
                                 results,
-                                source: Source::CertStore,
                             }
                         });
+                        request_count += 1;
                     }
                 }
-            });
+            }
 
             if converged {
-                return Result::Ok(());
+                break;
             }
 
             // Process the updates as they come in.
 
             let mut updated_certs = Vec::new();
 
-            /// Merges `cert` into `acc`, adding its fingerprint to `updated_certs`
-            /// if the cert is new, or there are new user IDs.
-            fn merge(acc: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>,
+            /// Merges `cert` into `acc`, adding its fingerprint to
+            /// `updated_certs` if the cert is new, or there are new
+            /// user IDs.
+            fn merge(acc: &mut BTreeMap<Fingerprint,
+                                        (Cert, BTreeMap<
+                                                Source, Option<Result<Ca>>>)>,
                      updated_certs: &mut Vec<Fingerprint>,
                      source: Source,
+                     ca: Result<Option<Ca>>,
                      cert: Cert)
-                     -> Result<(), Error>
+                -> Result<(), Error>
             {
                 use std::collections::btree_map::Entry;
                 match acc.entry(cert.fingerprint()) {
@@ -1113,78 +1349,120 @@ impl<'a> Builder<'a> {
                         if e.userids().count() > n_uids {
                             updated_certs.push(e.fingerprint());
                         }
-                        m.insert(source);
+                        match m.entry(source) {
+                            Entry::Occupied(_) => {
+                                // XXX: the CA should be the same.
+                                // This is possible race that the CA
+                                // will be changed on disk.  That's
+                                // such a weird corner case that we
+                                // ignore it.
+                            }
+                            Entry::Vacant(s) => {
+                                s.insert(ca.transpose());
+                            }
+                        }
                     },
                     Entry::Vacant(e) => {
                         updated_certs.push(cert.fingerprint());
-                        e.insert((cert, std::iter::once(source).collect()));
+                        e.insert((cert, std::iter::once((source, ca.transpose())).collect()));
                     },
                 }
                 Ok(())
             }
 
             let mut errors = Vec::new();
-            while let Some(request) = requests.join_next().await {
-                pb.inc(1);
-                let request = request.map_err(op!())?;
-                match request.results {
+            while let Some(response) = requests.join_next().await {
+                let response = response.map_err(op!())?;
+
+                match response.results {
                     Ok(returned_certs) => {
-                        for cert in returned_certs {
+                        for cert in returned_certs.iter() {
                             match cert {
                                 Ok(cert) => {
+                                    let cert = cert.clone();
                                     if ! certify {
                                         merge(
                                             &mut certs, &mut updated_certs,
-                                            request.source.clone(), cert)?;
+                                            response.source.clone(), Ok(None),
+                                            cert)?;
                                     } else {
-                                        pb.suspend(|| -> Result<(), Error> {
-                                            if let Some(ca)
-                                                = request.source.ca(sequoia)
-                                            {
-                                                for cert in certify_downloads(
+                                        match response.source.ca(sequoia) {
+                                            Ok(Some(ca)) => {
+                                                let cert = certify_downloads(
                                                     &sequoia, true,
-                                                    ca, vec![cert], None,
-                                                    &prompt)
-                                                {
-                                                    merge(
-                                                        &mut certs,
-                                                        &mut updated_certs,
-                                                        request.source.clone(),
-                                                        cert)?;
-                                                }
-                                            } else {
+                                                    ca.cert(), vec![cert], None,
+                                                    &prompt);
+                                                // One cert in, one cert out.
+                                                assert_eq!(cert.len(), 1);
+                                                let cert = cert
+                                                    .into_iter().next().unwrap();
+
                                                 merge(
                                                     &mut certs,
                                                     &mut updated_certs,
-                                                    request.source.clone(),
+                                                    response.source.clone(),
+                                                    Ok(Some(ca)),
                                                     cert)?;
                                             }
-                                            Ok(())
-                                        })?
+                                            Ok(None) => {
+                                                merge(
+                                                    &mut certs,
+                                                    &mut updated_certs,
+                                                    response.source.clone(),
+                                                    Ok(None),
+                                                    cert)?;
+                                            }
+                                            Err(err) => {
+                                                merge(
+                                                    &mut certs,
+                                                    &mut updated_certs,
+                                                    response.source.clone(),
+                                                    Err(err),
+                                                    cert)?;
+                                            }
+                                        }
                                     }
                                 }
-                                Err(e) =>
-                                    errors.push((request.source.clone(),
-                                                 request.query.clone(), e)),
+                                Err(err) => {
+                                    errors.push((response.source.clone(),
+                                                 response.query.clone(),
+                                                 err.clone_or_panic()));
+                                }
                             }
                         }
-                    }
-                    Err(e) =>
-                        errors.push((request.source, request.query, e)),
-                }
-            }
+                        stream.output(
+                            self.params(),
+                            Output::Response(
+                                output::Response {
+                                    source: response.source.clone(),
+                                    query: response.query.clone(),
+                                    request: response.request,
+                                    results: Ok(returned_certs),
+                                }))
+                            .map_err(|err| Error::StreamOutputError(err))?;
 
-            if ! silent_errors || sequoia.config.verbose() || certs.is_empty() {
-                for (source, query, e) in errors {
-                    pb.suspend(|| weprintln!("{}: {}: {}", source, query, e));
+                    }
+                    Err(err) => {
+                        stream.output(
+                            self.params(),
+                            Output::Response(
+                                output::Response {
+                                    source: response.source.clone(),
+                                    query: response.query.clone(),
+                                    request: response.request,
+                                    results: Err(err.clone_or_panic()),
+                                }))
+                            .map_err(|err| Error::StreamOutputError(err))?;
+
+                        errors.push((response.source.clone(),
+                                     response.query.clone(),
+                                     err.clone_or_panic()));
+                    }
                 }
             }
 
             if certs.is_empty() {
-                return Err(Error::OperationalError(
-                    error::OperationalError::NotFound(
-                        error::NotFound {
-                        })));
+                break;
             }
 
             // Expand certs to discover new identifiers to query.
@@ -1199,130 +1477,55 @@ impl<'a> Builder<'a> {
             }
         }
 
-        drop(pb);
-
         // Write out a keyring or import the certs.
 
-        qprintln!("\nFound {} related to the query:\n",
-                  certs.len().of("certificate"));
+        stream.output(
+            self.params(),
+            Output::StartOfResults)
+            .map_err(|err| Error::StreamOutputError(err))?;
 
-        let mut certs = certs.into_values()
+        let certs = certs.into_values()
             .map(|(cert, sources)| {
-                let userid = sequoia.best_userid(&cert, true);
-                (userid, cert, sources)
+                stream.output(
+                    self.params(),
+                    Output::CertResult(
+                        output::CertResult {
+                            sources: sources
+                                .into_iter()
+                                .map(|(source, ca)| {
+                                    output::SourceInfo {
+                                        source,
+                                        ca,
+                                    }
+                                })
+                                .collect(),
+                            cert: cert.clone(),
+                        }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+
+                Ok(cert)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, Error>>()?;
 
-        // Reverse sort, i.e., most authenticated first.
-        certs.sort_unstable_by_key(|cert| usize::MAX - cert.0.trust_amount());
-
-        for (i, (userid, cert, sources)) in certs.iter().enumerate() {
-            if i > 0 {
-                qprintln!();
-            }
-
-            // Emit metadata.
-            qprintln!(initial_indent = " - ", "{}",
-                      cert.fingerprint());
-            qprintln!(initial_indent = "   - ", "{}", userid.display());
-            qprintln!(initial_indent = "   - ", "created {}",
-                      cert.primary_key().key().creation_time().convert());
-
-            match cert.with_policy(sequoia.policy(), sequoia.time()) {
-                Ok(vcert) => {
-                    if let Err(e) = vcert.alive() {
-                        qprintln!(initial_indent = "   - ", "not live: {}", e);
-                    }
-                    match vcert.revocation_status() {
-                        RevocationStatus::Revoked(sigs) => for s in sigs {
-                            if let Some((reason, message)) =
-                                s.reason_for_revocation()
-                            {
-                                qprintln!(initial_indent = "   - ",
-                                          "revoked: {}, {}", reason,
-                                          Safe(message));
-                            } else {
-                                qprintln!(initial_indent = "   - ",
-                                          "revoked");
-                            }
-                        },
-
-                        RevocationStatus::CouldBe(sigs) => for s in sigs {
-                            if let Some((reason, message)) =
-                                s.reason_for_revocation()
-                            {
-                                qprintln!(initial_indent = "   - ",
-                                          "possibly revoked: {}, {}", reason,
-                                          Safe(message));
-                            } else {
-                                qprintln!(initial_indent = "   - ",
-                                          "possibly revoked");
-                            }
-
-                            match sequoia.lookup()
-                                .keyflags(None)
-                                .or_by_primary(false)
-                                .lookup(s.get_issuers(), true)
-                            {
-                                Ok(issuers) => for issuer in issuers {
-                                    qprintln!(initial_indent = "     - ",
-                                              "by {}, {}",
-                                              issuer.fingerprint(),
-                                              sequoia.best_userid(&issuer, true)
-                                              .display());
-                                },
-                                Err(_) =>
-                                    qprintln!(initial_indent = "     - ",
-                                              "by {}", s.get_issuers()[0]),
-                            }
-                        },
-
-                        RevocationStatus::NotAsFarAsWeKnow => (),
-                    }
-                },
-                Err(e) =>
-                    qprintln!(initial_indent = "   - ", "not valid: {}", e),
-            }
-
-            qprintln!(initial_indent = "   - ", "found via: {}",
-                      sources.into_iter().map(|m| m.to_string())
-                      .collect::<Vec<_>>().join(", "));
-        }
-
-        let certs: Vec<Cert>
-            = certs.into_iter().map(|(_, cert, _)| cert).collect();
+        stream.output(
+            self.params(),
+            Output::EndOfResults)
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         if let Some(mut output) = output {
             // Serializes a keyring, adding descriptive headers if armored.
             let doit = || {
-                if certs.len() > 1 {
-                    let mut hint = sequoia.hint(format_args!(
-                        "To extract a particular certificate from {}, use any of:",
-                        output.1.map(|p| p.display().to_string())
-                            .unwrap_or_else(|| "the stream".into())));
-
-                    let path = output.1.map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "...".into());
-                    for cert in &certs {
-                        hint = hint.sq()
-                            .arg("cert").arg("export")
-                            .arg_value("--keyring", &path)
-                            .arg_value("--cert", cert.fingerprint())
-                            .done();
-                    }
-                }
-
                 // Handle the easy options first.  No armor no cry:
                 if binary {
                     for cert in certs {
-                        cert.serialize(&mut output.0)?;
+                        cert.serialize(&mut output)?;
                     }
                     return Ok(());
                 }
 
                 // Just one Cert?  Ez:
                 if certs.len() == 1 {
-                    return certs[0].armored().serialize(&mut output.0);
+                    return certs[0].armored().serialize(&mut output);
                 }
 
                 // Then, collect the headers.
@@ -1335,9 +1538,8 @@ impl<'a> Builder<'a> {
                 let headers: Vec<_> = headers.iter()
                     .map(|value| ("Comment", value.as_str()))
                     .collect();
-                let mut output = armor::Writer::with_headers(&mut output.0,
-                                                             armor::Kind::PublicKey,
-                                                             headers)?;
+                let mut output = armor::Writer::with_headers(
+                    &mut output, armor::Kind::PublicKey, headers)?;
                 for cert in certs {
                     cert.serialize(&mut output)?;
                 }
@@ -1347,75 +1549,33 @@ impl<'a> Builder<'a> {
             };
 
             // Convert anyhow::Error into Error.
-            doit()
-                .map_err(|err| {
-                    Error::OperationalError(
-                        error::OperationalError::SerializingKeyring(
-                            error::SerializingKeyring {
-                                error: Arc::new(err),
-                            }))
-                })?;
+            doit().map_err(|err| {
+                Error::OperationalError(
+                    error::OperationalError::SerializingKeyring(
+                        error::SerializingKeyring {
+                            error: Arc::new(err),
+                        }))
+            })?;
         } else {
-            // Import the certificates into the local certificate store.
-            //
-            // This does not certify the certificates.
-            let cert_store = sequoia.cert_store_or_else()?;
+            // Save the certificates to the cert store.
+            if ! certs.is_empty() {
+                let cert_store = sequoia.cert_store_or_else()?;
 
-            let mut stats = ImportStats::default();
-
-            let o = &mut std::io::stderr();
-
-            for cert in certs.iter() {
-                let cert = Arc::new(cert.clone().into());
-                cert_store.update_by(Arc::clone(&cert), &mut stats)
-                    .map_err(|err| {
-                        Error::OperationalError(
-                            error::OperationalError::UpdatingCert(
-                                error::UpdatingCert {
-                                    cert,
-                                    error: Arc::new(err),
-                                }))
-                    })?;
-            }
-
-            stats.print_summary(o, &sequoia).map_err(op!())?;
-
-            for vcert in certs.iter()
-                .filter_map(|cert| cert.with_policy(sequoia.policy(), sequoia.time()).ok())
-                .filter(|vcert| vcert.alive().is_ok())
-            {
-                let mut hint = sequoia.hint(format_args!(
-                    "After checking that the certificate {} really belongs to the \
-                     stated owner, you can mark the certificate as authenticated.  \
-                     Each stated user ID can be marked individually using:",
-                    vcert.fingerprint()));
-
-                let mut count = 0;
-                for uid in vcert.userids()
-                    .filter_map(|uid| std::str::from_utf8(uid.userid().value())
-                                .map(ToString::to_string).ok())
-                {
-                    hint = hint
-                        .sq().arg("pki").arg("link").arg("add")
-                        .arg_value("--cert", vcert.fingerprint())
-                        .arg_value("--userid", uid)
-                        .done();
-
-                    count += 1;
-                }
-
-                if count > 1 {
-                    hint.hint(format_args!(
-                        "Alternatively, all user IDs can be marked as authenticated \
-                         using:"))
-                       .sq().arg("pki").arg("link").arg("add")
-                       .arg_value("--cert", vcert.fingerprint())
-                       .arg("--all")
-                       .done();
+                for cert in certs.iter() {
+                    let cert = Arc::new(cert.clone().into());
+                    cert_store.update_by(Arc::clone(&cert), &mut report.import_stats)
+                        .map_err(|err| {
+                            Error::OperationalError(
+                                error::OperationalError::UpdatingCert(
+                                    error::UpdatingCert {
+                                        cert,
+                                        error: Arc::new(err),
+                                    }))
+                        })?;
                 }
             }
         }
 
-        Ok(())
+        Ok(report)
     }
 }
