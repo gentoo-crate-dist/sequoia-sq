@@ -476,108 +476,6 @@ impl Response {
         }
     }
 
-    /// Collects the responses, and displays failures.
-    ///
-    /// Certs are collected into `certs`, and references to all newly
-    /// discovered certs are returned.
-    ///
-    /// If `silent_errors` is given, then failure messages are
-    /// suppressed unless --verbose is given, or there was not a
-    /// single successful result.
-    async fn collect<P>(
-        sequoia: &Sequoia,
-        mut responses: JoinSet<Response>,
-        certs: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>,
-        certify: bool,
-        silent_errors: bool,
-        pb: &mut ProgressBar,
-        prompt: P,
-    )
-        -> Result<Vec<Fingerprint>, Error>
-    where
-        P: Prompt
-    {
-        let mut new = Vec::new();
-
-        /// Merges `cert` into `acc`, adding its fingerprint to `new`
-        /// if the cert is new, or there are new user IDs.
-        fn merge(acc: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>,
-                 new: &mut Vec<Fingerprint>,
-                 source: Source,
-                 cert: Cert)
-                 -> Result<(), Error>
-        {
-            use std::collections::btree_map::Entry;
-            match acc.entry(cert.fingerprint()) {
-                Entry::Occupied(e) => {
-                    let (e, m) = e.into_mut();
-                    let n_uids = e.userids().count();
-                    *e = e.clone().merge_public(cert).map_err(op!())?;
-                    if e.userids().count() > n_uids {
-                        new.push(e.fingerprint());
-                    }
-                    m.insert(source);
-                },
-                Entry::Vacant(e) => {
-                    new.push(cert.fingerprint());
-                    e.insert((cert, std::iter::once(source).collect()));
-                },
-            }
-            Ok(())
-        }
-
-        let mut errors = Vec::new();
-        while let Some(response) = responses.join_next().await {
-            pb.inc(1);
-            let response = response.map_err(op!())?;
-            match response.results {
-                Ok(returned_certs) => for cert in returned_certs {
-                    match cert {
-                        Ok(cert) => if ! certify {
-                            merge(certs, &mut new,
-                                  response.source.clone(), cert)?;
-                        } else { pb.suspend(|| -> Result<(), Error> {
-                            if let Some(ca) = response.source.ca(sequoia)
-                            {
-                                for cert in certify_downloads(
-                                    &sequoia, true, ca, vec![cert], None,
-                                    &prompt)
-                                {
-                                    merge(certs, &mut new,
-                                          response.source.clone(), cert)?;
-                                }
-                            } else {
-                                merge(certs, &mut new,
-                                      response.source.clone(), cert)?;
-                            }
-                            Ok(())
-                        })?},
-                        Err(e) =>
-                            errors.push((response.source.clone(),
-                                         response.query.clone(), e)),
-                    }
-                },
-                Err(e) =>
-                    errors.push((response.source, response.query, e)),
-            }
-        }
-
-        if ! silent_errors || sequoia.config.verbose() || certs.is_empty() {
-            for (source, query, e) in errors {
-                pb.suspend(|| weprintln!("{}: {}: {}", source, query, e));
-            }
-        }
-
-        if certs.is_empty() {
-            Err(Error::OperationalError(
-                error::OperationalError::NotFound(
-                    error::NotFound {
-                    })))
-        } else {
-            Ok(new)
-        }
-    }
-
     /// Either writes out a keyring or imports the certs.
     fn import_or_emit(sequoia: &Sequoia,
                       output: Option<(&mut dyn std::io::Write, Option<&Path>)>,
@@ -1182,14 +1080,19 @@ impl<'a> Builder<'a> {
             sequoia.cert_store_or_else()?;
         }
 
+        // Certify with the shadown CAs if we're saving to the
+        // certificate store.
+        let certify = output.is_none();
+        let silent_errors = default_servers;
+
         let http_client = http_client().map_err(op!())?;
 
         let mut seen_emails = HashSet::new();
         let mut seen_fps = HashSet::new();
         let mut seen_ids = HashSet::new();
         let mut seen_urls = HashSet::new();
-        let mut results = Default::default();
-        let mut pb = Response::progress_bar(sequoia, batch);
+        let mut certs = BTreeMap::new();
+        let pb = Response::progress_bar(sequoia, batch);
 
         for _ in 0..iterations {
             let cert_store = sequoia.cert_store()?;
@@ -1383,12 +1286,103 @@ impl<'a> Builder<'a> {
                 return Result::Ok(());
             }
 
-            let new = Response::collect(
-                sequoia, requests, &mut results, output.is_none(),
-                default_servers, &mut pb, &prompt).await?;
+            // Process the updates as they come in.
+
+            let mut updated_certs = Vec::new();
+
+            /// Merges `cert` into `acc`, adding its fingerprint to `updated_certs`
+            /// if the cert is new, or there are new user IDs.
+            fn merge(acc: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>,
+                     updated_certs: &mut Vec<Fingerprint>,
+                     source: Source,
+                     cert: Cert)
+                     -> Result<(), Error>
+            {
+                use std::collections::btree_map::Entry;
+                match acc.entry(cert.fingerprint()) {
+                    Entry::Occupied(e) => {
+                        let (e, m) = e.into_mut();
+                        let n_uids = e.userids().count();
+                        *e = e.clone().merge_public(cert).map_err(op!())?;
+                        if e.userids().count() > n_uids {
+                            updated_certs.push(e.fingerprint());
+                        }
+                        m.insert(source);
+                    },
+                    Entry::Vacant(e) => {
+                        updated_certs.push(cert.fingerprint());
+                        e.insert((cert, std::iter::once(source).collect()));
+                    },
+                }
+                Ok(())
+            }
+
+            let mut errors = Vec::new();
+            while let Some(request) = requests.join_next().await {
+                pb.inc(1);
+                let request = request.map_err(op!())?;
+                match request.results {
+                    Ok(returned_certs) => {
+                        for cert in returned_certs {
+                            match cert {
+                                Ok(cert) => {
+                                    if ! certify {
+                                        merge(
+                                            &mut certs, &mut updated_certs,
+                                            request.source.clone(), cert)?;
+                                    } else {
+                                        pb.suspend(|| -> Result<(), Error> {
+                                            if let Some(ca)
+                                                = request.source.ca(sequoia)
+                                            {
+                                                for cert in certify_downloads(
+                                                    &sequoia, true,
+                                                    ca, vec![cert], None,
+                                                    &prompt)
+                                                {
+                                                    merge(
+                                                        &mut certs,
+                                                        &mut updated_certs,
+                                                        request.source.clone(),
+                                                        cert)?;
+                                                }
+                                            } else {
+                                                merge(
+                                                    &mut certs,
+                                                    &mut updated_certs,
+                                                    request.source.clone(),
+                                                    cert)?;
+                                            }
+                                            Ok(())
+                                        })?
+                                    }
+                                }
+                                Err(e) =>
+                                    errors.push((request.source.clone(),
+                                                 request.query.clone(), e)),
+                            }
+                        }
+                    }
+                    Err(e) =>
+                        errors.push((request.source, request.query, e)),
+                }
+            }
+
+            if ! silent_errors || sequoia.config.verbose() || certs.is_empty() {
+                for (source, query, e) in errors {
+                    pb.suspend(|| weprintln!("{}: {}: {}", source, query, e));
+                }
+            }
+
+            if certs.is_empty() {
+                return Err(Error::OperationalError(
+                    error::OperationalError::NotFound(
+                        error::NotFound {
+                        })));
+            }
 
             // Expand certs to discover new identifiers to query.
-            for (cert, _) in new.iter().filter_map(|fp| results.get(fp)) {
+            for (cert, _) in updated_certs.iter().filter_map(|fp| certs.get(fp)) {
                 queries.push(Query::Handle(cert.key_handle()));
 
                 for uid in cert.userids() {
@@ -1401,7 +1395,7 @@ impl<'a> Builder<'a> {
 
         drop(pb);
 
-        Response::import_or_emit(sequoia, output, false, results)?;
+        Response::import_or_emit(sequoia, output, false, certs)?;
         Ok(())
     }
 }
