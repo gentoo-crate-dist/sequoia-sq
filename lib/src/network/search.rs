@@ -465,17 +465,6 @@ struct Response {
     source: Source,
     results: Result<Vec<Result<Cert, Error>>, Error>,
 }
-
-impl Response {
-    /// Creates a progress bar.
-    fn progress_bar(sequoia: &Sequoia, batch: bool) -> ProgressBar {
-        if sequoia.config.verbose() || batch {
-            ProgressBar::hidden()
-        } else {
-            ProgressBar::new(0)
-        }
-    }
-}
 
 /// Data structures related to [`Error`].
 ///
@@ -992,7 +981,11 @@ impl<'a> Builder<'a> {
         let mut seen_ids = HashSet::new();
         let mut seen_urls = HashSet::new();
         let mut certs = BTreeMap::new();
-        let pb = Response::progress_bar(sequoia, batch);
+        let pb = if sequoia.config.verbose() || batch {
+            ProgressBar::hidden()
+        } else {
+            ProgressBar::new(0)
+        };
 
         for _ in 0..iterations {
             let cert_store = sequoia.cert_store()?;
