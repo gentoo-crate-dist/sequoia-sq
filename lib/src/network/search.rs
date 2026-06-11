@@ -309,8 +309,10 @@ impl Query {
     }
 }
 
+/// The source of a request.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum Source {
+#[non_exhaustive]
+pub enum Source {
     KeyServer(String),
     WKD,
     DANE,
