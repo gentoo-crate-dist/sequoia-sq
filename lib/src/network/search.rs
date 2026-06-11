@@ -172,7 +172,7 @@ fn serialize_keyring(sequoia: &Sequoia,
 
 /// The type of query.
 #[non_exhaustive]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Query {
     /// Search by key handle.
     Handle(KeyHandle),
