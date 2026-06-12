@@ -162,6 +162,55 @@ impl Sequoia {
         })
     }
 
+    /// Returns a shadow CA for the specified key server, if the key
+    /// server is known to be a verifying key server.
+    ///
+    /// If the shadow CA does not exist, then this creates it.
+    pub fn shadow_ca_keyserver(&self, uri: &str)
+        -> Result<Option<Ca>>
+    {
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        if let Some((cert, created)) = certd.shadow_ca_keyserver(uri)? {
+            Ok(Some(Ca {
+                cert,
+                created,
+            }))
+        } else {
+            // This key server is not known to be a verifying key
+            // server.
+            Ok(None)
+        }
+    }
+
+    /// Returns a shadow CA for the URL.
+    ///
+    /// This only succeeds for URLs using HTTPS as the protocol.  The
+    /// URL is normalized, any user name, password, or fragment is
+    /// stripped.
+    ///
+    /// If the shadow CA does not exist, then this creates it.
+    pub fn shadow_ca_for_url(&self, uri: &str)
+        -> Result<Option<Ca>>
+    {
+        let cert_store = self.cert_store_or_else()?;
+        let certd = cert_store.certd()
+            .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
+
+        if let Some((cert, created)) = certd.shadow_ca_keyserver(uri)? {
+            Ok(Some(Ca {
+                cert,
+                created,
+            }))
+        } else {
+            // This key server is not known to be a verifying key
+            // server.
+            Ok(None)
+        }
+    }
+
     /// Returns the specified shadow CA, creating it if necessary.
     pub fn shadow_ca<U>(&self,
                         name: &str,
