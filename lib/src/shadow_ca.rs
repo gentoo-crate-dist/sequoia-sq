@@ -12,6 +12,7 @@ use cert_store::LazyCert;
 use crate::Result;
 use crate::Sequoia;
 
+#[derive(Debug, Clone)]
 pub struct Ca {
     cert: Arc<LazyCert<'static>>,
     created: bool,
