@@ -46,76 +46,6 @@ use crate::types::Convert;
 use crate::types::Safe;
 use crate::types::import_stats::ImportStats;
 
-/// Serializes a keyring, adding descriptive headers if armored.
-fn serialize_keyring(sequoia: &Sequoia,
-                     mut output: (&mut dyn std::io::Write, Option<&Path>),
-                     certs: Vec<Cert>,
-                     binary: bool)
-    -> Result<(), Error>
-{
-    let doit = || {
-        if certs.len() > 1 {
-            let mut hint = sequoia.hint(format_args!(
-                "To extract a particular certificate from {}, use any of:",
-                output.1.map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "the stream".into())));
-
-            let path = output.1.map(|p| p.display().to_string())
-                .unwrap_or_else(|| "...".into());
-            for cert in &certs {
-                hint = hint.sq()
-                    .arg("cert").arg("export")
-                    .arg_value("--keyring", &path)
-                    .arg_value("--cert", cert.fingerprint())
-                    .done();
-            }
-        }
-
-        // Handle the easy options first.  No armor no cry:
-        if binary {
-            for cert in certs {
-                cert.serialize(&mut output.0)?;
-            }
-            return Ok(());
-        }
-
-        // Just one Cert?  Ez:
-        if certs.len() == 1 {
-            return certs[0].armored().serialize(&mut output.0);
-        }
-
-        // Then, collect the headers.
-        let mut headers = Vec::new();
-        for (i, cert) in certs.iter().enumerate() {
-            headers.push(format!("Key #{}", i));
-            headers.append(&mut cert.armor_headers());
-        }
-
-        let headers: Vec<_> = headers.iter()
-            .map(|value| ("Comment", value.as_str()))
-            .collect();
-        let mut output = armor::Writer::with_headers(&mut output.0,
-                                                     armor::Kind::PublicKey,
-                                                     headers)?;
-        for cert in certs {
-            cert.serialize(&mut output)?;
-        }
-        output.finalize()?;
-
-        Ok(())
-    };
-
-    // Convert anyhow::Error into Error.
-    doit()
-        .map_err(|err| {
-            Error::OperationalError(
-                error::OperationalError::SerializingKeyring(
-                    error::SerializingKeyring {
-                        error: Arc::new(err),
-                    }))
-        })
-}
-
 /// The type of query.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
@@ -1308,10 +1238,72 @@ impl<'a> Builder<'a> {
                       .collect::<Vec<_>>().join(", "));
         }
 
-        let certs = certs.into_iter().map(|(_, cert, _)| cert).collect();
+        let certs: Vec<Cert>
+            = certs.into_iter().map(|(_, cert, _)| cert).collect();
 
-        if let Some(output) = output {
-            serialize_keyring(&sequoia, output, certs, binary)?;
+        if let Some(mut output) = output {
+            // Serializes a keyring, adding descriptive headers if armored.
+            let doit = || {
+                if certs.len() > 1 {
+                    let mut hint = sequoia.hint(format_args!(
+                        "To extract a particular certificate from {}, use any of:",
+                        output.1.map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "the stream".into())));
+
+                    let path = output.1.map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "...".into());
+                    for cert in &certs {
+                        hint = hint.sq()
+                            .arg("cert").arg("export")
+                            .arg_value("--keyring", &path)
+                            .arg_value("--cert", cert.fingerprint())
+                            .done();
+                    }
+                }
+
+                // Handle the easy options first.  No armor no cry:
+                if binary {
+                    for cert in certs {
+                        cert.serialize(&mut output.0)?;
+                    }
+                    return Ok(());
+                }
+
+                // Just one Cert?  Ez:
+                if certs.len() == 1 {
+                    return certs[0].armored().serialize(&mut output.0);
+                }
+
+                // Then, collect the headers.
+                let mut headers = Vec::new();
+                for (i, cert) in certs.iter().enumerate() {
+                    headers.push(format!("Key #{}", i));
+                    headers.append(&mut cert.armor_headers());
+                }
+
+                let headers: Vec<_> = headers.iter()
+                    .map(|value| ("Comment", value.as_str()))
+                    .collect();
+                let mut output = armor::Writer::with_headers(&mut output.0,
+                                                             armor::Kind::PublicKey,
+                                                             headers)?;
+                for cert in certs {
+                    cert.serialize(&mut output)?;
+                }
+                output.finalize()?;
+
+                Ok(())
+            };
+
+            // Convert anyhow::Error into Error.
+            doit()
+                .map_err(|err| {
+                    Error::OperationalError(
+                        error::OperationalError::SerializingKeyring(
+                            error::SerializingKeyring {
+                                error: Arc::new(err),
+                            }))
+                })?;
         } else {
             // Import the certificates into the local certificate store.
             //
