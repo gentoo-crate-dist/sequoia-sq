@@ -1,5 +1,6 @@
 //! Network services.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
@@ -38,6 +39,7 @@ use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
 use crate::cert::cert_exportable;
+use crate::config::DEFAULT_KEYSERVERS;
 use crate::network::http_client;
 use crate::prompt::Prompt;
 use crate::provenance::certify_downloads;
@@ -336,12 +338,26 @@ struct Response {
 pub mod error {
     use super::*;
 
+    /// The specified key server is invalid.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Malformed keyserver URI: {:?}", .server)]
+    pub struct MalformedKeyserverUri {
+        pub server: String,
+
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
     /// An error related to the arguments.
     ///
     /// Argument errors are fatal and cause processing to abort.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum ArgumentError {
+        #[error(transparent)]
+        MalformedKeyserverUri(MalformedKeyserverUri),
+
         #[error(transparent)]
         Other(Arc<anyhow::Error>),
     }
@@ -463,7 +479,10 @@ impl Sequoia {
                 batch: false,
                 iterations: 3,
                 default_servers: true,
-                servers: Default::default(),
+                servers: DEFAULT_KEYSERVERS
+                    .iter()
+                    .map(|s| Cow::Borrowed(*s))
+                    .collect(),
                 query_key_servers: true,
                 query_wkd: true,
                 query_dane: true,
@@ -482,7 +501,7 @@ pub struct Params<'a> {
     batch: bool,
     iterations: u8,
     default_servers: bool,
-    servers: Vec<Arc<KeyServer>>,
+    servers: Vec<Cow<'static, str>>,
     query_key_servers: bool,
     query_wkd: bool,
     query_dane: bool,
@@ -540,8 +559,8 @@ impl<'a> Params<'a> {
     }
 
     /// Returns the configured key servers.
-    pub fn key_servers(&self) -> impl Iterator<Item=&Arc<KeyServer>> {
-        self.servers.iter()
+    pub fn key_servers(&self) -> impl Iterator<Item=&str> {
+        self.servers.iter().map(|s| &s[..])
     }
 
     /// Whether to query key servers.
@@ -665,26 +684,38 @@ impl<'a> Builder<'a> {
     ///
     /// This clears any key servers.  To add to the set of key
     /// servers, use [`Builder::add_key_servers`].
-    pub fn set_key_servers(mut self,
-                           key_servers: impl IntoIterator<Item=Arc<KeyServer>>)
+    pub fn set_key_servers<S>(mut self,
+                              key_servers: impl IntoIterator<Item=S>)
         -> Self
+    where
+        S: AsRef<str>
     {
-        self.params.servers = key_servers.into_iter().collect();
+        self.params.servers = key_servers
+            .into_iter()
+            .map(|s| Cow::Owned(s.as_ref().to_string()))
+            .collect();
         self
     }
 
     /// Adds the key server to the set of key servers to query.
-    pub fn add_key_server(mut self, key_server: Arc<KeyServer>) -> Self {
-        self.params.servers.extend(std::iter::once(key_server));
+    pub fn add_key_server<S>(mut self, key_server: S) -> Self
+    where
+        S: AsRef<str>
+    {
+        self.params.servers.push(
+            Cow::Owned(key_server.as_ref().to_string()));
         self
     }
 
     /// Adds the key servers to the set of key servers to query.
-    pub fn add_key_servers(mut self,
-                           key_servers: impl IntoIterator<Item=Arc<KeyServer>>)
+    pub fn add_key_servers<S>(mut self,
+                              key_servers: impl IntoIterator<Item=S>)
         -> Self
+    where
+        S: AsRef<str>
     {
-        self.params.servers.extend(key_servers.into_iter());
+        self.params.servers.extend(
+            key_servers.into_iter().map(|s| Cow::Owned(s.as_ref().to_string())));
         self
     }
 
@@ -847,6 +878,26 @@ impl<'a> Builder<'a> {
             ProgressBar::hidden()
         } else {
             ProgressBar::new(0)
+        };
+
+        let servers = if query_key_servers {
+            servers
+                .iter()
+                .map(|s| {
+                    let ks = KeyServer::with_client(s, http_client.clone())
+                        .map_err(|err| {
+                            Error::ArgumentError(
+                                error::ArgumentError::MalformedKeyserverUri(
+                                    error::MalformedKeyserverUri {
+                                        server: s.to_string(),
+                                        error: err.into(),
+                                    }))
+                        })?;
+                    Ok(Arc::new(ks))
+                })
+                .collect::<Result<Vec<_>, Error>>()?
+        } else {
+            Vec::new()
         };
 
         for _ in 0..iterations {

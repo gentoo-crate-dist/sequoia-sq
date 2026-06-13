@@ -80,13 +80,8 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
         matches!(c.servers_source.unwrap(),
                  clap::parser::ValueSource::DefaultValue);
 
-    let http_client = http_client()?;
     let servers = sq.config()
-        .resolve_key_servers(&c.servers, c.servers_source)
-        .map(|uri| KeyServer::with_client(uri, http_client.clone())
-             .with_context(|| format!("Malformed keyserver URI: {}", uri))
-             .map(Arc::new))
-        .collect::<Result<Vec<_>>>()?;
+        .resolve_key_servers(&c.servers, c.servers_source);
 
     let iterations =
         sq.config().resolve_network_search_iterations(
@@ -144,10 +139,7 @@ pub fn dispatch_keyserver(
 
     let servers = sq.config()
         .resolve_key_servers(&c.servers, Some(servers_source))
-        .map(|uri| KeyServer::with_client(uri, http_client()?)
-             .with_context(|| format!("Malformed keyserver URI: {}", uri))
-             .map(Arc::new))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Vec<_>>();
 
     use crate::cli::network::keyserver::Subcommands::*;
     match c.subcommand {
@@ -184,6 +176,13 @@ pub fn dispatch_keyserver(
             })?;
         }
         Publish(c) => {
+            let servers = servers
+                .into_iter()
+                .map(|uri| KeyServer::with_client(uri, http_client()?)
+                     .with_context(|| format!("Malformed keyserver URI: {}", uri))
+                     .map(Arc::new))
+                .collect::<Result<Vec<_>>>()?;
+
             let rt = tokio::runtime::Runtime::new()?;
 
             rt.block_on(async {
