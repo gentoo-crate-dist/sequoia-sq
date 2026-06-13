@@ -310,7 +310,7 @@ impl Query {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum Method {
+enum Source {
     KeyServer(String),
     WKD,
     DANE,
@@ -318,22 +318,22 @@ enum Method {
     CertStore,
 }
 
-impl fmt::Display for Method {
+impl fmt::Display for Source {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Method::KeyServer(url) => write!(f, "{}", url),
-            Method::WKD => write!(f, "WKD"),
-            Method::DANE => write!(f, "DANE"),
-            Method::Http(_) => write!(f, "http"),
-            Method::CertStore => write!(f, "cert-store"),
+            Source::KeyServer(url) => write!(f, "{}", url),
+            Source::WKD => write!(f, "WKD"),
+            Source::DANE => write!(f, "DANE"),
+            Source::Http(_) => write!(f, "http"),
+            Source::CertStore => write!(f, "cert-store"),
         }
     }
 }
 
-impl Method {
+impl Source {
     // Returns the CA's certificate.
     //
-    // This doesn't return an error, because not all methods have
+    // This doesn't return an error, because not all sources have
     // shadow CAs, and a missing CA is not a hard error.
     fn ca(&self, sequoia: &Sequoia)
         -> Option<Arc<LazyCert<'static>>>
@@ -348,7 +348,7 @@ impl Method {
                      only available when using an OpenPGP certificate \
                      directory"))?;
             let (cert, created) = match self {
-                Method::KeyServer(url) => {
+                Source::KeyServer(url) => {
                     let result = certd.shadow_ca_keyserver(url)?;
 
                     match result {
@@ -365,15 +365,15 @@ impl Method {
                         }
                     }
                 }
-                Method::WKD => certd.shadow_ca_wkd()?,
-                Method::DANE => certd.shadow_ca_dane()?,
-                Method::Http(url) =>
+                Source::WKD => certd.shadow_ca_wkd()?,
+                Source::DANE => certd.shadow_ca_dane()?,
+                Source::Http(url) =>
                     if let Some(r) = certd.shadow_ca_for_url(url.as_ref())? {
                         r
                     } else {
                         return Ok(None);
                     },
-                Method::CertStore => return Ok(None),
+                Source::CertStore => return Ok(None),
             };
 
             // Check that the data is a valid certificate.  If not,
@@ -446,7 +446,7 @@ impl Method {
 
 struct Response {
     query: Query,
-    method: Method,
+    source: Source,
     results: Result<Vec<Result<Cert>>>,
 }
 
@@ -471,7 +471,7 @@ impl Response {
     async fn collect<P>(
         sequoia: &Sequoia,
         mut responses: JoinSet<Response>,
-        certs: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Method>)>,
+        certs: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>,
         certify: bool,
         silent_errors: bool,
         pb: &mut ProgressBar,
@@ -485,9 +485,9 @@ impl Response {
 
         /// Merges `cert` into `acc`, adding its fingerprint to `new`
         /// if the cert is new, or there are new user IDs.
-        fn merge(acc: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Method>)>,
+        fn merge(acc: &mut BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>,
                  new: &mut Vec<Fingerprint>,
-                 method: Method,
+                 source: Source,
                  cert: Cert)
                  -> Result<()>
         {
@@ -500,11 +500,11 @@ impl Response {
                     if e.userids().count() > n_uids {
                         new.push(e.fingerprint());
                     }
-                    m.insert(method);
+                    m.insert(source);
                 },
                 Entry::Vacant(e) => {
                     new.push(cert.fingerprint());
-                    e.insert((cert, std::iter::once(method).collect()));
+                    e.insert((cert, std::iter::once(source).collect()));
                 },
             }
             Ok(())
@@ -519,36 +519,36 @@ impl Response {
                     match cert {
                         Ok(cert) => if ! certify {
                             merge(certs, &mut new,
-                                  response.method.clone(), cert)?;
+                                  response.source.clone(), cert)?;
                         } else { pb.suspend(|| -> Result<()> {
-                            if let Some(ca) = response.method.ca(sequoia)
+                            if let Some(ca) = response.source.ca(sequoia)
                             {
                                 for cert in certify_downloads(
                                     &sequoia, true, ca, vec![cert], None,
                                     &prompt)
                                 {
                                     merge(certs, &mut new,
-                                          response.method.clone(), cert)?;
+                                          response.source.clone(), cert)?;
                                 }
                             } else {
                                 merge(certs, &mut new,
-                                      response.method.clone(), cert)?;
+                                      response.source.clone(), cert)?;
                             }
                             Ok(())
                         })?},
                         Err(e) =>
-                            errors.push((response.method.clone(),
+                            errors.push((response.source.clone(),
                                          response.query.clone(), e)),
                     }
                 },
                 Err(e) =>
-                    errors.push((response.method, response.query, e)),
+                    errors.push((response.source, response.query, e)),
             }
         }
 
         if ! silent_errors || sequoia.config.verbose() || certs.is_empty() {
-            for (method, query, e) in errors {
-                pb.suspend(|| weprintln!("{}: {}: {}", method, query, e));
+            for (source, query, e) in errors {
+                pb.suspend(|| weprintln!("{}: {}: {}", source, query, e));
             }
         }
 
@@ -563,7 +563,7 @@ impl Response {
     fn import_or_emit(sequoia: &Sequoia,
                       output: Option<(&mut dyn std::io::Write, Option<&Path>)>,
                       binary: bool,
-                      certs: BTreeMap<Fingerprint, (Cert, BTreeSet<Method>)>)
+                      certs: BTreeMap<Fingerprint, (Cert, BTreeSet<Source>)>)
                       -> Result<()>
     {
         make_qprintln!(sequoia.config.quiet());
@@ -572,16 +572,16 @@ impl Response {
                   certs.len().of("certificate"));
 
         let mut certs = certs.into_values()
-            .map(|(cert, methods)| {
+            .map(|(cert, sources)| {
                 let userid = sequoia.best_userid(&cert, true);
-                (userid, cert, methods)
+                (userid, cert, sources)
             })
             .collect::<Vec<_>>();
 
         // Reverse sort, i.e., most authenticated first.
         certs.sort_unstable_by_key(|cert| usize::MAX - cert.0.trust_amount());
 
-        for (i, (userid, cert, methods)) in certs.iter().enumerate() {
+        for (i, (userid, cert, sources)) in certs.iter().enumerate() {
             if i > 0 {
                 qprintln!();
             }
@@ -650,7 +650,7 @@ impl Response {
             }
 
             qprintln!(initial_indent = "   - ", "found via: {}",
-                      methods.into_iter().map(|m| m.to_string())
+                      sources.into_iter().map(|m| m.to_string())
                       .collect::<Vec<_>>().join(", "));
         }
 
@@ -1094,7 +1094,7 @@ impl<'a> Builder<'a> {
                                 Response {
                                     query,
                                     results,
-                                    method: Method::KeyServer(
+                                    source: Source::KeyServer(
                                         ks.url().as_str().to_string()),
                                 }
                             });
@@ -1113,7 +1113,7 @@ impl<'a> Builder<'a> {
                             Response {
                                 query: Query::Address(a),
                                 results,
-                                method: Method::WKD,
+                                source: Source::WKD,
                             }
                         });
                     }
@@ -1128,7 +1128,7 @@ impl<'a> Builder<'a> {
                             Response {
                                 query: Query::Address(a),
                                 results,
-                                method: Method::DANE,
+                                source: Source::DANE,
                             }
                         });
                     }
@@ -1152,7 +1152,7 @@ impl<'a> Builder<'a> {
                                                   .map(|cp| cp.collect())),
                                     Err(e) => Err(e.into()),
                                 },
-                                method: Method::Http(url),
+                                source: Source::Http(url),
                             }
                         });
                     }
@@ -1178,7 +1178,7 @@ impl<'a> Builder<'a> {
                             Response {
                                 query,
                                 results,
-                                method: Method::CertStore,
+                                source: Source::CertStore,
                             }
                         });
                     }
