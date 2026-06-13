@@ -46,74 +46,6 @@ use crate::types::Convert;
 use crate::types::Safe;
 use crate::types::import_stats::ImportStats;
 
-/// Import the certificates into the local certificate store.
-///
-/// This does not certify the certificates.
-fn import_certs(sequoia: &Sequoia, certs: Vec<Cert>) -> Result<(), Error> {
-    if certs.is_empty() {
-        // No need to do and say anything.
-        return Ok(());
-    }
-
-    let cert_store = sequoia.cert_store_or_else()?;
-
-    let mut stats = ImportStats::default();
-
-    let o = &mut std::io::stderr();
-
-    for cert in certs.iter() {
-        let cert = Arc::new(cert.clone().into());
-        cert_store.update_by(Arc::clone(&cert), &mut stats)
-            .map_err(|err| {
-                Error::OperationalError(
-                    error::OperationalError::UpdatingCert(
-                        error::UpdatingCert {
-                            cert,
-                            error: Arc::new(err),
-                        }))
-            })?;
-    }
-
-    stats.print_summary(o, &sequoia).map_err(op!())?;
-
-    for vcert in certs.iter()
-        .filter_map(|cert| cert.with_policy(sequoia.policy(), sequoia.time()).ok())
-        .filter(|vcert| vcert.alive().is_ok())
-    {
-        let mut hint = sequoia.hint(format_args!(
-            "After checking that the certificate {} really belongs to the \
-             stated owner, you can mark the certificate as authenticated.  \
-             Each stated user ID can be marked individually using:",
-            vcert.fingerprint()));
-
-        let mut count = 0;
-        for uid in vcert.userids()
-            .filter_map(|uid| std::str::from_utf8(uid.userid().value())
-                        .map(ToString::to_string).ok())
-        {
-            hint = hint
-                .sq().arg("pki").arg("link").arg("add")
-                .arg_value("--cert", vcert.fingerprint())
-                .arg_value("--userid", uid)
-                .done();
-
-            count += 1;
-        }
-
-        if count > 1 {
-            hint.hint(format_args!(
-                "Alternatively, all user IDs can be marked as authenticated \
-                 using:"))
-                .sq().arg("pki").arg("link").arg("add")
-                .arg_value("--cert", vcert.fingerprint())
-                .arg("--all")
-                .done();
-        }
-    }
-
-    Ok(())
-}
-
 /// Serializes a keyring, adding descriptive headers if armored.
 fn serialize_keyring(sequoia: &Sequoia,
                      mut output: (&mut dyn std::io::Write, Option<&Path>),
@@ -1381,7 +1313,64 @@ impl<'a> Builder<'a> {
         if let Some(output) = output {
             serialize_keyring(&sequoia, output, certs, binary)?;
         } else {
-            import_certs(&sequoia, certs)?;
+            // Import the certificates into the local certificate store.
+            //
+            // This does not certify the certificates.
+            let cert_store = sequoia.cert_store_or_else()?;
+
+            let mut stats = ImportStats::default();
+
+            let o = &mut std::io::stderr();
+
+            for cert in certs.iter() {
+                let cert = Arc::new(cert.clone().into());
+                cert_store.update_by(Arc::clone(&cert), &mut stats)
+                    .map_err(|err| {
+                        Error::OperationalError(
+                            error::OperationalError::UpdatingCert(
+                                error::UpdatingCert {
+                                    cert,
+                                    error: Arc::new(err),
+                                }))
+                    })?;
+            }
+
+            stats.print_summary(o, &sequoia).map_err(op!())?;
+
+            for vcert in certs.iter()
+                .filter_map(|cert| cert.with_policy(sequoia.policy(), sequoia.time()).ok())
+                .filter(|vcert| vcert.alive().is_ok())
+            {
+                let mut hint = sequoia.hint(format_args!(
+                    "After checking that the certificate {} really belongs to the \
+                     stated owner, you can mark the certificate as authenticated.  \
+                     Each stated user ID can be marked individually using:",
+                    vcert.fingerprint()));
+
+                let mut count = 0;
+                for uid in vcert.userids()
+                    .filter_map(|uid| std::str::from_utf8(uid.userid().value())
+                                .map(ToString::to_string).ok())
+                {
+                    hint = hint
+                        .sq().arg("pki").arg("link").arg("add")
+                        .arg_value("--cert", vcert.fingerprint())
+                        .arg_value("--userid", uid)
+                        .done();
+
+                    count += 1;
+                }
+
+                if count > 1 {
+                    hint.hint(format_args!(
+                        "Alternatively, all user IDs can be marked as authenticated \
+                         using:"))
+                       .sq().arg("pki").arg("link").arg("add")
+                       .arg_value("--cert", vcert.fingerprint())
+                       .arg("--all")
+                       .done();
+                }
+            }
         }
 
         Ok(())
