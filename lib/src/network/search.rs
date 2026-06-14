@@ -1011,16 +1011,13 @@ impl<'a> Builder<'a> {
     {
         let mut stream = Box::new(stream) as Box<dyn Stream>;
 
-        let result = self.search_(queries, output, &mut stream, prompt).await;
+        let mut report = output::Report::new();
 
-        match result {
-            Ok(report) => {
-                // Emit the report.
-                stream.output(
-                    self.params(),
-                    Output::Report(report))
-                    .map_err(|err| Error::StreamOutputError(err))?;
+        let result = self.search_(
+            queries, output, &mut stream, prompt, &mut report).await;
 
+        let result = match result {
+            Ok(()) => {
                 Ok(())
             }
             Err(Error::ArgumentError(err)) => {
@@ -1039,9 +1036,18 @@ impl<'a> Builder<'a> {
                 Err(Error::OperationalError(err))
             }
             Err(err @ Error::StreamOutputError(_)) => {
-                Err(err)
+                // Return immediately; don't emit the report.
+                return Err(err);
             }
-        }
+        };
+
+        // Emit the report.
+        stream.output(
+            self.params(),
+            Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     /// Search for certificates on the network.
@@ -1049,8 +1055,9 @@ impl<'a> Builder<'a> {
                         mut queries: Vec<Query>,
                         output: Option<&mut dyn std::io::Write>,
                         stream: &mut Box<dyn Stream + 'a>,
-                        prompt: P)
-        -> Result<output::Report, Error>
+                        prompt: P,
+                        report: &mut output::Report)
+        -> Result<(), Error>
     where
         P: Prompt
     {
@@ -1091,8 +1098,6 @@ impl<'a> Builder<'a> {
         let mut seen_ids = HashSet::new();
         let mut seen_urls = HashSet::new();
         let mut certs = BTreeMap::new();
-
-        let mut report = output::Report::new();
 
         let servers = if query_key_servers {
             servers
@@ -1627,6 +1632,6 @@ impl<'a> Builder<'a> {
             }
         }
 
-        Ok(report)
+        Ok(())
     }
 }
