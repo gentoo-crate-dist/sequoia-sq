@@ -1635,3 +1635,355 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::BTreeSet;
+
+    use crate::prompt::Cancel;
+
+    fn check(_sequoia: &Sequoia,
+             output: &[Output],
+             expect_success: bool,
+             expected_requests: Option<usize>,
+             expected_certs: &[Fingerprint])
+    {
+        let mut saw_error = false;
+        let mut saw_report = false;
+        let mut saw_requests: BTreeSet<usize> = BTreeSet::new();
+        let mut saw_responses: BTreeSet<usize> = BTreeSet::new();
+        let mut saw_start_of_results = false;
+        let mut saw_certs: BTreeSet<Fingerprint> = BTreeSet::new();
+        let mut saw_end_of_results = false;
+
+        eprintln!("Checking output...");
+
+        use Output::*;
+        for output in output.into_iter() {
+            match output {
+                ArgumentError(err) => {
+                    // No argument errors.
+                    eprintln!("  - argument error: {}", err);
+                    assert!(! saw_error);
+                    saw_error = true;
+                    assert!(! saw_report);
+                }
+                SystemError(err) => {
+                    eprintln!("  - system error: {}", err);
+                    // Currently system errors only happen at the
+                    // beginning (although this is not part of the API
+                    // contract).
+                    assert!(! saw_error);
+                    saw_error = true;
+                    assert!(! saw_report);
+                }
+                OperationalError(err) => {
+                    eprintln!("  - operational error: {}", err);
+                    // An operational error can happen at any time.
+                    assert!(! saw_error);
+                    saw_error = true;
+                    assert!(! saw_report);
+                }
+                RequestQueued(request) => {
+                    eprintln!("  - request queued");
+                    eprintln!("    - query: {}", request.query);
+                    eprintln!("    - source: {}", request.source);
+                    eprintln!("    - request: {}", request.request);
+                    assert!(! saw_error);
+                    assert!(saw_responses.len() <= saw_requests.len());
+                    assert!(! saw_requests.contains(&request.request));
+                    assert!(! saw_report);
+                    saw_requests.insert(request.request);
+                }
+                Response(response) => {
+                    eprintln!("  - response:");
+                    eprintln!("    - query: {}", response.query);
+                    eprintln!("    - source: {}", response.source);
+                    eprintln!("    - request: {}", response.request);
+                    eprintln!("    - cert results: {}",
+                              match &response.results {
+                                  Ok(certs) => {
+                                      certs.iter()
+                                          .map(|cert| {
+                                              match cert {
+                                                  Ok(c) => c.fingerprint().to_string(),
+                                                  Err(err) => err.to_string()
+                                              }
+                                          })
+                                          .collect::<Vec<String>>()
+                                          .join("\n      ")
+                                  }
+                                  Err(err) => err.to_string(),
+                              });
+                    assert!(! saw_error);
+                    assert!(saw_responses.len() <= saw_requests.len());
+                    assert!(saw_requests.contains(&response.request));
+                    assert!(! saw_report);
+                    saw_responses.insert(response.request);
+                    }
+                StartOfResults => {
+                    eprintln!("  - start of results");
+                    assert!(! saw_error);
+                    assert!(! saw_start_of_results);
+                    assert!(! saw_end_of_results);
+                    assert!(! saw_report);
+                    saw_start_of_results = true;
+                }
+                CertResult(cert) => {
+                    eprintln!("  - cert result: {}", cert.cert.fingerprint());
+                    assert!(! saw_error);
+                    assert!(saw_start_of_results);
+                    assert!(! saw_end_of_results);
+                    assert!(! saw_report);
+                    let not_yet_seen = saw_certs.insert(cert.cert.fingerprint());
+                    assert!(not_yet_seen);
+                }
+                EndOfResults => {
+                    eprintln!("  - end of results");
+                    assert!(! saw_error);
+                    assert!(saw_start_of_results);
+                    assert!(! saw_end_of_results);
+                    assert!(! saw_report);
+                    saw_end_of_results = true;
+                }
+                Report(report) => {
+                    eprintln!("  - report: {:?}", report);
+                    assert!(! saw_report);
+
+                    saw_report = true;
+                }
+            }
+        }
+
+        if expect_success {
+            assert!(! saw_error);
+            assert!(saw_start_of_results);
+            assert!(saw_end_of_results);
+        } else {
+            assert!(saw_error);
+        }
+
+        assert_eq!(saw_responses.len(), saw_requests.len());
+        assert_eq!(saw_responses, saw_requests);
+
+        if let Some(expected_requests) = expected_requests {
+            assert_eq!(saw_requests.len(), expected_requests);
+        }
+
+        let expected_certs
+            = BTreeSet::from_iter(expected_certs.into_iter().cloned());
+        for c in expected_certs.difference(&saw_certs) {
+            eprintln!("Didn't see {}", c);
+        }
+        for c in saw_certs.difference(&expected_certs) {
+            eprintln!("Unexpectedly saw {}", c);
+        }
+        assert_eq!(saw_certs, expected_certs);
+
+        assert!(saw_report);
+    }
+
+    #[test]
+    fn no_results() {
+        let rt = tokio::runtime::Runtime::new()
+            .expect("can create tokio run time");
+
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect("should succeed");
+        });
+        check(&sq, &output, true, Some(1), &[]);
+
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("invalid@alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect_err("should fail on invalid address");
+        });
+        check(&sq, &output, false, Some(0), &[]);
+    }
+
+    #[test]
+    fn no_cert_store() {
+        let rt = tokio::runtime::Runtime::new()
+            .expect("can create tokio run time");
+
+        // Stateless => no cert store.
+        let sq = Sequoia::builder().stateless().build().unwrap();
+
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect_err("should fail with no cert store");
+        });
+        check(&sq, &output, false, Some(0), &[]);
+        // The error should be second to last and followed by the
+        // report.
+        assert!(matches!(
+            output[output.len() - 2],
+            Output::SystemError(
+                SystemError::CertStoreDisabled)));
+        assert!(matches!(
+            output[output.len() - 1],
+            Output::Report(_)));
+
+        // Write to a file.
+        let mut output = Vec::new();
+        let mut keyring = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    Some(&mut keyring),
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect("should succeed");
+        });
+        check(&sq, &output, true, Some(0), &[]);
+    }
+
+    #[test]
+    fn spider() {
+        let rt = tokio::runtime::Runtime::new()
+            .expect("can create tokio run time");
+
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let alice1 = sq.key_generate()
+            .email("alice@example.org")
+            .email("alice@other.org")
+            .without_password()
+            .generate(
+                Cancel::new(),
+                None)
+            .expect("can generate key");
+
+        let _bob = sq.key_generate()
+            .email("bob@example.org")
+            .without_password()
+            .generate(
+                Cancel::new(),
+                None)
+            .expect("can generate key");
+
+        // Search for alice@example.org.
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect("should succeed");
+        });
+        // Looking up alice@example.org generates queries for
+        // alice@other.org and the fingerprint.
+        check(&sq, &output, true, Some(3), &[ alice1.cert.fingerprint() ]);
+
+        // Do the same, but only do a single iterations.
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .iterations(1)
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect("should succeed");
+        });
+        // Looking up alice@example.org shouldn't generate additional
+        // queries as we don't iterate.
+        check(&sq, &output, true, Some(1), &[ alice1.cert.fingerprint() ]);
+
+
+        let alice2 = sq.key_generate()
+            .email("alice@other.org")
+            .without_password()
+            .generate(
+                Cancel::new(),
+                None)
+            .expect("can generate key");
+
+        // Search for alice@example.org.
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect("should succeed");
+        });
+        // Looking up alice@example.org generates queries for
+        // alice@other.org and the fingerprint, and then
+        // alice@other.org resolves to the second certificate, which
+        // we also search for by fingerprint.
+        check(&sq, &output, true, Some(4),
+              &[
+                  alice1.cert.fingerprint(),
+                  alice2.cert.fingerprint(),
+              ]);
+
+        // Do the same, but only do a single iterations.
+        let mut output = Vec::new();
+        rt.block_on(async {
+            sq.network_search()
+                .clear_sources()
+                .iterations(1)
+                .query_cert_store(true)
+                .search(
+                    vec![Query::Address("alice@example.org".to_string())],
+                    None,
+                    &mut output,
+                    Cancel::new())
+                .await
+                .expect("should succeed");
+        });
+        // Looking up alice@example.org shouldn't generate additional
+        // queries as we don't iterate.
+        check(&sq, &output, true, Some(1), &[ alice1.cert.fingerprint() ]);
+    }
+}
