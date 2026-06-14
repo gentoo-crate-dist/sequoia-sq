@@ -606,6 +606,15 @@ pub enum Output {
     /// will be aborted.
     OperationalError(error::OperationalError),
 
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
     /// Errors related to incorrectly calling the function.
     ///
     /// This error is unrecoverable, and the rest of the operation
@@ -1011,16 +1020,25 @@ impl<'a> Builder<'a> {
                     self.params(),
                     Output::Report(report))
                     .map_err(|err| Error::StreamOutputError(err))?;
+
                 Ok(())
             }
-            Err(err) => {
-                if let &Error::StreamOutputError(_) = &err {
-                } else {
-                    stream.output(
-                        self.params(),
-                        Output::Report(output::Report::new()))
-                        .map_err(|err| Error::StreamOutputError(err))?;
-                }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
                 Err(err)
             }
         }
