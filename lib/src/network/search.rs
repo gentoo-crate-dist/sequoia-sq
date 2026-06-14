@@ -1,4 +1,155 @@
-//! Network services.
+//! Search for certificates on the network.
+//!
+//! Searches for certificates on key servers
+//! ([`keys.openpgp.org`](https://keys.openpgp.org),
+//! [`keys.mailvelope.com`](https://keys.mailvelope.com), [Proton's
+//! key server](https://proton.me), [the SKS key server
+//! network](https://spider.pgpkeys.eu/) and [Ubuntu's key
+//! server](https://keyserver.ubuntu.com/)), in WKDs, using DANE, and
+//! in web pages.
+//!
+//! By default, the search function checks all of these sources in
+//! parallel, and uses the results to make additional queries.  For
+//! instance, when searching by fingerprint, it is not possible to
+//! search in WKDs or using DANE, because those can only be searched
+//! by email address.  To work around this, after finding a
+//! certificate on a key server, the search function makes additional
+//! queries based on the self-signed user IDs.  By default, the
+//! function will iterate up to three times.  This results in a more
+//! complete view of the certificate.
+//!
+//! By checking multiple sources, the search function is more
+//! resilient to an attacker who wants to withhold information: the
+//! attacker needs to control many sources, not just one to trick the
+//! victim.
+//!
+//! Note: this approach means that even when searching by fingerprint,
+//! the search function may return other certificates.
+//!
+//! When certificates are downloaded from well-known authorities, like
+//! a verifying key server, WKD or DANE, a so-called shadow CA (see
+//! [`Ca`]) certify the returned bindings.  The shadow CAs are local
+//! certificates, which are minimally trusted (although the user can
+//! change this).  By default, this is not enough to authenticate a
+//! binding, but it does provide the user some information, which they
+//! can use to make a more informed decision.
+//!
+//! # Examples
+//!
+//! Search for certificates by email address ([`Query`]) and
+//! automatically add the results to the certificate store:
+//!
+//! ```rust
+//! use sequoia::Sequoia;
+//! use sequoia::network::search::Query;
+//! use sequoia::prompt::Cancel;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let rt = tokio::runtime::Runtime::new()
+//! #   .expect("can create tokio run time");
+//! #
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new(), None)
+//! #     .expect("can generate a key");
+//! #
+//! # rt.block_on(async {
+//! sq.network_search()
+//! #   .clear_sources()
+//! #   .query_cert_store(true)
+//!     .search(
+//!         vec![Query::Address("alice@example.org".to_string())],
+//!         // Don't write to a file; write certificates to the
+//!         // certificate store.
+//!         None,
+//!         // Don't stream the results.  (See below.)
+//!         (),
+//!         // If a shadow CA is password protected, don't prompt for
+//!         // a password; ignore it;
+//!         Cancel::new())
+//!     .await?;
+//! # Ok::<(), anyhow::Error>(())
+//! # })?;
+//! # Ok(()) }
+//! ```
+//!
+//! As above, but display a progress bar, and show the certificates as
+//! they are fetched by implementing [`Stream`] and matching on the
+//! relevant [`Output`] variants:
+//!
+//! ```
+//! use sequoia::Sequoia;
+//! use sequoia::network::search::Query;
+//! use sequoia::network::search;
+//! use sequoia::prompt::Cancel;
+//!
+//! struct Stream {
+//!     requests: usize,
+//!     responses: usize,
+//! }
+//!
+//! impl search::Stream for Stream {
+//!     fn output(&mut self, params: &search::Params, output: search::Output)
+//!         -> Result<(), anyhow::Error>
+//!     {
+//!         match output {
+//!             // Display a primitive progress bar.
+//!             search::Output::RequestQueued(_) => {
+//!                 self.requests += 1;
+//!                 eprintln!("{}/{}", self.responses, self.requests);
+//!             }
+//!             search::Output::Response(_) => {
+//!                 self.responses += 1;
+//!                 eprintln!("{}/{}", self.responses, self.requests);
+//!             }
+//!
+//!             search::Output::CertResult(result) => {
+//!                 eprintln!("Got {}", result.cert.fingerprint());
+//!             }
+//!             _ => (),
+//!         }
+//!         // Return an error to abort; `Ok` to continue.
+//!         Ok(())
+//!     }
+//! }
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let rt = tokio::runtime::Runtime::new()
+//! #   .expect("can create tokio run time");
+//! #
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new(), None)
+//! #     .expect("can generate a key");
+//! #
+//! # rt.block_on(async {
+//! sq.network_search()
+//! #   .clear_sources()
+//! #   .query_cert_store(true)
+//!     .search(
+//!         vec![Query::Address("alice@example.org".to_string())],
+//!         // Don't write to a file; write certificates to the
+//!         // certificate store.
+//!         None,
+//!         // Don't stream the results.  (See below.)
+//!         (),
+//!         // If a shadow CA is password protected, don't prompt for
+//!         // a password; ignore it;
+//!         Cancel::new())
+//!     .await?;
+//! # Ok::<(), anyhow::Error>(())
+//! # })?;
+//! # Ok(()) }
+//! ```
+//!
+//! Alternatively, you can pass `&mut Vec<Output>` to gather the
+//! output and inspect to inspect it afterwards.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
