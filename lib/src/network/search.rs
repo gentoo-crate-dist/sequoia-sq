@@ -178,6 +178,21 @@ impl Query {
             _ => None,
         }
     }
+
+    fn check(&self) -> Result<(), Error> {
+        if let Query::Address(email) = self {
+            UserID::from(&format!("<{}>", email)[..]).email()
+                .map_err(|err| {
+                    Error::ArgumentError(
+                        error::ArgumentError::MalformedQuery(
+                            error::MalformedQuery {
+                                query: self.clone(),
+                                error: err.into(),
+                            }))
+                })?;
+        }
+        Ok(())
+    }
 }
 
 /// The source of a request.
@@ -290,6 +305,17 @@ impl Stream for () {
 pub mod error {
     use super::*;
 
+    /// The query is invalid.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Malformed query: {:?}", .query)]
+    pub struct MalformedQuery {
+        pub query: Query,
+
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
     /// The specified key server is invalid.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
@@ -307,6 +333,9 @@ pub mod error {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum ArgumentError {
+        #[error(transparent)]
+        MalformedQuery(MalformedQuery),
+
         #[error(transparent)]
         MalformedKeyserverUri(MalformedKeyserverUri),
 
@@ -1017,6 +1046,10 @@ impl<'a> Builder<'a> {
             query_web,
             query_cert_store,
         } = &self.params;
+
+        for q in queries.iter() {
+            q.check()?;
+        }
 
         if output.is_none() {
             // We're going to save the output to the certificate store.
