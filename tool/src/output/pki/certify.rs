@@ -4,8 +4,6 @@ use sequoia_openpgp as openpgp;
 use openpgp::Cert;
 use openpgp::packet::UserID;
 
-use sequoia::transitional::output::cert::emit_cert_userid;
-
 use sequoia::pki::certify;
 use sequoia::types::Convert;
 use sequoia::types::Safe;
@@ -16,6 +14,7 @@ use certify::Output;
 
 use crate::Result;
 use crate::Sq;
+use crate::common::ui::emit_cert_userid;
 
 pub struct Stream<'a> {
     sq: &'a Sq,
