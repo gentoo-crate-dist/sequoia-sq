@@ -745,6 +745,29 @@ pub mod output {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    OperationalError(error::OperationalError),
+
     MessageStructure(output::MessageStructure),
     Report(output::Report),
 }
@@ -1025,7 +1048,7 @@ impl<'sequoia> Builder<'sequoia> {
         S: Stream,
 
     {
-        self.execute_stream(input, None::<std::io::Empty>, output, stream)
+        self.execute(input, None::<std::io::Empty>, output, stream)
     }
 
     /// Verifies an inline signing message.
@@ -1061,14 +1084,53 @@ impl<'sequoia> Builder<'sequoia> {
         S: Stream,
 
     {
-        self.execute_stream(input, Some(detached), output, stream)
+        self.execute(input, Some(detached), output, stream)
     }
 
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute_stream<I, D, O, S>(&self, input: I, detached: Option<D>,
-                                  mut output: O, stream: S)
+    fn execute<I, D, O, S>(&self, input: I, detached: Option<D>,
+                           output: O, mut stream: S)
+        -> Result<(), Error>
+    where
+        I: std::io::Read + Send + Sync,
+        D: std::io::Read + Send + Sync,
+        O: std::io::Write + Send + Sync,
+        S: Stream,
+    {
+        let result = self.execute_(input, detached, output, &mut stream);
+
+        match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                Err(err)
+            }
+        }
+    }
+
+    /// Execute the verifier with the configured parameters.
+    ///
+    /// Returns `Ok` if the message could be verified.
+    fn execute_<I, D, O, S>(&self, input: I, detached: Option<D>,
+                            mut output: O, stream: S)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,

@@ -848,6 +848,9 @@ pub mod error {
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum ArgumentError {
         #[error(transparent)]
+        VerificationArgumentError(verify::error::ArgumentError),
+
+        #[error(transparent)]
         Other(Arc<anyhow::Error>),
     }
 
@@ -918,6 +921,9 @@ pub mod error {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
+        #[error(transparent)]
+        VerificationOperationalError(verify::error::OperationalError),
+
         #[error(transparent)]
         MissingSecretKeyMaterial(MissingSecretKeyMaterial),
         #[error(transparent)]
@@ -998,6 +1004,19 @@ impl verify::Stream for StreamProxy<'_>
         -> Result<()>
     {
         let output = match output {
+            verify::Output::ArgumentError(err) => {
+                Output::ArgumentError(
+                    error::ArgumentError::VerificationArgumentError(
+                        err))
+            }
+            verify::Output::OperationalError(err) => {
+                Output::OperationalError(
+                    error::OperationalError::VerificationOperationalError(
+                        err))
+            }
+            verify::Output::SystemError(err) => {
+                Output::SystemError(err)
+            }
             verify::Output::Report(report) => {
                 Output::Report(output::Report {
                     verification: report,
