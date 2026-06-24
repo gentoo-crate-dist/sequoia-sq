@@ -661,7 +661,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
     } else {
         verifier.inline_signature(
             data_file.as_ref().try_clone()?, &mut output_file, stream)
-    };
+    }.map_err(|err| anyhow::Error::from(err));
 
     if let Err(err) = result {
         if let Some(path) = output.path() {

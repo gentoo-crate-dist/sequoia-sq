@@ -159,6 +159,7 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use sequoia_openpgp::parse::buffered_reader;
 
@@ -183,10 +184,32 @@ use sequoia_wot::store::Store as _;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::decrypt;
 use crate::inspect::Kind;
 
 const TRACE: bool = false;
+
+/// Turns an error into an `Error::OperationalError::Other` unless it
+/// is already an `Error` in which case the `Error` is returned.
+macro_rules! op {
+    () => {
+        |err| {
+            match err.downcast::<Error>() {
+                Ok(err) => {
+                    // We already have an `Error`.  Just return it.
+                    err
+                },
+                Err(err) => {
+                    // Turn the err into an `Error::OperationalError`.
+                    Error::OperationalError(
+                        error::OperationalError::Other(
+                            Arc::new(err.into())))
+                }
+            }
+        }
+    }
+}
 
 /// The trait for collecting output.
 pub trait Stream {
@@ -717,6 +740,119 @@ pub enum Output {
     Report(output::Report),
 }
 
+/// Data structures related to [`Error`].
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+pub mod error {
+    use super::*;
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+
+    /// Expected a detached signature, but got something else.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Input is not a detached signature")]
+    pub struct NotADetachedSignature {
+        /// The kind of detected data.
+        ///
+        /// Similar to `file(1)`, this is a best guess and not a
+        /// guarantee.
+        pub kind: Kind,
+
+        /// The underlying error.
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// Can't authenticate the signature.
+    ///
+    /// The signature is mathematically correct, but we could not
+    /// authenticate the signer according to the signing policy.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("{}",
+        if *.authenticated_signatures == 0 {
+            "Verification failed: could not authenticate any signatures"
+        } else {
+            "Verification failed: could not authenticate enough signatures"
+        })]
+    pub struct Unauthenticated {
+        /// The number of signatures from different authenticated
+        /// signers that we need to authenticate the signature.
+        pub need_signatures: usize,
+
+        /// The number of signatures from different authenticated
+        /// signers that we have.
+        pub authenticated_signatures: usize,
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        NotADetachedSignature(NotADetachedSignature),
+
+        #[error(transparent)]
+        Unauthenticated(Unauthenticated),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to verifying a message.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
+}
+
 impl Sequoia {
     /// Returns a builder for verifying messages.
     ///
@@ -873,7 +1009,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// mutable reference to a `Vec<Output>`.  If you don't care about
     /// the status information, you can pass `()`.
     pub fn inline_signature<I, O, S>(&self, input: I, output: O, stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -908,7 +1044,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// the status information, you can pass `()`.
     pub fn detached_signature<I, D, O, S>(&self, input: I, detached: D,
                                           output: O, stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
@@ -924,7 +1060,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// Returns `Ok` if the message could be verified.
     fn execute_stream<I, D, O, S>(&self, input: I, detached: Option<D>,
                                   mut output: O, stream: S)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
@@ -949,12 +1085,21 @@ impl<'sequoia> Builder<'sequoia> {
         };
 
         let mut detached = if let Some(ref mut sig) = detached {
-            let (kind, sig) = Kind::identify(sequoia, sig)?;
+            let (kind, sig) = Kind::identify(sequoia, sig)
+                .map_err(op!())?;
             kind.expect_or_else(sequoia, "verify", Kind::DetachedSig,
                                 detached_sig_arg
                                 .as_deref()
                                 .unwrap_or("the detached signature"),
-                                detached_sig_value.as_deref())?;
+                                detached_sig_value.as_deref())
+                .map_err(|err| {
+                    Error::OperationalError(
+                        error::OperationalError::NotADetachedSignature(
+                            error::NotADetachedSignature {
+                                error: err.into(),
+                                kind,
+                            }))
+                })?;
 
             Some(sig)
         } else {
@@ -970,25 +1115,32 @@ impl<'sequoia> Builder<'sequoia> {
             sequoia, signatures, designated_signers.clone());
         helper.stream = Some((proxy, Cow::Borrowed(&self.params)));
         let helper = if let Some(ref mut dsig) = detached {
-            let mut v = DetachedVerifierBuilder::from_reader(dsig)?
-                .with_policy(sequoia.policy(), Some(sequoia.time()), helper)?;
-            v.verify_reader(input)?;
+            let mut v = DetachedVerifierBuilder::from_reader(dsig)
+                .map_err(op!())?
+                .with_policy(sequoia.policy(), Some(sequoia.time()), helper)
+                .map_err(op!())?;
+            v.verify_reader(input)
+                .map_err(op!())?;
             v.into_helper()
         } else {
-            let mut v = VerifierBuilder::from_reader(input)?
-                .with_policy(sequoia.policy(), Some(sequoia.time()), helper)?;
-            io::copy(&mut v, &mut output)?;
+            let mut v = VerifierBuilder::from_reader(input)
+                .map_err(op!())?
+                .with_policy(sequoia.policy(), Some(sequoia.time()), helper)
+                .map_err(op!())?;
+            io::copy(&mut v, &mut output)
+                .map_err(op!())?;
             v.into_helper()
         };
 
         if helper.authenticated_signatures >= signatures {
             Ok(())
-        } else if helper.authenticated_signatures == 0 {
-            Err(anyhow::anyhow!("Verification failed: could not \
-                                 authenticate any signatures"))
         } else {
-            Err(anyhow::anyhow!("Verification failed: could not \
-                                 authenticate enough signatures"))
+            Err(Error::OperationalError(
+                error::OperationalError::Unauthenticated(
+                    error::Unauthenticated {
+                        need_signatures: signatures,
+                        authenticated_signatures: helper.authenticated_signatures,
+                    })))
         }
     }
 }
@@ -1077,8 +1229,16 @@ impl<'c> VerificationHelper<'c> {
     }
 }
 
-impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
-    fn get_certs(&mut self, ids: &[openpgp::KeyHandle]) -> Result<Vec<Cert>> {
+// We want the following functions to return an `Error`, but the
+// `VerificationHelper` trait defines the function signatures, and
+// says that they return an `anyhow::Error`.  We implement variants of
+// the functions that return our error type and then convert that to
+// an `anyhow::Error` in the actual trait implementation.  This flags
+// any use of `anyhow::Error`.
+impl VerificationHelper<'_> {
+    fn get_certs_(&mut self, ids: &[openpgp::KeyHandle])
+                  -> Result<Vec<Cert>, Error>
+    {
         let mut certs = BTreeMap::new();
 
         let have_designated_signers = if let Some(designated_signers)
@@ -1090,7 +1250,13 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
                         e.insert(c);
                     },
                     Entry::Occupied(mut e) => {
-                        let merged = e.get().clone().merge_public(c)?;
+                        // `Cert::merge_public` should only fail if
+                        // the two certificates are not the same
+                        // certificate.  As this should never happen,
+                        // we don't do any special error handling like
+                        // converting to a dedicated type.
+                        let merged = e.get().clone().merge_public(c)
+                            .map_err(op!())?;
                         e.insert(merged);
                     },
                 }
@@ -1127,13 +1293,26 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
                     for c in cert_store.lookup_by_cert_or_subkey(id)
                         .unwrap_or_default()
                     {
-                        let c = c.to_cert()?.clone();
+                        // XXX: If we fail to parse a certificate, we
+                        // completely abort processing even though a
+                        // different certificate may be able to
+                        // authenticate a certificate.  Is this really
+                        // what we want?
+                        let c = c.to_cert().map_err(op!())?
+                            .clone();
                         match certs.entry(c.fingerprint()) {
                             Entry::Vacant(e) => {
                                 e.insert(c);
                             },
                             Entry::Occupied(mut e) => {
-                                let merged = e.get().clone().merge_public(c)?;
+                                // `Cert::merge_public` should only
+                                // fail if the two certificates are
+                                // not the same certificate.  As this
+                                // should never happen, we don't do
+                                // any special error handling like
+                                // converting to a dedicated type.
+                                let merged = e.get().clone().merge_public(c)
+                                    .map_err(op!())?;
                                 e.insert(merged);
                             },
                         }
@@ -1145,8 +1324,8 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
         Ok(certs.into_values().collect())
     }
 
-    fn check(&mut self, structure: stream::MessageStructure)
-             -> Result<()>
+    fn check_(&mut self, structure: stream::MessageStructure)
+        -> Result<(), Error>
     {
         use output::message_layer::*;
 
@@ -1193,7 +1372,8 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
             let stream = stream.deref_mut();
 
             stream.output(params,
-                          Output::MessageStructure(message_structure))?;
+                          Output::MessageStructure(message_structure))
+                .map_err(|err| Error::StreamOutputError(err))?;
 
             stream.output(
                 params,
@@ -1205,18 +1385,34 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
                     bad_signatures: self.bad_signatures,
                     broken_keys: self.broken_keys,
                     broken_signatures: self.broken_signatures,
-                }))?;
+                }))
+                .map_err(|err| Error::StreamOutputError(err))?;
         }
 
         if self.authenticated_signatures >= self.signatures {
             Ok(())
-        } else if self.authenticated_signatures == 0 {
-            Err(anyhow::anyhow!("Verification failed: could not \
-                                 authenticate any signatures"))
         } else {
-            Err(anyhow::anyhow!("Verification failed: could not \
-                                 authenticate enough signatures"))
+            Err(Error::OperationalError(
+                error::OperationalError::Unauthenticated(
+                    error::Unauthenticated {
+                        need_signatures: self.signatures,
+                        authenticated_signatures: self.authenticated_signatures,
+                    })))
         }
+    }
+}
+
+impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
+    fn get_certs(&mut self, ids: &[openpgp::KeyHandle])
+        -> Result<Vec<Cert>>
+    {
+        self.get_certs_(ids).map_err(|err| anyhow::Error::from(err))
+    }
+
+    fn check(&mut self, structure: stream::MessageStructure)
+             -> Result<()>
+    {
+        self.check_(structure).map_err(|err| anyhow::Error::from(err))
     }
 }
 

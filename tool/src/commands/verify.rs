@@ -41,7 +41,7 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
     } else {
         verifier.inline_signature(
             input,  &mut output, stream)
-    };
+    }.map_err(|err| anyhow::Error::from(err));
 
     if result.is_err() {
         if let Some(path) = command.output.path() {
