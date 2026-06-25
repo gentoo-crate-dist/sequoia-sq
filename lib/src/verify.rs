@@ -325,7 +325,7 @@ pub mod output {
         /// of trust, or the certificate is considered authenticated
         /// (see [`Builder::add_designated_signer`]).
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct Verified {
             /// The signature.
             pub sig: packet::Signature,
@@ -352,7 +352,7 @@ pub mod output {
         /// signer cannot be authenticated is no better than a
         /// checksum.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct GoodChecksum {
             /// The signature.
             pub sig: packet::Signature,
@@ -377,7 +377,7 @@ pub mod output {
         /// A certificate that includes the alleged issuer's key is
         /// not available.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct MissingKey {
             /// The signature.
             pub sig: packet::Signature,
@@ -388,7 +388,7 @@ pub mod output {
         /// There is no valid binding signature at the time the
         /// signature was created under the given policy.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct UnboundKey {
             /// The signature.
             pub sig: packet::Signature,
@@ -397,14 +397,14 @@ pub mod output {
             pub cert: Cert,
 
             /// The reason why the key is not bound.
-            pub error: anyhow::Error,
+            pub error: Arc<anyhow::Error>,
         }
 
         /// Bad key.
         ///
         /// We have a key, but it is not alive, etc.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct BadKey {
             /// The signature.
             pub sig: packet::Signature,
@@ -416,14 +416,14 @@ pub mod output {
             pub key: Fingerprint,
 
             /// The reason why the key is bad.
-            pub error: anyhow::Error,
+            pub error: Arc<anyhow::Error>,
         }
 
         /// Bad signature.
         ///
         /// We have a valid key, but the signature isn't valid.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct BadSignature {
             /// The signature.
             pub sig: packet::Signature,
@@ -435,7 +435,7 @@ pub mod output {
             pub key: Fingerprint,
 
             /// The reason why the signature isn't valid.
-            pub error: anyhow::Error,
+            pub error: Arc<anyhow::Error>,
         }
 
         /// Malformed signature.
@@ -443,18 +443,18 @@ pub mod output {
         /// The signature is malformed.  This could be because it does
         /// not include a signature creation subpacket.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct MalformedSignature {
             /// The signature.
             pub sig: packet::Signature,
 
             /// The reason why the signature is malformed.
-            pub error: anyhow::Error,
+            pub error: Arc<anyhow::Error>,
         }
 
         /// A signature that we failed to parse.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct UnknownSignature {
             /// The signature parsed into an [`Unknown`] packet.
             ///
@@ -471,16 +471,16 @@ pub mod output {
         /// version of `sequoia_openpgp` than your code is prepared
         /// for.
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct Unknown {
             /// The unknown `VerificationResult` as an error.
-            pub error: anyhow::Error,
+            pub error: Arc<anyhow::Error>,
         }
     }
 
     /// A signature's verification status.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum SignatureStatus {
         Verified(signature_status::Verified),
         GoodChecksum(signature_status::GoodChecksum),
@@ -595,7 +595,7 @@ pub mod output {
     /// signature.  This could be displayed under more information or
     /// as warnings.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum SignatureInfo {
         /// The signer's certificate can't be authenticated, because
         /// it has no user IDs.
@@ -604,7 +604,7 @@ pub mod output {
 
     /// A signature.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Signature {
         /// The signature's status.
         pub status: SignatureStatus,
@@ -669,7 +669,7 @@ pub mod output {
         ///
         /// See [`MessageLayer`].
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct SignatureLayer {
             pub sigs: Vec<Signature>,
         }
@@ -678,7 +678,7 @@ pub mod output {
         ///
         /// See [`MessageLayer`].
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct CompressionLayer {
             pub algo: CompressionAlgorithm,
         }
@@ -687,7 +687,7 @@ pub mod output {
         ///
         /// See [`MessageLayer`].
         #[non_exhaustive]
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct EncryptionLayer {
             pub sym_algo: SymmetricAlgorithm,
             pub aead_algo: Option<AEADAlgorithm>,
@@ -700,7 +700,7 @@ pub mod output {
     /// optional encryption, signing, and compression layers freely
     /// combined on top.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum MessageLayer {
         Signature(message_layer::SignatureLayer),
         Compression(message_layer::CompressionLayer),
@@ -713,7 +713,7 @@ pub mod output {
     /// message's structure; it does not include the message's
     /// content.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct MessageStructure {
         pub layers: Vec<MessageLayer>,
     }
@@ -722,7 +722,7 @@ pub mod output {
     ///
     /// This includes summary statistics.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Report {
         /// Whether enough signatures could be verified.
         ///
@@ -776,7 +776,7 @@ pub mod output {
 /// [`inline_signature`](Builder::inline_signature) and
 /// [`detached_signature`](Builder::detached_signature) emit.
 #[non_exhaustive]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Output {
     /// An error related to the arguments.
     ///
@@ -995,6 +995,7 @@ impl<'sequoia> Params<'sequoia> {
 /// Verify signatures.
 ///
 /// This command builder is used to verify signatures.
+#[derive(Clone)]
 pub struct Builder<'sequoia> {
     params: Params<'sequoia>,
 }
@@ -1553,7 +1554,7 @@ impl<'c> VerificationHelper<'c> {
                     status: output::SignatureStatus::UnboundKey(UnboundKey {
                         sig: sig.clone(),
                         cert: cert.clone(),
-                        error,
+                        error: error.into(),
                     }),
                     info: Vec::new(),
                 };
@@ -1567,7 +1568,7 @@ impl<'c> VerificationHelper<'c> {
                         sig: sig.clone(),
                         cert: ka.cert().clone(),
                         key: ka.key().fingerprint(),
-                        error,
+                        error: error.into(),
                     }),
                     info: Vec::new(),
                 };
@@ -1581,7 +1582,7 @@ impl<'c> VerificationHelper<'c> {
                         sig: sig.clone(),
                         cert: ka.cert().clone(),
                         key: ka.key().fingerprint(),
-                        error,
+                        error: error.into(),
                     }),
                     info: Vec::new(),
                 };
@@ -1593,7 +1594,7 @@ impl<'c> VerificationHelper<'c> {
                 return output::Signature {
                     status: output::SignatureStatus::MalformedSignature(MalformedSignature {
                         sig: sig.clone(),
-                        error
+                        error: error.into(),
                     }),
                     info: Vec::new(),
                 };
@@ -1614,7 +1615,7 @@ impl<'c> VerificationHelper<'c> {
 
                 return output::Signature {
                     status: output::SignatureStatus::Unknown(Unknown {
-                        error: openpgp::Error::from(ve).into(),
+                        error: Arc::new(openpgp::Error::from(ve).into()),
                     }),
                     info: Vec::new(),
                 };
