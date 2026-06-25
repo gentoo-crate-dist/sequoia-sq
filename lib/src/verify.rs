@@ -1,5 +1,37 @@
 //! Signature verification.
 //!
+//! A digital signature can be used to verify the authenticity and
+//! integrity of a message.  For instance, Alice may want to download
+//! the latest release of [Qubes OS].  To ensure that an adversary has
+//! not tampered with the release, she can check that the file that
+//! she received was signed by the Qubes OS release team's
+//! certificate.
+//!
+//! [Qubes OS]: https://www.qubes-os.org/
+//!
+//! Note that there are two steps to verify a signature: the signature
+//! must authenticate the document, and the signing certificate must
+//! be authenticated.  Checking that the signature authenticates the
+//! document without also authenticating the certificate does not
+//! prevent an attacker from modifying the data in transit.  If an
+//! adversary gains control of the server that serves the file and the
+//! signature, they can replace the file and the signature.  To detect
+//! this type of tampering, the user must also authenticate the
+//! certificate.
+//!
+//! There are several ways to authenticate a certificate.  You can
+//! check it directly by checking the certificate's fingerprint.  The
+//! most secure way to get the fingerprint is to ask the person who
+//! controls the certificate in-person for the certificate's
+//! fingerprint.  This has a lot of overhead, and is often
+//! impractical.  As such, depending on the user's threat model, it
+//! may be sufficient to check that multiple partially trusted
+//! websites display the same fingerprint.  Alternatively, you can
+//! check it indirectly by delegating the check to one or more
+//! certification authorities (CAs), like [`keys.openpgp.org`].
+//!
+//! [`keys.openpgp.org`]: https://keys.openpgp.org
+//!
 //! # Examples
 //!
 //! Verify a message and just get the verified message or a succinct
@@ -254,6 +286,9 @@ pub mod output {
     use super::*;
 
     /// Web of Trust-specific authentication information.
+    ///
+    /// This is used by [`signature_status::GoodChecksum`] and
+    /// [`signature_status::Verified`].
     #[non_exhaustive]
     #[derive(Debug, Clone)]
     pub struct WebOfTrust {
@@ -766,7 +801,18 @@ pub enum Output {
     /// a signature, but the secret key material is not available.
     OperationalError(error::OperationalError),
 
+    /// The message's structure.
+    ///
+    /// A valid OpenPGP message contains one literal data packet with
+    /// optional encryption, signing, and compression layers freely
+    /// combined on top.
+    ///
+    /// This is emitted after the message has been parsed.
     MessageStructure(output::MessageStructure),
+
+    /// Information about the decryption and verification.
+    ///
+    /// This data structure contains authentication information.
     Report(output::Report),
 }
 
@@ -914,13 +960,31 @@ impl<'sequoia> Params<'sequoia> {
         self.sequoia
     }
 
-    /// Returns the number of signatures that have to be authenticated
-    /// for the verification to succeed.
+    /// Returns the number of required authenticated signatures.
+    ///
+    /// By default there must be one authenticated signature.  Note: a
+    /// mathematically correct signature is not considered
+    /// authenticated; at least one of the user IDs on the signer's
+    /// certificate must also be fully authenticated.
     pub fn signatures(&self) -> usize {
         self.signatures
     }
 
-    /// Returns the set of designated signers.
+    /// Returns the designated signers.
+    ///
+    /// If not `None`, the specified designated signers (and no other
+    /// certificates) are considered authenticated.
+    ///
+    /// By default, a certificate is authenticated using the web of
+    /// trust using certificates from the certificate store (unless
+    /// disabled with [`SequoiaBuilder::stateless`]) and any
+    /// configured keyrings (see [`SequoiaBuiler::add_keyring`]).  If
+    /// this parameter is `Some`, then the use of the web of trust is
+    /// disabled, and verify only considers signatures by the
+    /// specified certificates.
+    ///
+    ///   [`SequoiaBuilder::stateless`]: crate::SequoiaBuilder::stateless
+    ///   [`SequoiaBuiler::add_keyring`]: crate::SequoiaBuilder::add_keyring
     pub fn designated_signers(&self) -> Option<&[Cert]> {
         self.designated_signers.as_deref()
     }
@@ -960,12 +1024,12 @@ impl<'sequoia> Builder<'sequoia> {
     /// The specified designated signers (and no other certificates)
     /// are considered authenticated.
     ///
-    /// By default, signer certificates are authenticated using the
-    /// web of trust using certificates from the certificate store
-    /// (unless disabled with [`SequoiaBuilder::stateless`]) and any
+    /// By default, a certificate is authenticated using the web of
+    /// trust using certificates from the certificate store (unless
+    /// disabled with [`SequoiaBuilder::stateless`]) and any
     /// configured keyrings (see [`SequoiaBuiler::add_keyring`]).
-    /// This disables the use of the web of trust and only considers
-    /// signatures by the specified certificates.
+    /// Setting this parameter disables the use of the web of trust
+    /// and only considers signatures by the specified certificates.
     ///
     ///   [`SequoiaBuilder::stateless`]: crate::SequoiaBuilder::stateless
     ///   [`SequoiaBuiler::add_keyring`]: crate::SequoiaBuilder::add_keyring
@@ -980,7 +1044,7 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// If you specify an empty set of designated signers, then the
     /// web of trust will be disabled, and no signatures will be
-    /// authenticated.
+    /// authenticated unless you explicitly add some.
     pub fn add_designated_signers(mut self, certs: impl IntoIterator<Item=Cert>)
         -> Self
     {
@@ -994,29 +1058,32 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    /// Verifies an inline signing message.
+    /// Verifies an inline signed message.
     ///
     /// An inline-signed message is an OpenPGP message that includes
     /// one or more signatures and the signed data.  If the signatures
     /// and the data are stored separately, you have a detached
-    /// signature.
+    /// signature, which you can verify using
+    /// [`Builder::detached_signature`].
     ///
     /// Returns `Ok` if the message could be verified according to the
     /// policy.  (You can configure the signing policy using
     /// [`Builder::signatures`] and [`Builder::add_designated_signer`].)
     ///
     /// The verified data is written to `output`.  If you don't plan
-    /// to consume the verified data, you can pass pass an instance of
+    /// to consume the verified data, you can pass an instance of
     /// `std::io::Empty`, which is normally created by calling
     /// `std::io::empty`.  If you do plan to consume the verified
     /// data, you should not use the input, but save the output and
-    /// use that.  This avoids TOUTOC errors, and, accidentally using
-    /// the wrong data.
+    /// use that.  This avoids [TOCTOU] errors, and, accidentally
+    /// using the wrong data.
+    ///
+    /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
     ///
     /// `stream` allows you to stream the status information.  If you
     /// don't want to stream the status information, you can pass a
-    /// mutable reference to a `Vec<Output>`.  If you don't care about
-    /// the status information, you can pass `()`.
+    /// `&mut Vec<Output>` to collect the output.  If you don't care
+    /// about the status information, you can pass `()`.
     pub fn inline_signature<I, O, S>(&self, input: I, output: O, stream: S)
         -> Result<(), Error>
     where
@@ -1028,29 +1095,31 @@ impl<'sequoia> Builder<'sequoia> {
         self.execute(input, None::<std::io::Empty>, output, stream)
     }
 
-    /// Verifies an inline signing message.
+    /// Verifies a detached signature.
     ///
-    /// An inline-signed message is an OpenPGP message that includes
-    /// one or more signatures and the signed data.  If the signatures
-    /// and the data are stored separately, you have a detached
-    /// signature.
+    /// A detached signature is an OpenPGP signature that is stored
+    /// separately from the signed data.  If the signature and the
+    /// data are stored together, you have an inline signature, which
+    /// you can verify using [`Builder::inline_signature`].
     ///
     /// Returns `Ok` if the message could be verified according to the
     /// policy.  (You can configure the signing policy using
     /// [`Builder::signatures`] and [`Builder::add_designated_signer`].)
     ///
     /// The verified data is written to `output`.  If you don't plan
-    /// to consume the verified data, you can pass pass an instance of
+    /// to consume the verified data, you can pass an instance of
     /// `std::io::Empty`, which is normally created by calling
     /// `std::io::empty`.  If you do plan to consume the verified
     /// data, you should not use the input, but save the output and
-    /// use that.  This avoids TOUTOC errors, and, accidentally using
-    /// the wrong data.
+    /// use that.  This avoids [TOCTOU] errors, and, accidentally
+    /// using the wrong data.
+    ///
+    /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
     ///
     /// `stream` allows you to stream the status information.  If you
     /// don't want to stream the status information, you can pass a
-    /// mutable reference to a `Vec<Output>`.  If you don't care about
-    /// the status information, you can pass `()`.
+    /// `&mut Vec<Output>` to collect the output.  If you don't care
+    /// about the status information, you can pass `()`.
     pub fn detached_signature<I, D, O, S>(&self, input: I, detached: D,
                                           output: O, stream: S)
         -> Result<(), Error>
@@ -1233,7 +1302,7 @@ pub(crate) struct VerificationHelper<'c>
     /// Tracks the inner-most encryption container encountered.
     pub sym_algo: Option<SymmetricAlgorithm>,
 
-    // Tracks the signatures encountered.
+    /// Tracks the signatures encountered.
     authenticated_signatures: usize,
     unauthenticated_signatures: usize,
     uncheckable_signatures: usize,

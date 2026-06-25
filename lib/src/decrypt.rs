@@ -931,7 +931,7 @@ pub mod error {
     }
 }
 
-/// Errors related to generating a certificate.
+/// Errors related to decrypting a message.
 ///
 /// Errors are divided into categories and each category contains more
 /// precise errors.
