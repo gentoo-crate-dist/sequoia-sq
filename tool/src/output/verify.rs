@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use sequoia::openpgp;
 use openpgp::packet::UserID;
 
-use sequoia::verify;
-use sequoia::types::TrustThreshold;
+use sequoia::inspect::Kind;
 use sequoia::types::PreferredUserID;
+use sequoia::types::TrustThreshold;
+use sequoia::verify;
 
 use sequoia::wot::Paths;
 
@@ -27,14 +30,21 @@ pub struct Stream<'a> {
     pub(crate) sq: &'a Sq,
     #[allow(dead_code)]
     context: VerifyContext,
+
+    detached_sig_arg: Option<String>,
+    detached_sig_value: Option<PathBuf>,
 }
 
 impl<'a> Stream<'a> {
-    pub fn new(sq: &'a Sq, context: VerifyContext) -> Self
+    pub fn new(sq: &'a Sq, context: VerifyContext,
+               detached_sig_arg: Option<String>,
+               detached_sig_value: Option<PathBuf>) -> Self
     {
         Self {
             sq,
             context,
+            detached_sig_arg,
+            detached_sig_value,
         }
     }
 }
@@ -48,6 +58,24 @@ impl verify::Stream for Stream<'_> {
         make_qprintln!(params.sequoia().config().quiet());
 
         match output {
+            verify::Output::OperationalError(
+                verify::error::OperationalError::NotADetachedSignature(
+                    verify::error::NotADetachedSignature {
+                        kind,
+                        ..
+                    })) =>
+            {
+                kind.expect_or_else(
+                    &self.sq.sequoia,
+                    "verify",
+                    Kind::DetachedSig,
+                    self.detached_sig_arg
+                        .as_deref()
+                        .unwrap_or("the detached signature"),
+                    self.detached_sig_value
+                        .as_deref())?;
+            }
+
             verify::Output::MessageStructure(structure) => {
                 for layer in structure.layers {
                     match layer {

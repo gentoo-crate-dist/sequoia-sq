@@ -459,8 +459,6 @@ impl<'sequoia> Builder<'sequoia> {
             params: Params {
                 vparams: verify::Params {
                     sequoia,
-                    detached_sig_arg: _,
-                    detached_sig_value: _,
                     signatures,
                     ref designated_signers,
                 },
@@ -575,8 +573,6 @@ impl<'sequoia> Builder<'sequoia> {
             params: Params {
                 vparams: verify::Params {
                     sequoia,
-                    detached_sig_arg: _,
-                    detached_sig_value: _,
                     signatures: _,
                     designated_signers: _,
                 },
@@ -981,8 +977,6 @@ impl Sequoia {
             params: Params {
                 vparams: verify::Params {
                     sequoia: self,
-                    detached_sig_arg: None,
-                    detached_sig_value: None,
                     signatures: 1,
                     designated_signers: None,
                 },

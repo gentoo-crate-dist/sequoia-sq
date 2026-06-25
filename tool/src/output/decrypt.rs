@@ -49,7 +49,10 @@ impl<'a> Stream<'a> {
     ) -> Self
     {
         Self {
-            vstream: verify::Stream::new(sq, context.clone().into()),
+            vstream: verify::Stream::new(
+                sq, context.clone().into(),
+                // Detached signature argument.
+                None, None),
             context,
             dump_session_key,
         }

@@ -156,8 +156,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashSet, btree_map::{BTreeMap, Entry}};
 use std::io;
-use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -800,9 +798,6 @@ pub mod error {
         /// Similar to `file(1)`, this is a best guess and not a
         /// guarantee.
         pub kind: Kind,
-
-        /// The underlying error.
-        pub error: Arc<anyhow::Error>,
     }
 
     /// Can't authenticate the signature.
@@ -894,8 +889,6 @@ impl Sequoia {
         Builder {
             params: Params {
                 sequoia: self,
-                detached_sig_arg: None,
-                detached_sig_value: None,
                 signatures: 1,
                 designated_signers: None,
             }
@@ -911,9 +904,6 @@ impl Sequoia {
 #[derive(Clone)]
 pub struct Params<'sequoia> {
     pub(crate) sequoia: &'sequoia Sequoia,
-    // XXX transitional: Remove once we fix Kind::identify.
-    pub(crate) detached_sig_arg: Option<String>,
-    pub(crate) detached_sig_value: Option<PathBuf>,
     pub(crate) signatures: usize,
     pub(crate) designated_signers: Option<Vec<Cert>>,
 }
@@ -1000,19 +990,6 @@ impl<'sequoia> Builder<'sequoia> {
             self.params.designated_signers
                 = Some(certs.into_iter().collect())
         }
-
-        self
-    }
-
-    /// XXX transitional: remove once presentation is moved back to
-    /// sq.
-    pub fn detached_args(mut self, detached_sig_arg: Option<&str>,
-                         detached_sig_value: &Path)
-        -> Self
-    {
-        self.params.detached_sig_arg
-            = detached_sig_arg.map(|a| a.to_string());
-        self.params.detached_sig_value = Some(detached_sig_value.to_path_buf());
 
         self
     }
@@ -1141,8 +1118,6 @@ impl<'sequoia> Builder<'sequoia> {
         let &Builder {
             params: Params {
                 sequoia,
-                ref detached_sig_arg,
-                ref detached_sig_value,
                 signatures,
                 ref designated_signers,
             }
@@ -1158,19 +1133,13 @@ impl<'sequoia> Builder<'sequoia> {
         let mut detached = if let Some(ref mut sig) = detached {
             let (kind, sig) = Kind::identify(sequoia, sig)
                 .map_err(op!())?;
-            kind.expect_or_else(sequoia, "verify", Kind::DetachedSig,
-                                detached_sig_arg
-                                .as_deref()
-                                .unwrap_or("the detached signature"),
-                                detached_sig_value.as_deref())
-                .map_err(|err| {
-                    Error::OperationalError(
-                        error::OperationalError::NotADetachedSignature(
-                            error::NotADetachedSignature {
-                                error: err.into(),
-                                kind,
-                            }))
-                })?;
+            if kind != Kind::DetachedSig {
+                return Err(Error::OperationalError(
+                    error::OperationalError::NotADetachedSignature(
+                        error::NotADetachedSignature {
+                            kind,
+                        })));
+            }
 
             Some(sig)
         } else {

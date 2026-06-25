@@ -26,10 +26,11 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
         verifier = verifier.add_designated_signers(signers);
     }
 
-    let stream = Stream::new(&sq, VerifyContext::Verify);
-
     let result = if let Some(signature_file) = command.detached.as_ref() {
-        verifier = verifier.detached_args(None, signature_file);
+        let stream = Stream::new(
+            &sq, VerifyContext::Verify,
+            // Detached signature argument.
+            None, Some(signature_file.clone()));
 
         let signature_fp = std::fs::File::open(signature_file)
             .with_context(|| {
@@ -39,6 +40,11 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
         verifier.detached_signature(
             input, signature_fp,  &mut output, stream)
     } else {
+        let stream = Stream::new(
+            &sq, VerifyContext::Verify,
+            // Detached signature argument.
+            None, None);
+
         verifier.inline_signature(
             input,  &mut output, stream)
     }.map_err(|err| anyhow::Error::from(err));

@@ -71,13 +71,6 @@ impl SomeFile {
         }
     }
 
-    fn path(&self) -> &Path {
-        match self {
-            SomeFile::Temp(t) => t.path(),
-            SomeFile::File((_, p)) => p.as_path(),
-        }
-    }
-
     /// Writes a copy of the file to `new_path`.
     ///
     /// We optimize the case where this file is a temporary file, in
@@ -634,7 +627,6 @@ pub fn dispatch(sq: Sq, c: download::Command)
     data_file.as_mut().rewind()?;
 
     let mut verifier = sq.sequoia.verify()
-        .detached_args(None, data_file.path())
         .signatures(signatures);
 
     let mut self_auth_signers = self_auth_signers;
@@ -644,14 +636,14 @@ pub fn dispatch(sq: Sq, c: download::Command)
         verifier = verifier.add_designated_signers(all_signers);
     }
 
-    let stream = Stream::new(&sq, VerifyContext::Download);
-
     let result = if let Some(signature_file) = signature_file.as_mut() {
-        signature_file.as_mut().rewind()?;
+        let stream = Stream::new(
+            &sq, VerifyContext::Download,
+            // Detached signature argument.
+            Some("--signature-url".to_string()),
+            Some(signature_url.map(PathBuf::from).unwrap_or_else(|| "URL".into())));
 
-        verifier = verifier.detached_args(
-            Some("--signature-url"),
-            &signature_url.map(PathBuf::from).unwrap_or_else(|| "URL".into()));
+        signature_file.as_mut().rewind()?;
 
         verifier.detached_signature(
             data_file.as_ref().try_clone()?,
@@ -659,6 +651,11 @@ pub fn dispatch(sq: Sq, c: download::Command)
             &mut output_file,
             stream)
     } else {
+        let stream = Stream::new(
+            &sq, VerifyContext::Download,
+            // Detached signature argument.
+            None, None);
+
         verifier.inline_signature(
             data_file.as_ref().try_clone()?, &mut output_file, stream)
     }.map_err(|err| anyhow::Error::from(err));
