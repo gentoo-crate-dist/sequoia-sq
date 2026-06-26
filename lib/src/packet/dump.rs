@@ -69,8 +69,10 @@ where
     let width = width.into().unwrap_or(80);
     let mut first_armor_block = true;
     let mut is_keyring = true;
+    let mut report = crate::verify::output::Report::new();
     let mut helper = crate::decrypt::Helper::new(
-        &sq, 0, None, secrets, session_keys.clone(), prompt);
+        &sq, 0, None, secrets, session_keys.clone(), prompt,
+        &mut report);
 
   loop {
     let mut dumper = PacketDumper::new(sq, width, mpis);

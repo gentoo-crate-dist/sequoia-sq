@@ -419,9 +419,11 @@ impl<'sequoia> Builder<'sequoia> {
         S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let result = self.decrypt_(input, output, prompt, &mut stream);
+        let mut report = verify::output::Report::new();
+        let result = self.decrypt_(input, output, prompt, &mut stream,
+                                   &mut report);
 
-        match result {
+        let result = match result {
             Ok(()) => {
                 Ok(())
             }
@@ -441,13 +443,24 @@ impl<'sequoia> Builder<'sequoia> {
                 Err(Error::OperationalError(err))
             }
             Err(err @ Error::StreamOutputError(_)) => {
-                Err(err)
+                // Stop immediately.
+                return Err(err);
             }
-        }
+        };
+
+        stream.output(
+            self.params(),
+            Output::Report(output::Report {
+                verification: report,
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     fn decrypt_<'a, I, O, S, P>(&self, input: I, mut output: O,
-                                prompt: P, mut stream: S)
+                                prompt: P, mut stream: S,
+                                report: &mut verify::output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
@@ -475,7 +488,8 @@ impl<'sequoia> Builder<'sequoia> {
 
         let mut helper = Helper::new(
             sequoia, signatures, designated_signers.clone(),
-            secret_keys.clone(), session_keys.clone(), prompt);
+            secret_keys.clone(), session_keys.clone(), prompt,
+            report);
 
         helper.stream
             = Some((Rc::clone(&proxy),
@@ -532,9 +546,12 @@ impl<'sequoia> Builder<'sequoia> {
         S: Stream,
         P: prompt::Prompt,
     {
-        let result = self.decrypt_unwrap_(input, output, prompt, &mut stream);
+        let mut report = verify::output::Report::new();
 
-        match result {
+        let result = self.decrypt_unwrap_(input, output, prompt, &mut stream,
+                                          &mut report);
+
+        let result = match result {
             Ok(()) => {
                 Ok(())
             }
@@ -554,14 +571,25 @@ impl<'sequoia> Builder<'sequoia> {
                 Err(Error::OperationalError(err))
             }
             Err(err @ Error::StreamOutputError(_)) => {
-                Err(err)
+                // Stop immediately.
+                return Err(err);
             }
-        }
+        };
+
+        stream.output(
+            self.params(),
+            Output::Report(output::Report {
+                verification: report,
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     fn decrypt_unwrap_<I, O, S, P>(&self,
                                    input: I, mut output: O,
-                                   prompt: P, mut stream: S)
+                                   prompt: P, mut stream: S,
+                                   report: &mut verify::output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
@@ -589,7 +617,8 @@ impl<'sequoia> Builder<'sequoia> {
 
         let mut helper = Helper::new(
             sequoia, 0, None,
-            secret_keys.clone(), session_keys.clone(), prompt);
+            secret_keys.clone(), session_keys.clone(), prompt,
+            report);
 
         helper.stream
             = Some((Rc::clone(&proxy),
@@ -824,8 +853,7 @@ pub enum Output {
     ///
     /// This data structure contains authentication information.
     ///
-    /// This is emitted at the end, immediately before the
-    /// authentication check.
+    /// This is always emitted at the end of the operation.
     Report(output::Report),
 }
 
@@ -1011,10 +1039,10 @@ impl verify::Stream for StreamProxy<'_>
             verify::Output::SystemError(err) => {
                 Output::SystemError(err)
             }
-            verify::Output::Report(report) => {
-                Output::Report(output::Report {
-                    verification: report,
-                })
+            verify::Output::Report(_) => {
+                // The report is already saved in the Helper, and
+                // we'll emit it later.
+                return Ok(());
             },
             verify::Output::MessageStructure(s) => {
                 Output::MessageStructure(s)
@@ -1068,7 +1096,8 @@ impl<'c> Helper<'c> {
                   certs: Option<Vec<Cert>>,
                   secret_keys: Vec<Cert>,
                   session_keys: Vec<SessionKey>,
-                  prompt: P)
+                  prompt: P,
+                  report: &'c mut verify::output::Report)
         -> Self
     where
         P: prompt::Prompt + 'c
@@ -1093,7 +1122,7 @@ impl<'c> Helper<'c> {
         Helper {
             sequoia: &sequoia,
             stream: None,
-            vhelper: VerificationHelper::new(&sequoia, signatures, certs),
+            vhelper: VerificationHelper::new(&sequoia, signatures, certs, report),
             secret_keys: keys,
             key_identities: identities,
             session_keys,
@@ -1665,18 +1694,15 @@ mod tests {
                 }
                 Report(report) => {
                     eprintln!("  - report: {:?}", report);
-                    assert!(! saw_error);
-                    assert!(saw_decrypted);
-                    assert!(saw_message_structure);
                     assert!(! saw_report);
-                    assert!(saw_decrypted);
                     saw_report = true;
                 }
             }
         }
 
-        assert!((saw_decrypted && saw_message_structure && saw_report)
+        assert!((saw_decrypted && saw_message_structure)
                 || saw_error);
+        assert!(saw_report);
 
         assert_eq!(saw_decrypted, expect_decrypted);
         assert_eq!(saw_error, expect_error);

@@ -827,6 +827,8 @@ pub enum Output {
     /// Information about the decryption and verification.
     ///
     /// This data structure contains authentication information.
+    ///
+    /// This is always emitted at the end of the operation.
     Report(output::Report),
 }
 
@@ -1160,9 +1162,11 @@ impl<'sequoia> Builder<'sequoia> {
         O: std::io::Write + Send + Sync,
         S: Stream,
     {
-        let result = self.execute_(input, detached, output, &mut stream);
+        let mut report = output::Report::new();
+        let result = self.execute_(input, detached, output, &mut stream,
+                                   &mut report);
 
-        match result {
+        let result = match result {
             Ok(()) => {
                 Ok(())
             }
@@ -1182,16 +1186,25 @@ impl<'sequoia> Builder<'sequoia> {
                 Err(Error::OperationalError(err))
             }
             Err(err @ Error::StreamOutputError(_)) => {
-                Err(err)
+                // Stop immediately.
+                return Err(err);
             }
-        }
+        };
+
+        stream.output(
+            self.params(),
+            Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
     fn execute_<I, D, O, S>(&self, input: I, detached: Option<D>,
-                            mut output: O, stream: S)
+                            mut output: O, stream: S,
+                            report: &mut output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
@@ -1236,7 +1249,7 @@ impl<'sequoia> Builder<'sequoia> {
             })));
 
         let mut helper = VerificationHelper::new(
-            sequoia, signatures, designated_signers.clone());
+            sequoia, signatures, designated_signers.clone(), report);
         helper.stream = Some((proxy, Cow::Borrowed(&self.params)));
         let helper = if let Some(ref mut dsig) = detached {
             let mut v = DetachedVerifierBuilder::from_reader(dsig)
@@ -1256,7 +1269,7 @@ impl<'sequoia> Builder<'sequoia> {
             v.into_helper()
         };
 
-        if helper.report.authenticated_signatures >= signatures {
+        if helper.report.authenticated {
             Ok(())
         } else {
             Err(Error::OperationalError(
@@ -1319,12 +1332,13 @@ pub(crate) struct VerificationHelper<'c>
     pub sym_algo: Option<SymmetricAlgorithm>,
 
     /// Tracks the signatures encountered.
-    report: output::Report,
+    report: &'c mut output::Report,
 }
 
 impl<'c> VerificationHelper<'c> {
     pub fn new(sequoia: &'c Sequoia, signatures: usize,
-               designated_signers: Option<Vec<Cert>>)
+               designated_signers: Option<Vec<Cert>>,
+               report: &'c mut output::Report)
                -> Self
     {
         VerificationHelper {
@@ -1334,7 +1348,7 @@ impl<'c> VerificationHelper<'c> {
             trusted: HashSet::new(),
             sym_algo: None,
             stream: None,
-            report: output::Report::new(),
+            report,
         }
     }
 
@@ -1488,11 +1502,6 @@ impl VerificationHelper<'_> {
 
             stream.output(params,
                           Output::MessageStructure(message_structure))
-                .map_err(|err| Error::StreamOutputError(err))?;
-
-            stream.output(
-                params,
-                Output::Report(self.report.clone()))
                 .map_err(|err| Error::StreamOutputError(err))?;
         }
 
