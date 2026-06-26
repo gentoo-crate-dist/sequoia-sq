@@ -1726,3 +1726,455 @@ impl<'c> VerificationHelper<'c> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use sequoia_openpgp as openpgp;
+    use openpgp::Packet;
+    use openpgp::PacketPile;
+
+    use crate::prompt::Cancel;
+
+    // Mirrors Report.
+    #[derive(Debug)]
+    struct R {
+        authenticated: bool,
+        authenticated_signatures: usize,
+        unauthenticated_signatures: usize,
+        uncheckable_signatures: usize,
+        bad_signatures: usize,
+        broken_keys: usize,
+        broken_signatures: usize,
+    }
+
+    #[allow(dead_code)]
+    impl R {
+        fn authenticated() -> Self {
+            R {
+                authenticated: true,
+                authenticated_signatures: 0,
+                unauthenticated_signatures: 0,
+                uncheckable_signatures: 0,
+                bad_signatures: 0,
+                broken_keys: 0,
+                broken_signatures: 0,
+            }
+        }
+
+        fn unauthenticated() -> Self {
+            R {
+                authenticated: false,
+                authenticated_signatures: 0,
+                unauthenticated_signatures: 0,
+                uncheckable_signatures: 0,
+                bad_signatures: 0,
+                broken_keys: 0,
+                broken_signatures: 0,
+            }
+        }
+
+        fn authenticated_signatures(mut self, value: usize) -> Self {
+            self.authenticated_signatures = value;
+            self
+        }
+
+        fn unauthenticated_signatures(mut self, value: usize) -> Self {
+            self.unauthenticated_signatures = value;
+            self
+        }
+
+        fn uncheckable_signatures(mut self, value: usize) -> Self {
+            self.uncheckable_signatures = value;
+            self
+        }
+
+        fn bad_signatures(mut self, value: usize) -> Self {
+            self.bad_signatures = value;
+            self
+        }
+
+        fn broken_keys(mut self, value: usize) -> Self {
+            self.broken_keys = value;
+            self
+        }
+
+        fn broken_signatures(mut self, value: usize) -> Self {
+            self.broken_signatures = value;
+            self
+        }
+    }
+
+    impl PartialEq<output::Report> for R {
+        fn eq(&self, other: &output::Report) -> bool {
+            let mut eq = true;
+            if self.authenticated != other.authenticated {
+                eprintln!("authenticated mismatch: {} vs {}",
+                          self.authenticated, other.authenticated);
+                eq = false;
+            }
+            if self.authenticated_signatures != other.authenticated_signatures {
+                eprintln!("authenticated_signatures mismatch: {} vs {}",
+                          self.authenticated_signatures, other.authenticated_signatures);
+                eq = false;
+            }
+            if self.unauthenticated_signatures != other.unauthenticated_signatures {
+                eprintln!("unauthenticated_signatures mismatch: {} vs {}",
+                          self.unauthenticated_signatures, other.unauthenticated_signatures);
+                eq = false;
+            }
+            if self.uncheckable_signatures != other.uncheckable_signatures {
+                eprintln!("uncheckable_signatures mismatch: {} vs {}",
+                          self.uncheckable_signatures, other.uncheckable_signatures);
+                eq = false;
+            }
+            if self.bad_signatures != other.bad_signatures {
+                eprintln!("bad_signatures mismatch: {} vs {}",
+                          self.bad_signatures, other.bad_signatures);
+                eq = false;
+            }
+            if self.broken_keys != other.broken_keys {
+                eprintln!("broken_keys mismatch: {} vs {}",
+                          self.broken_keys, other.broken_keys);
+                eq = false;
+            }
+            if self.broken_signatures != other.broken_signatures {
+                eprintln!("broken_signatures mismatch: {} vs {}",
+                          self.broken_signatures, other.broken_signatures);
+                eq = false;
+            }
+
+            eq
+        }
+    }
+
+    // It's possible to decrypt, but then fail, if there are no valid
+    // signatures.
+    fn check(_sequoia: &Sequoia,
+             output: &[Output],
+             expect_success: bool,
+             expect_report: R)
+    {
+        let mut saw_message_structure = false;
+        let mut saw_error = false;
+        let mut saw_report = false;
+
+        use Output::*;
+        for output in output.into_iter() {
+            match output {
+                ArgumentError(err) => {
+                    // No argument errors.
+                    eprintln!("  - argument error: {}", err);
+                    panic!("Argument error");
+                }
+                SystemError(err) => {
+                    eprintln!("  - system error: {}", err);
+                    // Currently system errors only happen at the
+                    // beginning (although this is not part of the API
+                    // contract).
+                    assert!(! saw_error);
+                    assert!(! saw_message_structure);
+                    assert!(! saw_report);
+                    saw_error = true;
+                }
+                OperationalError(err) => {
+                    eprintln!("  - operational error: {}", err);
+                    // An operational error can happen at any time.
+                    assert!(! saw_error);
+                    saw_error = true;
+                }
+                MessageStructure(structure) => {
+                    eprintln!("  - message structure: {:?}", structure);
+                    assert!(! saw_error);
+                    assert!(! saw_message_structure);
+                    assert!(! saw_report);
+
+                    saw_message_structure = true;
+                }
+                Report(report) => {
+                    eprintln!("  - report: {:?}", report);
+                    assert!(! saw_report);
+                    saw_report = true;
+
+                    assert_eq!(&expect_report, report);
+                }
+            }
+        }
+
+        assert!(saw_message_structure || saw_error);
+        assert!(saw_report);
+        assert_eq!(expect_success, ! saw_error);
+    }
+
+    #[test]
+    fn basics() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate a few certificates.  Import them into the
+        // certificate store and mark them as authenticated.
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        let bob = sq.key_generate()
+            .email("bob@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &[u8] = b"message";
+
+        // Alice signs a message.
+        let mut alice_signed = Vec::new();
+        sq.sign()
+            .inline()
+            .add_signer(alice.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut alice_signed,
+                crate::prompt::Cancel::new(),
+                ())
+            .expect("can sign");
+
+        // Alice and Bob sign a message.
+        let mut ab_signed = Vec::new();
+        sq.sign()
+            .inline()
+            .add_signer(alice.clone())
+            .add_signer(bob.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut ab_signed,
+                crate::prompt::Cancel::new(),
+                ())
+            .expect("can sign");
+
+
+        eprintln!("Verify Alice's signature using the web of trust.");
+        let mut output = Vec::new();
+        sq.verify()
+            .inline_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty(),
+                &mut output)
+            .expect("valid signature");
+
+        check(&sq, &output, true,
+              R::authenticated().authenticated_signatures(1));
+
+        eprintln!("Verify both signatures using the web of trust.");
+        let mut output = Vec::new();
+        sq.verify()
+            .inline_signature(
+                std::io::Cursor::new(&ab_signed),
+                std::io::empty(),
+                &mut output)
+            .expect("valid signature");
+
+        check(&sq, &output, true,
+              R::authenticated().authenticated_signatures(2));
+
+        eprintln!("Verify Alice's signature by designating her certificate.");
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ alice.clone() ])
+            .inline_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty(),
+                &mut output)
+            .expect("valid signature");
+
+        check(&sq, &output, true,
+              R::authenticated().authenticated_signatures(1));
+
+        eprintln!("Fail to verify Alice's signature by designating Bob's certificate.");
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ bob.clone() ])
+            .inline_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty(),
+                &mut output)
+            .expect_err("unauthenticated signature");
+
+        check(&sq, &output, false,
+              R::unauthenticated().uncheckable_signatures(1));
+
+        eprintln!("Verify Alice's signature by designating Bob's certificate, but not requiring any signatures.");
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ bob.clone() ])
+            .signatures(0)
+            .inline_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty(),
+                &mut output)
+            .expect("authenticated signature");
+
+        check(&sq, &output, true,
+              R::authenticated().uncheckable_signatures(1));
+
+        eprintln!("Verify both signature by designating both certificate.");
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ alice.clone(), bob.clone() ])
+            .signatures(0)
+            .inline_signature(
+                std::io::Cursor::new(&ab_signed),
+                std::io::empty(),
+                &mut output)
+            .expect("authenticated signatures");
+
+        check(&sq, &output, true,
+              R::authenticated().authenticated_signatures(2));
+    }
+
+    #[test]
+    fn verify_detached() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate a few certificates.  Import them into the
+        // certificate store and mark them as authenticated.
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &[u8] = b"message";
+
+        // Alice signs a message.
+        let mut alice_sig = Vec::new();
+        sq.sign()
+            .detached()
+            .add_signer(alice.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut alice_sig,
+                crate::prompt::Cancel::new(),
+                ())
+            .expect("can sign");
+
+        // Double check that the signature is valid.
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ alice.clone() ])
+            .detached_signature(
+                std::io::Cursor::new(&MESSAGE),
+                std::io::Cursor::new(&alice_sig),
+                std::io::empty(),
+                &mut output)
+            .expect("valid signature");
+
+        check(&sq, &output, true,
+              R::authenticated()
+                  .authenticated_signatures(1));
+
+        // Reverse the arguments.
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .add_designated_signers(vec![ alice.clone() ])
+            .detached_signature(
+                // Backwards...
+                std::io::Cursor::new(&alice_sig),
+                std::io::Cursor::new(&MESSAGE),
+                std::io::empty(),
+                &mut output);
+
+        assert!(matches!(
+            result,
+            Err(Error::OperationalError(
+                error::OperationalError::NotADetachedSignature(_)))));
+
+        check(&sq, &output, false,
+              R::unauthenticated());
+    }
+
+    #[test]
+    fn bad_signature() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate a few certificates.  Import them into the
+        // certificate store and mark them as authenticated.
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new(), None)
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &[u8] = b"message";
+
+        // Alice signs a message.
+        let mut alice_sig = Vec::new();
+        sq.sign()
+            .detached()
+            .add_signer(alice.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut alice_sig,
+                crate::prompt::Cancel::new(),
+                ())
+            .expect("can sign");
+
+        // Double check that the signature is valid.
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ alice.clone() ])
+            .detached_signature(
+                std::io::Cursor::new(&MESSAGE),
+                std::io::Cursor::new(&alice_sig),
+                std::io::empty(),
+                &mut output)
+            .expect("valid signature");
+
+        check(&sq, &output, true,
+              R::authenticated()
+                  .authenticated_signatures(1));
+
+        // Modify the signature by inserting a subpacket into the
+        // hashed subpacket area.  This will break the signature.
+        let pp = PacketPile::from_bytes(&alice_sig)
+            .expect("valid signature");
+        let Some(Packet::Signature(mut sig)) = pp.into_children().next() else {
+            panic!("Expected a signature");
+        };
+
+        use openpgp::packet::signature::subpacket::NotationData;
+        use openpgp::packet::signature::subpacket::Subpacket;
+        use openpgp::packet::signature::subpacket::SubpacketValue;
+        use openpgp::serialize::Serialize;
+
+        sig.hashed_area_mut()
+            .add(Subpacket::new(SubpacketValue::NotationData(NotationData::new("foo", b"bar", None)),
+                                false)
+                 .expect("can create subpacket"))
+            .expect("can modify signature");
+
+        let mut bad_signature = Vec::new();
+        Packet::from(sig).serialize(&mut bad_signature)
+            .expect("can serialize");
+
+        // If we try to verify the signature, we'll fail.
+        let mut output = Vec::new();
+        sq.verify()
+            .add_designated_signers(vec![ alice.clone() ])
+            .detached_signature(
+                std::io::Cursor::new(&MESSAGE),
+                std::io::Cursor::new(&bad_signature),
+                std::io::empty(),
+                &mut output)
+            .expect_err("bad signature");
+
+        check(&sq, &output, false,
+              R::unauthenticated()
+                  .authenticated_signatures(0)
+                  .bad_signatures(1));
+    }
+}
