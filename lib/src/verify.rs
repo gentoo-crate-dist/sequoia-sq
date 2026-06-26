@@ -770,6 +770,20 @@ pub mod output {
         /// See [`SignatureStatus::MalformedSignature`].
         pub broken_signatures: usize,
     }
+
+    impl Report {
+        pub(crate) fn new() -> Self {
+            Report {
+                authenticated: false,
+                authenticated_signatures: 0,
+                unauthenticated_signatures: 0,
+                uncheckable_signatures: 0,
+                broken_keys: 0,
+                bad_signatures: 0,
+                broken_signatures: 0,
+            }
+        }
+    }
 }
 
 /// The variants of this enum are the different types of output that
@@ -1242,14 +1256,15 @@ impl<'sequoia> Builder<'sequoia> {
             v.into_helper()
         };
 
-        if helper.authenticated_signatures >= signatures {
+        if helper.report.authenticated_signatures >= signatures {
             Ok(())
         } else {
             Err(Error::OperationalError(
                 error::OperationalError::Unauthenticated(
                     error::Unauthenticated {
                         need_signatures: signatures,
-                        authenticated_signatures: helper.authenticated_signatures,
+                        authenticated_signatures:
+                            helper.report.authenticated_signatures,
                     })))
         }
     }
@@ -1304,12 +1319,7 @@ pub(crate) struct VerificationHelper<'c>
     pub sym_algo: Option<SymmetricAlgorithm>,
 
     /// Tracks the signatures encountered.
-    authenticated_signatures: usize,
-    unauthenticated_signatures: usize,
-    uncheckable_signatures: usize,
-    bad_signatures: usize,
-    broken_keys: usize,
-    broken_signatures: usize,
+    report: output::Report,
 }
 
 impl<'c> VerificationHelper<'c> {
@@ -1324,12 +1334,7 @@ impl<'c> VerificationHelper<'c> {
             trusted: HashSet::new(),
             sym_algo: None,
             stream: None,
-            authenticated_signatures: 0,
-            unauthenticated_signatures: 0,
-            uncheckable_signatures: 0,
-            broken_keys: 0,
-            bad_signatures: 0,
-            broken_signatures: 0,
+            report: output::Report::new(),
         }
     }
 
@@ -1472,8 +1477,8 @@ impl VerificationHelper<'_> {
 
         let message_structure = output::MessageStructure { layers };
 
-        let authenticated
-            = self.authenticated_signatures >= self.signatures;
+        self.report.authenticated =
+            self.report.authenticated_signatures >= self.signatures;
 
         if let Some((stream, params)) = self.stream.as_ref() {
             use std::ops::DerefMut;
@@ -1487,26 +1492,19 @@ impl VerificationHelper<'_> {
 
             stream.output(
                 params,
-                Output::Report(output::Report {
-                    authenticated,
-                    authenticated_signatures: self.authenticated_signatures,
-                    unauthenticated_signatures: self.unauthenticated_signatures,
-                    uncheckable_signatures: self.uncheckable_signatures,
-                    bad_signatures: self.bad_signatures,
-                    broken_keys: self.broken_keys,
-                    broken_signatures: self.broken_signatures,
-                }))
+                Output::Report(self.report.clone()))
                 .map_err(|err| Error::StreamOutputError(err))?;
         }
 
-        if self.authenticated_signatures >= self.signatures {
+        if self.report.authenticated {
             Ok(())
         } else {
             Err(Error::OperationalError(
                 error::OperationalError::Unauthenticated(
                     error::Unauthenticated {
                         need_signatures: self.signatures,
-                        authenticated_signatures: self.authenticated_signatures,
+                        authenticated_signatures:
+                            self.report.authenticated_signatures,
                     })))
         }
     }
@@ -1538,7 +1536,7 @@ impl<'c> VerificationHelper<'c> {
             Err(VerificationError::MissingKey { sig, .. }) => {
                 t!("missing key");
 
-                self.uncheckable_signatures += 1;
+                self.report.uncheckable_signatures += 1;
                 return output::Signature {
                     status: output::SignatureStatus::MissingKey(MissingKey {
                         sig: sig.clone(),
@@ -1549,7 +1547,7 @@ impl<'c> VerificationHelper<'c> {
             Err(VerificationError::UnboundKey { sig, cert, error, .. }) => {
                 t!("unbound key: {}", error);
 
-                self.broken_keys += 1;
+                self.report.broken_keys += 1;
                 return output::Signature {
                     status: output::SignatureStatus::UnboundKey(UnboundKey {
                         sig: sig.clone(),
@@ -1562,7 +1560,7 @@ impl<'c> VerificationHelper<'c> {
             Err(VerificationError::BadKey { sig, ka, error, .. }) => {
                 t!("bad key: {}", error);
 
-                self.broken_keys += 1;
+                self.report.broken_keys += 1;
                 return output::Signature {
                     status: output::SignatureStatus::BadKey(BadKey {
                         sig: sig.clone(),
@@ -1576,7 +1574,7 @@ impl<'c> VerificationHelper<'c> {
             Err(VerificationError::BadSignature { sig, ka, error, .. }) => {
                 t!("bad signature: {}", error);
 
-                self.bad_signatures += 1;
+                self.report.bad_signatures += 1;
                 return output::Signature {
                     status: output::SignatureStatus::BadSignature(BadSignature {
                         sig: sig.clone(),
@@ -1590,7 +1588,7 @@ impl<'c> VerificationHelper<'c> {
             Err(VerificationError::MalformedSignature { sig, error, .. }) => {
                 t!("malformed signature: {}", error);
 
-                self.broken_signatures += 1;
+                self.report.broken_signatures += 1;
                 return output::Signature {
                     status: output::SignatureStatus::MalformedSignature(MalformedSignature {
                         sig: sig.clone(),
@@ -1602,7 +1600,7 @@ impl<'c> VerificationHelper<'c> {
             Err(VerificationError::UnknownSignature { sig, .. }) => {
                 t!("unknown signature: {}", sig.error());
 
-                self.bad_signatures += 1;
+                self.report.bad_signatures += 1;
                 return output::Signature {
                     status: output::SignatureStatus::UnknownSignature(UnknownSignature {
                         sig: sig.clone(),
@@ -1694,7 +1692,7 @@ impl<'c> VerificationHelper<'c> {
         }
 
         let status = if authenticated {
-            self.authenticated_signatures += 1;
+            self.report.authenticated_signatures += 1;
             output::SignatureStatus::Verified(Verified {
                 sig: sig.clone(),
                 cert: ka.cert().clone(),
@@ -1703,7 +1701,7 @@ impl<'c> VerificationHelper<'c> {
                 wot,
             })
         } else {
-            self.unauthenticated_signatures += 1;
+            self.report.unauthenticated_signatures += 1;
             output::SignatureStatus::GoodChecksum(GoodChecksum {
                 sig: sig.clone(),
                 cert: ka.cert().clone(),
