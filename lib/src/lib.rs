@@ -253,7 +253,7 @@ use config::ConfigFile;
 mod keys;
 pub use keys::GetKeysOptions;
 pub use keys::KeyType;
-mod lookup;
+pub mod lookup;
 pub mod packet;
 pub mod prompt;
 mod password_cache;
