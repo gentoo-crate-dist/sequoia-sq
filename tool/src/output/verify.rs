@@ -434,7 +434,7 @@ impl Stream<'_> {
                            label, signer_userid.userid_lossy());
 
                 if let Ok(u) = signer_userid.userid() {
-                    self.sq.sequoia.hint(format_args!(
+                    self.sq.hint(format_args!(
                         "After checking that {} belongs to {}, \
                          you can mark it as authenticated using:",
                         cert_fpr, u))
@@ -452,7 +452,7 @@ impl Stream<'_> {
                            level, label, signer_userid.userid_lossy());
 
                 if let Ok(u) = signer_userid.userid() {
-                    self.sq.sequoia.hint(format_args!(
+                    self.sq.hint(format_args!(
                         "After checking that {} belongs to {}, \
                          you can mark it as authenticated using:",
                         cert_fpr, u))

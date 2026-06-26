@@ -16,13 +16,13 @@ use crate::Sequoia;
 
 impl Sequoia {
     /// Prints a hint for the user.
-    pub fn hint(&self, msg: std::fmt::Arguments) -> Hint {
+    pub(crate) fn hint(&self, msg: std::fmt::Arguments) -> Hint {
         Hint::new(! self.config.hints())
             .hint(msg)
     }
 
     /// Prints additional information in verbose mode.
-    pub fn info(&self, msg: std::fmt::Arguments) {
+    pub(crate) fn info(&self, msg: std::fmt::Arguments) {
         if self.config().verbose() {
             weprintln!("{}", msg);
         }

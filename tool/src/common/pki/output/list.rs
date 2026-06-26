@@ -20,6 +20,7 @@ pub enum ListContext {
 }
 
 pub struct Stream<'a> {
+    sq: &'a Sq,
     queries: Vec<Query>,
     context: ListContext,
     network: ConciseHumanReadableOutputNetwork<'a>,
@@ -41,6 +42,7 @@ impl<'a> Stream<'a> {
             output, &sq, required_amount, show_paths);
 
         Self {
+            sq,
             queries,
             context,
             network,
@@ -138,7 +140,7 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                             = &unsatisfied_queries[0].kind
                         {
                             // Tell the user about `sq network fetch`.
-                            params.sequoia().hint(format_args!(
+                            self.sq.hint(format_args!(
                                 "Try searching public directories:"))
                                 .sq().arg("network").arg("search")
                                 .arg(pattern)
@@ -153,7 +155,7 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                         let return_all = params.queries().iter()
                             .any(|q| matches!(q.kind, QueryKind::All));
                         if return_all {
-                            params.sequoia().hint(format_args!(
+                            self.sq.hint(format_args!(
                                 "Consider creating a key for yourself:"))
                                 .sq().arg("key").arg("generate")
                                 .arg_value("--name", "your-name")
@@ -161,14 +163,14 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                                 .arg("--own-key")
                                 .done();
 
-                            params.sequoia().hint(format_args!(
+                            self.sq.hint(format_args!(
                                 "Consider importing other peoples' \
                                  certificates:"))
                                 .sq().arg("cert").arg("import")
                                 .arg("a-cert-file.pgp")
                                 .done();
 
-                            params.sequoia().hint(format_args!(
+                            self.sq.hint(format_args!(
                                 "Try searching public directories for other \
                                  peoples' certificates:"))
                                         .sq().arg("network").arg("search")
