@@ -37,16 +37,7 @@ impl<'t, 's> Pluralized<'t, 's> {
     }
 }
 
-/// Provides convenient pluralization.
-///
-/// # Examples
-///
-/// ```
-/// use sequoia::transitional::output::pluralize::Pluralize;
-/// use sequoia::transitional::output::wrapping::NBSP;
-/// assert_eq!(&3.of("apple").to_string(), &format!("3{}apples", NBSP));
-/// assert_eq!(&2.of("bus").plural("es").to_string(), &format!("2{}buses", NBSP))
-/// ```
+/// Provides convenient english pluralization.
 pub trait Pluralize<'t> {
     fn of(self, thing: &'t str) -> Pluralized<'t, 'static>;
 }
@@ -59,4 +50,12 @@ impl<'t> Pluralize<'t> for usize {
             plural_suffix: "s",
         }
     }
+}
+
+#[test]
+fn pluralize() {
+    use crate::transitional::output::wrapping::NBSP;
+
+    assert_eq!(&3.of("apple").to_string(), &format!("3{}apples", NBSP));
+    assert_eq!(&2.of("bus").plural("es").to_string(), &format!("2{}buses", NBSP))
 }

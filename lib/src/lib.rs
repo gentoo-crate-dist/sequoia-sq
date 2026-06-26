@@ -222,7 +222,7 @@ use openpgp::packet::key::UnspecifiedRole;
 
 use cert_store::StoreUpdate;
 
-#[macro_use] pub mod transitional;
+#[macro_use] mod transitional;
 #[macro_use] mod errors;
 pub use errors::Error;
 pub use errors::SystemError;
