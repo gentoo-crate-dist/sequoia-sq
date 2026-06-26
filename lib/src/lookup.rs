@@ -1,3 +1,11 @@
+//! Lookup certificates.
+//!
+//! Functionality for looking up certificates in the certificate store
+//! or a keyring.
+//!
+//! To locate a certificate by user ID or email address, you should
+//! use [`Sequoia::cert_list`].
+
 use std::time::SystemTime;
 
 use anyhow::Context as _;
@@ -18,6 +26,10 @@ use crate::transitional::print_error_chain;
 use crate::types::FileStdinOrKeyHandle;
 
 impl Sequoia {
+    /// Lookup a certificate.
+    ///
+    /// Looks up a certificate by fingerprint or key ID in the
+    /// certificate store and any configured keyrings.
     pub fn lookup(&self) -> Builder<'_> {
         Builder {
             params: Params {
@@ -139,7 +151,7 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up certificates.
     ///
-    /// Like [`Sequoia::lookup`], but uses an alternate policy and an
+    /// Like [`Builder::lookup`], but uses an alternate policy and an
     /// alternate reference time.
     pub fn lookup_with_policy<'a, I>(&self, handles: I,
                                      allow_ambiguous: bool,
@@ -256,8 +268,8 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up a certificate.
     ///
-    /// Like [`Sequoia::lookup`], but looks up a certificate, which must be
-    /// uniquely identified by `handle` and `keyflags`.
+    /// Like [`Builder::lookup`], but looks up a certificate, which
+    /// must be uniquely identified by `handle` and `keyflags`.
     pub fn lookup_one<H>(&self, handle: H)
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
@@ -268,8 +280,8 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up a certificate.
     ///
-    /// Like [`Sequoia::lookup_one_with_policy`], but uses an alternate
-    /// policy and an alternate reference time.
+    /// Like [`Builder::lookup_one_with_policy`], but uses an
+    /// alternate policy and an alternate reference time.
     pub fn lookup_one_with_policy<H>(&self, handle: H,
                                      policy: &dyn Policy,
                                      time: SystemTime)
