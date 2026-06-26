@@ -1,4 +1,187 @@
 //! A high-level API for Sequoia.
+//!
+//! This library implements a high-level API for [Sequoia].  The goal
+//! is to provide an opinionated API for developers who want to use
+//! [OpenPGP] in their applications, but don't want to understand the
+//! details of OpenPGP or Sequoia.
+//!
+//! OpenPGP has a lot of data structures, and, as with all
+//! security-related code, care has to be taken to use them correctly.
+//! The Sequoia ecosystem includes about 20 crates and understanding
+//! how they related to each other can take a while.  This library
+//! hopes to alleviate this problem by providing a few functions that
+//! are hard to use wrong and take care of most of the details.
+//!
+//! To achieve this, `sequoia` makes strong assumptions about what the
+//! user wants.  But, if it turns out that some function's semantics
+//! are not completely appropriate, it is often possible to tweak its
+//! behavior.  When even that is not enough, it is possible to mix in
+//! use of the low-level APIs.  This works, because the high-level
+//! don't replace the low-level abstractions, but are built on and
+//! reuse them.
+//!
+//! [Sequoia]: https://sequoia-pgp.org
+//! [OpenPGP]: https://www.rfc-editor.org/rfc/rfc9580.html
+//!
+//! If you have used [`sq`], Sequoia's primary command line interface,
+//! then the interfaces exposed by this library will seem very
+//! familiar: [`sq`]'s interface was a primary inspiration for this
+//! library, and it has largely been re-implemented in terms of this
+//! library.  For instance, to verify a message using `sq`, you would
+//! use `sq verify`.  Using this library, you would use
+//! [`Sequoia::verify`], which is in the [`sequoia::verify`] module.
+//!
+//! [`sq`]: https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq.1.html
+//!
+//! # Getting Started
+//!
+//! The first thing that you will have to do is to create a
+//! [`Sequoia`] context.  Upon instantiation, a `Sequoia` context
+//! reads in the configuration unless it has been disabled using
+//! [`SequoiaBuilder`].  A `Sequoia` context also holds global state,
+//! like references to the certificate store, and the key store.
+//!
+//! To create a Sequoia context using the default home directory, you
+//! can do:
+//!
+//! ```rust
+//! use sequoia::Sequoia;
+//!
+//! # fn main() -> sequoia::Result<()> {
+//! let sequoia = Sequoia::new()?;
+//! # Ok(()) }
+//! ```
+//!
+//! One of the most common operations is to verify a signature (see
+//! [`sequoia::verify`]).  The following example verifies that a
+//! signature over a file is valid, and that the signing certificate
+//! can be authenticated.
+//!
+//! ```
+//! use sequoia::Sequoia;
+//! use sequoia::openpgp::Cert;
+//! use sequoia::openpgp::parse::Parse;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let sequoia = Sequoia::builder().ephemeral()?.build()?;
+//! # let alice = sequoia
+//! #   .key_generate()
+//! #   .email("alice@example.org")
+//! #   .without_password()
+//! #   .generate(sequoia::prompt::Cancel::new(), None)?;
+//! #
+//! # let file = b"I own you";
+//! # let mut signature = Vec::new();
+//! # sequoia.sign()
+//! #   .detached()
+//! #   .add_signer(alice.cert().clone())
+//! #   .sign(
+//! #       std::io::Cursor::new(file),
+//! #       &mut signature,
+//! #       sequoia::prompt::Cancel::new(),
+//! #       ())?;
+//! #
+//! # if false {
+//! let qubes_release_key = Cert::from_file("qubes-release-4.3-signing-key.asc")?;
+//! let signature = std::fs::File::open("Qubes-R4.3.1-x86_64.iso.asc")?;
+//! let file = std::fs::File::open("Qubes-R4.3.1-x86_64.iso")?;
+//! # }
+//! # let qubes_release_key = alice.into_cert();
+//! # let signature = std::io::Cursor::new(signature);
+//! # let file = std::io::Cursor::new(file);
+//!
+//! sequoia
+//!     .verify()
+//!     .add_designated_signer(qubes_release_key)
+//!     .detached_signature(file, signature, std::io::empty(), ())?;
+//! # Ok(()) }
+//! ```
+//!
+//! # Overview
+//!
+//! The following sections list the functionality exposed by this
+//! library.  Each section contains one or more functions that fall
+//! into the section's category.  The table links to the module, which
+//! provides a detailed description of the function, and examples, the
+//! method on the [`Sequoia`] context, and the related `sq` commands.
+//!
+//! ## Messages
+//!
+//! | Functionality | Module               | Function             | `sq` equivalent |
+//! |---------------|----------------------|----------------------|-|
+//! | Verify        | [`sequoia::verify`]  | [`Sequoia::verify`]  | [`sq verify`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-verify.1.html) |
+//! | Sign          | [`sequoia::sign`]    | [`Sequoia::sign`]    | [`sq sign`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-sign.1.html) |
+//! | Decryption    | [`sequoia::decrypt`] | [`Sequoia::decrypt`] | [`sq decrypt`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-decrypt.1.html) |
+//! | Encryption    | [`sequoia::encrypt`] | [`Sequoia::encrypt`] | [`sq encrypt`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-encrypt.1.html) |
+//!
+//! ## Certificate Management
+//!
+//! | Functionality       | Module                    | Function                 | `sq` equivalent |
+//! |---------------------|---------------------------|--------------------------|-|
+//! | Import certificates | [`sequoia::cert::import`] | [`Sequoia::cert_import`] | [`sq cert import`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-cert-import.1.html) |
+//! | List certificates   | [`sequoia::cert::list`]   | [`Sequoia::cert_list`]   | [`sq cert list`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-cert-list.1.html), [`sq pki authenticate`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-authenticate.1.html), [`sq pki lookup`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-lookup.1.html), [`sq pki identify`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-identify.1.html), and [`sq pki path`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-path.1.html) |
+//! | Lookup a certificate | -                        | [`Sequoia::lookup`]      | - |
+//!
+//! ## PKI
+//!
+//! | Functionality                     | Module                    | Function                 | `sq` equivalent |
+//! |-----------------------------------|---------------------------|--------------------------|-|
+//! | Certify a user ID and certificate | [`sequoia::pki::certify`] | [`Sequoia::pki_certify`] | [`sq pki link add`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-link-add.1.html), [`sq pki link authorize`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-link-authorize.1.html), [`sq pki vouch add`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-vouch-add.1.html), and [`sq pki vouch authorize`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-vouch-authorize.1.html) |
+//!
+//! ## Network Search
+//!
+//! | Functionality                          | Module                       | Function                    | `sq` equivalent |
+//! |----------------------------------------|------------------------------|-----------------------------|-|
+//! | Search for certificates on the network | [`sequoia::network::search`] | [`Sequoia::network_search`] | [`sq network search`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-network-search.1.html), [`sq network keyserver search`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-network-keyserver-search.1.html), [`sq network wkd search`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-network-wkd-search.1.html), [`sq network dane search`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-network-dane-search.1.html) |
+//!
+//! ## Key Management
+//!
+//! | Functionality                          | Module                       | Function                    | `sq` equivalent |
+//! |----------------------------------------|------------------------------|-----------------------------|-|
+//! | Generate a key                         | [`sequoia::key::generate`]   | [`Sequoia::key_generate`]   | [`sq key generate`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-generate.1.html) |
+//! | Import a key                           | [`sequoia::key::import`]     | [`Sequoia::key_import`]     | [`sq key import`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-import.1.html) |
+//! | Modify a certificate's expiration      | [`sequoia::key::expire`]     | [`Sequoia::key_expire`]     | [`sq key expire`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-expire.1.html) |
+//! | Revoke a certificate                   | [`sequoia::key::revoke`]     | [`Sequoia::key_revoke`]     | [`sq key revoke`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-revoke.1.html) |
+//!
+//! ### User IDs
+//!
+//! | Functionality    | Module                           | Function                       | `sq` equivalent |
+//! |------------------|----------------------------------|--------------------------------|-|
+//! | Add a user ID    | [`sequoia::key::userid::add`]    | [`Sequoia::key_userid_add`]    | [`sq key userid add`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-userid-add.1.html) |
+//! | Revoke a user ID | [`sequoia::key::userid::revoke`] | [`Sequoia::key_userid_revoke`] | [`sq key userid revoke`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-userid-revoke.1.html) |
+//!
+//! ### Subkeys
+//!
+//! | Functionality   | Module                           | Function                       | `sq` equivalent |
+//! |-----------------|----------------------------------|--------------------------------|-|
+//! | Add a subkey    | [`sequoia::key::subkey::add`]    | [`Sequoia::key_subkey_add`]    | [`sq key subkey add`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-subkey-add.1.html) |
+//! | Revoke a subkey | [`sequoia::key::subkey::revoke`] | [`Sequoia::key_subkey_revoke`] | [`sq key subkey revoke`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-subkey-revoke.1.html) |
+//!
+//! ### Certification Approval Management
+//!
+//! The approval functionality allows an owner of a certificate to
+//! indicate what certifications should be distributed with their
+//! certificate.  Key servers that respect this attribute will strip
+//! other third-party certifications.  This mechanism can help prevent
+//! malicious third parties from blowing up the size of a certificate
+//! by creating many third-party certifications.
+//!
+//! | Functionality    | Module                              | Function                          | `sq` equivalent |
+//! |------------------|-------------------------------------|-----------------------------------|-|
+//! | List approvals   | [`sequoia::key::approvals::list`]   | [`Sequoia::key_approvals_list`]   | [`sq key approvals list`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-approvals-list.1.html) |
+//! | Update approvals | [`sequoia::key::approvals::update`] | [`Sequoia::key_approvals_update`] | [`sq key approvals update`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-key-approvals-update.1.html) |
+//!
+//! ## Analysis
+//!
+//! | Functionality                          | Module                       | Function                        | `sq` equivalent |
+//! |----------------------------------------|------------------------------|---------------------------------|-|
+//! | Inspect some data                      | [`sequoia::inspect`]         | [`sequoia::inspect::inspect`]   | [`sq inspect`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-inspect.1.html) |
+//! | Dump OpenPGP data structures           | [`sequoia::packet::dump`]    | [`sequoia::packet::dump::dump`] | [`sq packet dump`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-packet-dump.1.html) |
+
+// For the library document so that we can use `sequoia::...` instead
+// of `crate::...`.
+#[cfg(doc)]
+use crate::{self as sequoia};
 
 use std::{
     borrow::Cow,
