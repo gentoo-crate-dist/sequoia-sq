@@ -21,7 +21,7 @@
 //! let sequoia = Sequoia::builder().stateless().build()?;
 //!
 //! // The message to sign.
-//! let message = b"Super s3cr3t";
+//! let message = b"I owe you";
 //!
 //! let mut signed_message = Vec::new();
 //! sequoia.sign()
