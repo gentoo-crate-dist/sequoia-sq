@@ -420,7 +420,7 @@ impl Sequoia {
             })
     }
 
-    pub fn cert_store_(&self) -> Result<Option<Arc<WotStore>>> {
+    fn cert_store_(&self) -> Result<Option<Arc<WotStore>>> {
         if self.no_rw_cert_store()
             && self.keyrings.is_empty()
         {
