@@ -14,7 +14,9 @@ use sequoia_openpgp::parse::buffered_reader::File;
 use sequoia_openpgp::parse::buffered_reader::Generic;
 
 use sequoia_openpgp as openpgp;
+use openpgp::Fingerprint;
 use openpgp::KeyHandle;
+use openpgp::KeyID;
 use openpgp::parse::Cookie;
 
 use crate::transitional::stdin::StdinWarning;
@@ -202,6 +204,31 @@ impl From<KeyHandle> for FileStdinOrKeyHandle {
         FileStdinOrKeyHandle::KeyHandle(kh)
     }
 }
+
+impl From<&Fingerprint> for FileStdinOrKeyHandle {
+    fn from(fpr: &Fingerprint) -> Self {
+        FileStdinOrKeyHandle::KeyHandle(fpr.clone().into())
+    }
+}
+
+impl From<Fingerprint> for FileStdinOrKeyHandle {
+    fn from(fpr: Fingerprint) -> Self {
+        FileStdinOrKeyHandle::KeyHandle(fpr.into())
+    }
+}
+
+impl From<&KeyID> for FileStdinOrKeyHandle {
+    fn from(keyid: &KeyID) -> Self {
+        FileStdinOrKeyHandle::KeyHandle(keyid.clone().into())
+    }
+}
+
+impl From<KeyID> for FileStdinOrKeyHandle {
+    fn from(keyid: KeyID) -> Self {
+        FileStdinOrKeyHandle::KeyHandle(keyid.into())
+    }
+}
+
 
 impl FileStdinOrKeyHandle {
     /// Returns whether this contains a `FileOrStdin`.
