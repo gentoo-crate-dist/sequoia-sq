@@ -194,6 +194,7 @@ use std::{
 
 #[macro_use] mod log;
 #[macro_use] mod macros;
+#[macro_use] mod boilerplate;
 
 use anyhow::Context;
 

@@ -71,35 +71,8 @@ use crate::cert::CertError;
 use crate::prompt;
 use crate::types::HashMode;
 
-/// The trait for collecting output.
-pub trait Stream {
-    /// Output from [`sign`](Builder::sign) and  [`append`](Builder::append).
-    fn output(&mut self, params: &Params, output: Output) -> Result<()>;
-}
-
-impl<T> Stream for Box<T>
-where
-    T: Stream + ?Sized
-{
-    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
-        self.as_mut().output(params, output)
-    }
-}
-
-/// Collects the output in the specified vector.
-impl Stream for &mut Vec<Output> {
-    fn output(&mut self, _params: &Params, output: Output) -> Result<()> {
-        self.push(output);
-        Ok(())
-    }
-}
-
-/// Discards the output.
-impl Stream for () {
-    fn output(&mut self, _params: &Params, _output: Output) -> Result<()> {
-        Ok(())
-    }
-}
+// Stream trait.
+stream!{}
 
 /// Data structures related to [`Output`].
 pub mod output {

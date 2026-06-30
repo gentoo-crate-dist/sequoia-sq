@@ -241,45 +241,8 @@ macro_rules! op {
     }
 }
 
-/// The trait for collecting output.
-pub trait Stream {
-    /// Output from [`inline_signature`](Builder::inline_signature)
-    /// and [`detached_signature`](Builder::detached_signature).
-    fn output(&mut self, params: &Params, output: Output) -> Result<()>;
-}
-
-impl<T> Stream for Box<T>
-where
-    T: Stream + ?Sized
-{
-    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
-        self.as_mut().output(params, output)
-    }
-}
-
-impl<T> Stream for &mut T
-where
-    T: Stream + ?Sized
-{
-    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
-        (*self).output(params, output)
-    }
-}
-
-/// Collects the output in the specified vector.
-impl Stream for &mut Vec<Output> {
-    fn output(&mut self, _params: &Params, output: Output) -> Result<()> {
-        self.push(output);
-        Ok(())
-    }
-}
-
-/// Discards the output.
-impl Stream for () {
-    fn output(&mut self, _params: &Params, _output: Output) -> Result<()> {
-        Ok(())
-    }
-}
+// Stream trait.
+stream!{}
 
 /// Data structures related to [`Output`].
 pub mod output {
