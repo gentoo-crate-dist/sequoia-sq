@@ -124,6 +124,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use anyhow::Context;
 
@@ -140,6 +141,7 @@ use wot::store::Store;
 use wot::store::StoreError;
 
 use sequoia_cert_store as cert_store;
+use cert_store::LazyCert;
 use cert_store::Store as _;
 use cert_store::store::UserIDQueryParams;
 
@@ -225,8 +227,11 @@ pub mod output {
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Binding {
-        /// The certificate.
+        /// The fingerprint.
         pub fingerprint: Fingerprint,
+
+        /// The certificate.
+        pub(crate) cert: OnceLock<Arc<LazyCert<'static>>>,
 
         /// The user ID.  This can be `None` when just authenticating a
         /// certificate.  This happens when listing all certificates and
@@ -245,6 +250,29 @@ pub mod output {
         /// This excludes overlaps and as such may be less than simply
         /// summing the trust amount of each individual path.
         pub aggregate_trust_amount: usize,
+    }
+
+    impl Binding {
+        /// Looks up the certificate from the certificate store.
+        ///
+        /// Note: this is often faster than looking it up manually
+        /// using [`Sequoia::lookup`] as the certificate may be cached
+        /// in the binding.
+        pub fn cert(&self, sequoia: &Sequoia) -> Result<&Cert> {
+            if let Some(cert) = self.cert.get() {
+                cert.to_cert()
+            } else {
+                match sequoia.lookup().lookup_one(self.fingerprint.clone()) {
+                    Ok(cert) => {
+                        let _ = self.cert.set(Arc::new(LazyCert::from(cert)));
+                        self.cert.get().expect("just set").to_cert()
+                    }
+                    Err(err) => {
+                        Err(err)
+                    }
+                }
+            }
+        }
     }
 
     #[non_exhaustive]
@@ -707,11 +735,11 @@ impl<'a> Builder<'a> {
         t!("required amount: {} (gossip: {})", required_amount, gossip);
 
         // Map a key handle to the named certificates.
-        let resolve_key_handle = |kh: &KeyHandle| -> Vec<Fingerprint> {
+        let resolve_key_handle = |kh: &KeyHandle| -> Vec<Arc<LazyCert<'_>>> {
             match kh {
                 KeyHandle::Fingerprint(fpr) => {
-                    if cert_store.lookup_by_cert_fpr(&fpr).is_ok() {
-                        vec![ fpr.clone() ]
+                    if let Ok(cert) = cert_store.lookup_by_cert_fpr(&fpr) {
+                        vec![ cert ]
                     } else {
                         // We don't error out here: at the end of this
                         // function we check that all queries matched at
@@ -720,14 +748,11 @@ impl<'a> Builder<'a> {
                     }
                 },
                 KeyHandle::KeyID(_) => {
-                    if let Ok(certs) = cert_store.lookup_by_cert(&kh) {
-                        certs.into_iter().map(|c| c.fingerprint()).collect()
-                    } else {
+                    cert_store.lookup_by_cert(&kh)
                         // We don't error out here: at the end of this
                         // function we check that all queries matched at
                         // least one certificate.
-                        vec![]
-                    }
+                        .unwrap_or_default()
                 }
             }
         };
@@ -737,7 +762,7 @@ impl<'a> Builder<'a> {
         // The `bool` means: always show the certificate, even if it can't
         // be authenticated.  The `Vec<usize>` are the queries that
         // resolve to that binding.
-        let mut bindings: Vec<(Fingerprint, Option<UserID>, bool, Vec<usize>)>
+        let mut bindings: Vec<(Fingerprint, Option<Arc<LazyCert>>, Option<UserID>, bool, Vec<usize>)>
             = Vec::new();
 
         // Whether query #index matched something.
@@ -751,19 +776,20 @@ impl<'a> Builder<'a> {
                     let cert_authenticated
                         = matches!(query.kind, QueryKind::AuthenticatedCert(_));
 
-                    for fpr in resolve_key_handle(kh) {
+                    for cert in resolve_key_handle(kh) {
                         let count = bindings.len();
                         bindings.extend(
-                            n.certified_userids_of(&fpr)
+                            n.certified_userids_of(&cert.fingerprint())
                                 .into_iter()
                                 .map(|userid| {
-                                    (fpr.clone(), Some(userid),
+                                    (cert.fingerprint(), Some(cert.clone()),
+                                     Some(userid),
                                      cert_authenticated, vec![ i ])
                                 }));
 
                         if bindings.len() == count {
                             // No user IDs.  Add the certificate.
-                            bindings.push((fpr.clone(), None,
+                            bindings.push((cert.fingerprint(), Some(cert), None,
                                            cert_authenticated, vec![ i ]));
                         }
                     }
@@ -772,10 +798,12 @@ impl<'a> Builder<'a> {
                     t!("Authenticating user ID: {:?}", userid);
 
                     bindings.extend(
-                        n.lookup_synopses_by_userid(UserID::from(&userid[..]))
+                        n.lookup_by_userid(&UserID::from(&userid[..]))
+                            .unwrap_or(Vec::new())
                             .into_iter()
-                            .map(|fpr| {
-                                (fpr, Some(UserID::from(&userid[..])),
+                            .map(|cert| {
+                                (cert.fingerprint(), Some(cert),
+                                 Some(UserID::from(&userid[..])),
                                  false, vec![ i ])
                             }));
                 }
@@ -810,32 +838,39 @@ impl<'a> Builder<'a> {
                     // and select the bindings where the User ID matches the email
                     // address.
                     let b = if let Some(kh) = kh.as_ref() {
-                        let fprs = resolve_key_handle(kh);
-                        fprs.into_iter().flat_map(|fpr| {
-                            n.certified_userids_of(&fpr)
+                        let certs = resolve_key_handle(kh);
+                        certs.into_iter().flat_map(|cert| {
+                            n.certified_userids_of(&cert.fingerprint())
                                 .into_iter()
-                                .map(|userid| (fpr.clone(), Some(userid)))
+                                .map(|userid| {
+                                    (cert.fingerprint(), Some(cert.clone()),
+                                     Some(userid))
+                                })
                                 .collect::<Vec<_>>()
                                 .into_iter()
                         }).collect::<Vec<_>>()
                     } else {
+                        // XXX: We can't (easily) use lookup_by_email
+                        // because we need the matched user ID, which
+                        // `lookup_synopses_by_email` returns, but
+                        // `lookup_by_email` doesn't.
                         n.lookup_synopses_by_email(&email)
                             .into_iter()
-                            .map(|(fp, userid)| (fp, Some(userid)))
+                            .map(|(fpr, userid)| (fpr, None, Some(userid)))
                             .collect()
                     };
 
                     let email_normalized = userid_check.email_normalized()
                         .expect("checked").expect("checked");
                     bindings.extend(
-                        b.into_iter().filter_map(|(fingerprint, userid_other)| {
+                        b.into_iter().filter_map(|(fingerprint, cert, userid_other)| {
                             if let Some(email_other_normalized)
                                 = userid_other.as_ref()
                                 .and_then(|u| u.email_normalized().ok())
                                 .flatten()
                             {
                                 if email_normalized == email_other_normalized {
-                                    Some((fingerprint, userid_other.clone(),
+                                    Some((fingerprint, cert, userid_other.clone(),
                                           false, vec![ i ]))
                                 } else {
                                     None
@@ -847,9 +882,11 @@ impl<'a> Builder<'a> {
                 }
                 QueryKind::UserIDBinding(kh, userid) => {
                     t!("Authenticating {}, {:?}", kh, userid);
-                    for fpr in resolve_key_handle(kh) {
-                        bindings.push((fpr, Some(UserID::from(&userid[..])),
-                                       false, vec![ i ]));
+                    for cert in resolve_key_handle(kh) {
+                        bindings.push(
+                            (cert.fingerprint(),
+                             Some(cert), Some(UserID::from(&userid[..])),
+                             false, vec![ i ]));
                     }
                 }
                 QueryKind::Domain(pattern) | QueryKind::Pattern(pattern) => {
@@ -910,8 +947,9 @@ impl<'a> Builder<'a> {
                                                 query_params.check(&userid, pattern)
                                             })
                                             .map(|userid| {
-                                                (cert.fingerprint(), Some(userid),
-                                                 false, vec![ i ])
+                                                (cert.fingerprint(),
+                                                 Some(cert.clone()),
+                                                 Some(userid), false, vec![ i ])
                                             })
                                             .collect::<Vec<_>>()
                                             .into_iter()
@@ -922,7 +960,7 @@ impl<'a> Builder<'a> {
                             n.certified_userids()
                                 .into_iter()
                                 .map(|(fp, userid)| {
-                                    (fp, Some(userid), false, vec![ i ])
+                                    (fp, None, Some(userid), false, vec![ i ])
                                 }));
                     }
                 }
@@ -937,14 +975,14 @@ impl<'a> Builder<'a> {
                             .map(|(fp, userid)| {
                                 certs.insert(fp.clone());
 
-                                (fp, Some(userid), false, vec![ i ])
+                                (fp, None, Some(userid), false, vec![ i ])
                             }));
 
                     // Add certificates without user IDs.
                     let all_certs: BTreeSet<_> = n.iter_fingerprints().collect();
                     bindings.extend(
                         all_certs.difference(&certs).map(|fp| {
-                            (fp.clone(), None, false, vec![ i ])
+                            (fp.clone(), None, None, false, vec![ i ])
                         }));
                 }
             }
@@ -953,13 +991,13 @@ impl<'a> Builder<'a> {
         // There may be multiple certifications of the same
         // User ID.  Dedup.
         bindings.sort_by(
-            |(a_fpr, a_userid, _, _), (b_fpr, b_userid, _, _)|
+            |(a_fpr, _, a_userid, _, _), (b_fpr, _, b_userid, _, _)|
             {
                 a_fpr.cmp(b_fpr)
                     .then(a_userid.cmp(b_userid))
             });
         bindings.dedup_by(
-            |(a_fpr, a_userid, a_show, a_idx), (b_fpr, b_userid, b_show, b_idx)|
+            |(a_fpr, _, a_userid, a_show, a_idx), (b_fpr, _, b_userid, b_show, b_idx)|
             {
                 if a_fpr == b_fpr && a_userid == b_userid {
                     // debup removes a, so we merge into b.
@@ -1077,13 +1115,13 @@ impl<'a> Builder<'a> {
         stream.output(&self.params, Output::StartOfBindings)
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        for (fingerprint, userid, cert_authenticated, i) in bindings.iter() {
+        for (fingerprint, cert, userid, cert_authenticated, i) in bindings.iter() {
             if let Some(userid) = userid {
                 let paths = if gossip {
-                    n.gossip(fingerprint.clone(), userid.clone())
+                    n.gossip(fingerprint, userid.clone())
                 } else {
                     n.authenticate(
-                        userid.clone(), fingerprint.clone(), required_amount)
+                        userid.clone(), fingerprint, required_amount)
                 };
 
                 let aggregated_amount = paths.amount();
@@ -1166,6 +1204,11 @@ impl<'a> Builder<'a> {
                 stream.output(
                     &self.params, Output::Binding(output::Binding {
                         fingerprint: fingerprint.clone(),
+                        cert: if let Some(cert) = cert {
+                            OnceLock::from(cert.clone())
+                        } else {
+                            OnceLock::new()
+                        },
                         userid: Some(userid.clone()),
                         paths: paths,
                         aggregate_trust_amount: aggregated_amount,
@@ -1186,6 +1229,11 @@ impl<'a> Builder<'a> {
                     stream.output(
                         &self.params, Output::Binding(output::Binding {
                             fingerprint: fingerprint.clone(),
+                            cert: if let Some(cert) = cert {
+                                OnceLock::from(cert.clone())
+                            } else {
+                                OnceLock::new()
+                            },
                             userid: None,
                             paths: vec![],
                             aggregate_trust_amount: 0,
@@ -1344,6 +1392,13 @@ mod tests {
                              binding.userid.clone(),
                              binding.aggregate_trust_amount));
                     }
+
+                    assert_eq!(
+                        binding.fingerprint,
+                        binding
+                            .cert(sequoia)
+                            .expect("can get certificate")
+                            .fingerprint());
 
                     binding_count += 1;
                 }
