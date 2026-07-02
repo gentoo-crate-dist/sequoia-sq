@@ -98,6 +98,8 @@ crypto-botan = ["sequoia/crypto-botan"]
 crypto-botan2 = ["sequoia/crypto-botan2"]
 crypto-cng = ["sequoia/crypto-cng"]
 crypto-rust = ["sequoia/crypto-rust"]
+allow-experimental-crypto = ["sequoia/allow-experimental-crypto"]
+allow-variable-time-crypto = ["sequoia/allow-variable-time-crypto"]
 subplot = ["culpa", "subplot-build", "subplotlib"]
 
 [target.'cfg(not(windows))'.dev-dependencies]

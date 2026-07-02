@@ -62,6 +62,8 @@ crypto-botan = ["sequoia-openpgp/crypto-botan"]
 crypto-botan2 = ["sequoia-openpgp/crypto-botan2"]
 crypto-cng = ["sequoia-openpgp/crypto-cng"]
 crypto-rust = ["sequoia-openpgp/crypto-rust"]
+allow-experimental-crypto = ["sequoia-openpgp/allow-experimental-crypto"]
+allow-variable-time-crypto = ["sequoia-openpgp/allow-variable-time-crypto"]
 
 clap = ["dep:clap"]
 
