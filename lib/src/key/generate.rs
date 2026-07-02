@@ -20,7 +20,7 @@
 //!     .email("alice@example.org")
 //!     .password("secr3t".into())
 //!     // We already provided the password so we don't need a password prompt.
-//!     .generate(Cancel::new(), None)?;
+//!     .generate(Cancel::new())?;
 //!
 //! println!("New certificate's fingerprint: {}",
 //!          artifact.cert().fingerprint());
@@ -43,8 +43,9 @@
 //!     .name("Alice")
 //!     .email("alice@example.org")
 //!     .password("secr3t".into())
+//!     .to_writer(&mut key, &mut revocation)
 //!     // We already provided the password so we don't need a password prompt.
-//!     .generate(Cancel::new(), Some((&mut key, &mut revocation)))?;
+//!     .generate(Cancel::new())?;
 //!
 //! println!("New certificate's fingerprint: {}",
 //!          artifact.cert().fingerprint());
@@ -232,7 +233,7 @@ impl Sequoia {
     /// The default expiration is [`DEFAULT_KEY_VALIDITY_DURATION`].
     ///
     /// See [`Builder`] for details.
-    pub fn key_generate(&self) -> Builder<'_>
+    pub fn key_generate(&self) -> Builder<'_, '_>
     {
         Builder {
             params: Params {
@@ -253,16 +254,59 @@ impl Sequoia {
                 emails: Vec::new(),
                 userids: Vec::new(),
                 allow_non_canonical_userids: false,
+                destination: Destination::Keystore,
             },
         }
+    }
+}
+
+/// Where to write the key to.
+enum Destination<'w> {
+    /// Write to the key store.
+    Keystore,
+
+    /// Write to a `Write`r.
+    Writer(&'w mut dyn std::io::Write, &'w mut dyn std::io::Write),
+
+    /// Just return the key.
+    Ephemeral,
+}
+
+impl std::fmt::Debug for Destination<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dest = match self {
+            Destination::Keystore => "Keystore",
+            Destination::Writer(_, _) => "Writer",
+            Destination::Ephemeral => "Ephemeral",
+        };
+        write!(f, "{}", dest)
+    }
+}
+
+impl Destination<'_> {
+    /// Whether we will write to the keystore.
+    pub fn to_keystore(&self) -> bool {
+        matches!(self, Destination::Keystore)
+    }
+
+    /// Whether we will write to a writer.
+    pub fn to_writer(&self) -> bool {
+        matches!(self, Destination::Writer(_, _))
+    }
+
+    /// Whether we will just return the key.
+    ///
+    /// In this case, the key is not written to the key store or to a
+    /// `Write`r.
+    pub fn ephemeral(&self) -> bool {
+        matches!(self, Destination::Ephemeral)
     }
 }
 
 /// Key generation parameters.
 ///
 /// These parameters are used by [`generate`](Builder::generate).
-#[derive(Clone)]
-pub struct Params<'sequoia> {
+pub struct Params<'sequoia, 'writer> {
     sequoia: &'sequoia Sequoia,
     profile: Profile,
     cipher_suite: CipherSuite,
@@ -279,9 +323,10 @@ pub struct Params<'sequoia> {
     emails: Vec<String>,
     userids: Vec<UserID>,
     allow_non_canonical_userids: bool,
+    destination: Destination<'writer>,
 }
 
-impl<'sequoia> Params<'sequoia> {
+impl<'sequoia> Params<'sequoia, '_> {
     /// Returns the `Sequoia` instance.
     pub fn sequoia(&self) -> &'sequoia Sequoia {
         &self.sequoia
@@ -386,6 +431,24 @@ impl<'sequoia> Params<'sequoia> {
     pub fn allow_non_canonical_userids(&self) -> bool {
         self.allow_non_canonical_userids
     }
+
+    /// Whether we will write to the keystore.
+    pub fn to_keystore(&self) -> bool {
+        self.destination.to_keystore()
+    }
+
+    /// Whether we will write to a writer.
+    pub fn to_writer(&self) -> bool {
+        self.destination.to_writer()
+    }
+
+    /// Whether we will just return the key.
+    ///
+    /// In this case, the key is not written to the key store or to a
+    /// `Write`r.
+    pub fn ephemeral(&self) -> bool {
+        self.destination.ephemeral()
+    }
 }
 
 /// An additional key.
@@ -445,16 +508,16 @@ impl KeyTemplate {
 /// Generates keys.
 ///
 /// A builder providing control over how to generate a new key.
-pub struct Builder<'sequoia> {
-    params: Params<'sequoia>,
+pub struct Builder<'sequoia, 'writer> {
+    params: Params<'sequoia, 'writer>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
 {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
-    pub fn params(&self) -> &Params<'sequoia> {
+    pub fn params(&self) -> &Params<'sequoia, 'writer> {
         &self.params
     }
 
@@ -652,38 +715,63 @@ impl<'sequoia> Builder<'sequoia>
         self
     }
 
+    /// Writes the generated key and revocation certificate to the
+    /// keystore.
+    ///
+    /// This is the default.
+    pub fn to_keystore(mut self) -> Self {
+        self.params.destination = Destination::Keystore;
+        self
+    }
+
+    /// Writes the generated key and revocation certificate to `Write`rs.
+    pub fn to_writer(mut self,
+                     key: &'writer mut dyn std::io::Write,
+                     rev_cert: &'writer mut dyn std::io::Write)
+        -> Self
+    {
+        self.params.destination = Destination::Writer(key, rev_cert);
+        self
+    }
+
+    /// Doesn't save the key; just returns it.
+    ///
+    /// In this case, the key is not written to the key store or to a
+    /// `Write`r.
+    pub fn ephemeral(mut self) -> Self {
+        self.params.destination = Destination::Ephemeral;
+        self
+    }
+
     /// Generates a key.
     ///
-    /// If `output` is `None`, then the key is saved to the key store.
-    /// If `output` is `Some`, the first writer specifies where to
-    /// save the key and the second specifies where to save the
-    /// revocation certificate.
-    pub fn generate<'a, P>(&self,
-                           prompt: P,
-                           output: Option<(&mut dyn std::io::Write,
-                                           &mut dyn std::io::Write)>)
+    /// By default, the key is saved to the key store.  Use
+    /// [`Builder::to_writer`] or [`Builder::ephemeral`] to override
+    /// it.
+    pub fn generate<'a, P>(self, prompt: P)
         -> Result<Artifact, Error>
     where
         P: prompt::Prompt + 'a,
     {
-        let &Builder {
+        let Builder {
             params: Params {
                 sequoia,
                 profile,
                 cipher_suite,
-                ref encryption_algorithm,
-                ref signing_algorithm,
-                ref password_policy,
-                ref expiration,
+                encryption_algorithm,
+                signing_algorithm,
+                password_policy,
+                expiration,
                 own_key,
                 can_sign,
                 can_authenticate,
-                ref can_encrypt,
-                ref additional_keys,
-                ref names,
-                ref emails,
-                ref userids,
+                can_encrypt,
+                additional_keys,
+                names,
+                emails,
+                mut userids,
                 allow_non_canonical_userids,
+                destination
             },
         } = self;
 
@@ -704,7 +792,8 @@ impl<'sequoia> Builder<'sequoia>
             }
         }
 
-        if output.is_none() {
+        let to_keystore = destination.to_keystore();
+        if to_keystore {
             // We're going to write to the key store and cert store.
             // Fail early if they are not available.
             sequoia.key_store_or_else().map_err(sys!())?;
@@ -718,14 +807,13 @@ impl<'sequoia> Builder<'sequoia>
         };
 
         let mut builder = CertBuilder::new()
-            .set_profile(profile.clone().into()).map_err(arg!())?;
+            .set_profile(profile.into()).map_err(arg!())?;
 
         // Names, email addresses, and user IDs.
-        let mut userids = userids.to_vec();
 
         let mut lints = Vec::new();
         for n in names {
-            if let Err(lint) = lint_name(n) {
+            if let Err(lint) = lint_name(&n) {
                 lints.push(lint);
             } else if lints.is_empty() {
                 userids.push(UserID::from(n.as_str()));
@@ -733,7 +821,7 @@ impl<'sequoia> Builder<'sequoia>
         }
 
         for e in emails {
-            match lint_email(e) {
+            match lint_email(&e) {
                 Ok(userid) => {
                     userids.push(userid)
                 }
@@ -780,10 +868,10 @@ impl<'sequoia> Builder<'sequoia>
         builder = builder.set_cipher_suite(cipher_suite);
 
         if let Some(algo) = encryption_algorithm {
-            builder = builder.set_encryption_algorithm(algo.clone());
+            builder = builder.set_encryption_algorithm(algo);
         }
         if let Some(algo) = signing_algorithm {
-            builder = builder.set_signing_algorithm(algo.clone());
+            builder = builder.set_signing_algorithm(algo);
         }
 
         // Primary key capabilities.
@@ -822,12 +910,12 @@ impl<'sequoia> Builder<'sequoia>
             builder = builder.add_subkey(encryption, None, None);
         }
 
-        for k in additional_keys {
+        for k in additional_keys.into_iter() {
             let mut sig = SignatureBuilder::new(SignatureType::SubkeyBinding);
-            for (critical, notation) in k.notations.iter() {
+            for (critical, notation) in k.notations.into_iter() {
                 sig = sig.set_notation(
                     notation.name(), notation.value(),
-                    Some(notation.flags().clone()), *critical)
+                    Some(notation.flags().clone()), critical)
                     .map_err(arg!())?;
             }
 
@@ -841,7 +929,7 @@ impl<'sequoia> Builder<'sequoia>
         match password_policy {
             PasswordPolicy::None => (),
             PasswordPolicy::Password(password) => {
-                builder = builder.set_password(Some(password.clone()));
+                builder = builder.set_password(Some(password));
             }
             PasswordPolicy::Prompt => {
                 let mut checker = CheckNewPassword::optional();
@@ -873,38 +961,46 @@ impl<'sequoia> Builder<'sequoia>
         let (mut cert, rev);
 
         let mut rev_writer_;
-        let (output_writer, rev_writer)
-            = if let Some((output_writer, rev_writer)) = output
-        {
-            (cert, rev) = gen()?;
-
-            (Some(output_writer), rev_writer)
-        } else {
-            if let Some(home) = sequoia.home() {
-                let dir = home.data_dir(crate::directories::Component::Other(
-                    "revocation-certificates".into()));
-                std::fs::create_dir_all(&dir)
-                    .with_context(|| {
-                        format!("While creating {}", dir.display())
-                    })
-                    .map_err(sys!())?;
-
+        let mut rev_writer2_;
+        let (output_writer, rev_writer) = match destination {
+            Destination::Writer(output_writer, rev_writer) => {
                 (cert, rev) = gen()?;
 
-                let rev_path = dir.join(
-                    format!("{}-revocation.pgp", cert.fingerprint()));
+                (Some(output_writer), rev_writer)
+            }
+            Destination::Keystore => {
+                if let Some(home) = sequoia.home() {
+                    let dir = home.data_dir(crate::directories::Component::Other(
+                        "revocation-certificates".into()));
+                    std::fs::create_dir_all(&dir)
+                        .with_context(|| {
+                            format!("While creating {}", dir.display())
+                        })
+                        .map_err(sys!())?;
 
-                rev_writer_ = PartFileWriter::create_with_restricted_permissions(
-                    &rev_path, true)
-                    .with_context(|| {
-                        format!("Failed to create {}", rev_path.display())
-                    })
-                    .map_err(sys!())?;
+                    (cert, rev) = gen()?;
 
-                (None, &mut rev_writer_ as &mut dyn std::io::Write)
-            } else {
-                return Err(Error::SystemError(
-                    SystemError::HomeDisabled));
+                    let rev_path = dir.join(
+                        format!("{}-revocation.pgp", cert.fingerprint()));
+
+                    rev_writer_ = PartFileWriter::create_with_restricted_permissions(
+                        &rev_path, true)
+                        .with_context(|| {
+                            format!("Failed to create {}", rev_path.display())
+                        })
+                        .map_err(sys!())?;
+
+                    (None, &mut rev_writer_ as &mut dyn std::io::Write)
+                } else {
+                    return Err(Error::SystemError(
+                        SystemError::HomeDisabled));
+                }
+            }
+            Destination::Ephemeral => {
+                (cert, rev) = gen()?;
+
+                rev_writer2_ = std::io::sink();
+                (None, &mut rev_writer2_ as _)
             }
         };
 
@@ -938,77 +1034,76 @@ impl<'sequoia> Builder<'sequoia>
                 .map(|value| ("Comment", value.as_str()))
                 .collect();
 
-            match output_writer {
-                Some(output_writer) => {
-                    //// Write the key to a file or to stdout.
-                    let mut w = Writer::with_headers(
-                        output_writer, Kind::SecretKey, headers)
+            if let Some(output_writer) = output_writer {
+                //// Write the key to a file or to stdout.
+                let mut w = Writer::with_headers(
+                    output_writer, Kind::SecretKey, headers)
+                    .map_err(op!())?;
+                cert.as_tsk().serialize(&mut w).map_err(op!())?;
+                w.finalize().map_err(op!())?;
+            } else if to_keystore {
+                // write the key to the key store
+
+                // Certify the key with a per-host shadow CA if there
+                // are any user IDs to certify.
+                let have_userids = cert.userids().next().is_some();
+                if have_userids {
+                    cert = certify_generated(&sequoia, &cert, &prompt)
                         .map_err(op!())?;
-                    cert.as_tsk().serialize(&mut w).map_err(op!())?;
-                    w.finalize().map_err(op!())?;
                 }
-                None => {
-                    // write the key to the key store
 
-                    // Certify the key with a per-host shadow CA if there
-                    // are any user IDs to certify.
-                    let have_userids = cert.userids().next().is_some();
-                    if have_userids {
-                        cert = certify_generated(&sequoia, &cert, &prompt)
-                            .map_err(op!())?;
-                    }
+                let mut stats = ImportStats::default();
+                let result = sequoia.key_import()
+                    .import_key(cert.clone(), &mut stats)
+                    .map_err(op!())?;
+                key_import_status = Some(result.key_import_status);
 
-                    let mut stats = ImportStats::default();
-                    let result = sequoia.key_import()
-                        .import_key(cert.clone(), &mut stats)
+                // Now certify the user IDs, and if this is our own
+                // key, mark it as trusted introducer.
+                let trust_root = sequoia.local_trust_root()
+                    .map_err(sys!())?;
+                let trust_root = trust_root.to_cert()
+                    .map_err(sys!())?;
+
+                if own_key && have_userids {
+                    // Mark all user IDs as authenticated, and mark
+                    // the key as a trusted introducer.
+                    sequoia.pki_certify()
+                        .recreate(false)
+                        .trust_amount(FULLY_TRUSTED as u8)
+                        .trust_depth(u8::MAX)
+                        .expiration(Expiration::Never)
+                        .exportable(false)
+                        .certify(
+                            &trust_root,
+                            &cert,
+                            &userids,
+                            (), // stream: don't show anything.
+                            prompt,
+                            None, // Output.
+                        )
                         .map_err(op!())?;
-                    key_import_status = Some(result.key_import_status);
-
-                    // Now certify the user IDs, and if this is our own
-                    // key, mark it as trusted introducer.
-                    let trust_root = sequoia.local_trust_root()
-                        .map_err(sys!())?;
-                    let trust_root = trust_root.to_cert()
-                        .map_err(sys!())?;
-
-                    if own_key && have_userids {
-                        // Mark all user IDs as authenticated, and mark
-                        // the key as a trusted introducer.
-                        sequoia.pki_certify()
-                            .recreate(false)
-                            .trust_amount(FULLY_TRUSTED as u8)
-                            .trust_depth(u8::MAX)
-                            .expiration(Expiration::Never)
-                            .exportable(false)
-                            .certify(
-                                &trust_root,
-                                &cert,
-                                &userids,
-                                (), // stream: don't show anything.
-                                prompt,
-                                None, // Output.
-                            )
-                            .map_err(op!())?;
-                    } else if ! own_key /* shared key */ && have_userids {
-                        // Mark all user IDs as authenticated.
-                        sequoia.pki_certify()
-                            .recreate(false)
-                            .trust_amount(FULLY_TRUSTED as u8)
-                            // Not a trusted introducer.
-                            .trust_depth(0)
-                            .expiration(Expiration::Never)
-                            .exportable(false)
-                            .certify(
-                                &trust_root,
-                                &cert,
-                                &userids,
-                                (), // stream: don't show anything.
-                                prompt,
-                                None, // Output.
-                            )
-                            .map_err(op!())?;
-                    }
+                } else if ! own_key /* shared key */ && have_userids {
+                    // Mark all user IDs as authenticated.
+                    sequoia.pki_certify()
+                        .recreate(false)
+                        .trust_amount(FULLY_TRUSTED as u8)
+                    // Not a trusted introducer.
+                        .trust_depth(0)
+                        .expiration(Expiration::Never)
+                        .exportable(false)
+                        .certify(
+                            &trust_root,
+                            &cert,
+                            &userids,
+                            (), // stream: don't show anything.
+                            prompt,
+                            None, // Output.
+                        )
+                        .map_err(op!())?;
                 }
+            } else {
+                // Must be ephemeral.
             }
         }
 

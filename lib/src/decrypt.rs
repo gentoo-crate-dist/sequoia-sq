@@ -14,8 +14,8 @@
 //! #
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
-//! #     .without_password()
-//! #     .generate(Cancel::new(), None)
+//! #         .without_password()
+//! #     .generate(Cancel::new())
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -123,7 +123,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new(), None)
+//! #     .generate(Cancel::new())
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -1678,7 +1678,7 @@ mod tests {
         let cert = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -1732,7 +1732,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -1741,10 +1741,8 @@ mod tests {
         let bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(Cancel::new(),
-                      // Don't mark it as trusted by not importing it.
-                      Some((&mut std::io::sink(),
-                            &mut std::io::sink())))
+            .ephemeral()
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -1807,14 +1805,14 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
         let bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -1885,7 +1883,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -1986,7 +1984,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 

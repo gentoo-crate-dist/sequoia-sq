@@ -1879,14 +1879,14 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
         let bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -2006,7 +2006,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -2068,7 +2068,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 

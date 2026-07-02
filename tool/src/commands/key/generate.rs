@@ -74,7 +74,7 @@ pub fn generate(
     let own_key = command.own_key;
     let on_keystore = output.is_none();
 
-    let result = sq.sequoia.key_generate()
+    let mut builder = sq.sequoia.key_generate()
         .profile(command.profile.into())
         .cipher_suite(command.cipher_suite.into())
         .encryption_algorithm(command.encryption_algorithm.map(|a| a.into()))
@@ -95,9 +95,11 @@ pub fn generate(
         .names(command.names)
         .emails(command.emails)
         .userids(command.userid)
-        .allow_non_canonical_userids(command.allow_non_canonical_userids)
-        .generate(prompt,
-                  output)?;
+        .allow_non_canonical_userids(command.allow_non_canonical_userids);
+    if let Some((key, rev)) = output {
+        builder = builder.to_writer(key, rev);
+    }
+    let result = builder.generate(prompt)?;
 
     if let Some(key_import_status) = result.key_import_status() {
         for (fpr, status) in key_import_status.iter() {

@@ -68,7 +68,7 @@
 //! #   .key_generate()
 //! #   .email("alice@example.org")
 //! #   .without_password()
-//! #   .generate(sequoia::prompt::Cancel::new(), None)?;
+//! #   .generate(sequoia::prompt::Cancel::new())?;
 //! #
 //! # let file = b"I own you";
 //! # let mut signature = Vec::new();

@@ -53,7 +53,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new(), None)
+//! #     .generate(Cancel::new())
 //! #     .expect("can generate a key");
 //! #
 //! # rt.block_on(async {
@@ -125,7 +125,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new(), None)
+//! #     .generate(Cancel::new())
 //! #     .expect("can generate a key");
 //! #
 //! # rt.block_on(async {
@@ -1999,17 +1999,13 @@ mod tests {
             .email("alice@example.org")
             .email("alice@other.org")
             .without_password()
-            .generate(
-                Cancel::new(),
-                None)
+            .generate(Cancel::new())
             .expect("can generate key");
 
         let _bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(
-                Cancel::new(),
-                None)
+            .generate(Cancel::new())
             .expect("can generate key");
 
         // Search for alice@example.org.
@@ -2053,9 +2049,7 @@ mod tests {
         let alice2 = sq.key_generate()
             .email("alice@other.org")
             .without_password()
-            .generate(
-                Cancel::new(),
-                None)
+            .generate(Cancel::new())
             .expect("can generate key");
 
         // Search for alice@example.org.

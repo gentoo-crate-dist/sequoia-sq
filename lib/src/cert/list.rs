@@ -38,7 +38,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new(), None)
+//! #     .generate(Cancel::new())
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -87,7 +87,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new(), None)
+//! #     .generate(Cancel::new())
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -1466,7 +1466,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new(), None)
+            .generate(Cancel::new())
             .expect("can generate a key")
             .into_cert();
 
@@ -1507,7 +1507,8 @@ mod tests {
             let cert = sq.key_generate()
                 .email(email)
                 .without_password()
-                .generate(Cancel::new(), Some((&mut std::io::sink(), &mut std::io::sink())))
+                .ephemeral()
+                .generate(Cancel::new())
                 .expect("can generate a key")
                 .into_cert();
 
