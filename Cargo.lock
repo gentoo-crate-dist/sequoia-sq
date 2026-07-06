@@ -1393,6 +1393,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
 name = "foreign-types"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1710,6 +1716,15 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -1721,6 +1736,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
  "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
+dependencies = [
+ "hashbrown 0.15.5",
 ]
 
 [[package]]
@@ -2477,10 +2501,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2eb25a7ab146f4058d67a74dfea52e25c133c575f08ce5851da97d224e3ad8d"
 dependencies = [
  "doc-comment",
- "hashlink",
+ "hashlink 0.9.1",
  "serde",
  "serde_path_to_error",
- "yaml-rust2",
+ "yaml-rust2 0.9.0",
+]
+
+[[package]]
+name = "marked-yaml"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a76cf4e66a8ffccfce983161b0faafe61a5ef03fe875ef2e3deb897e4e915fa"
+dependencies = [
+ "doc-comment",
+ "hashlink 0.10.0",
+ "serde",
+ "serde_path_to_error",
+ "yaml-rust2 0.10.4",
 ]
 
 [[package]]
@@ -2628,10 +2665,10 @@ version = "7.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2578a3627c28fefb60f1680e20e85f38bd8c8bf98c288b370489a573b0640907"
 dependencies = [
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "libc",
  "nettle-sys",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "typenum",
 ]
 
@@ -2819,7 +2856,7 @@ dependencies = [
  "sha1collisiondetection",
  "sha2",
  "tempfile",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "walkdir",
 ]
 
@@ -3200,9 +3237,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.12.2"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f86ba2052aebccc42cbbb3ed234b8b13ce76f75c3551a303cb2bcffcff12bb14"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
 dependencies = [
  "bitflags 2.13.0",
  "getopts",
@@ -3504,7 +3541,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec49775c5134c7e4befdedecaf112bb72964baa9b24bedfc79b54c3ca0ee9f77"
 dependencies = [
  "anyhow",
- "marked-yaml",
+ "marked-yaml 0.7.2",
  "serde",
  "tempfile",
  "textwrap",
@@ -3573,7 +3610,7 @@ dependencies = [
  "bitflags 2.13.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink",
+ "hashlink 0.9.1",
  "libsqlite3-sys",
  "smallvec",
 ]
@@ -3751,7 +3788,7 @@ dependencies = [
  "rusqlite",
  "sequoia-openpgp",
  "smallvec",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "url",
 ]
 
@@ -3784,7 +3821,7 @@ dependencies = [
  "sequoia-openpgp",
  "stfu8",
  "tempfile",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -3807,7 +3844,7 @@ dependencies = [
  "sequoia-openpgp",
  "socket2",
  "tempfile",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-util",
  "winapi",
@@ -3833,7 +3870,7 @@ dependencies = [
  "sequoia-keystore-gpg-agent",
  "sequoia-keystore-softkeys",
  "sequoia-openpgp",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-util",
 ]
@@ -3851,7 +3888,7 @@ dependencies = [
  "log",
  "sequoia-openpgp",
  "tempfile",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -3917,7 +3954,7 @@ dependencies = [
  "percent-encoding",
  "reqwest",
  "sequoia-openpgp",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
  "url",
  "z-base-32",
@@ -3985,7 +4022,7 @@ dependencies = [
  "sha2",
  "sha3 0.10.9",
  "slh-dsa",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "twofish",
  "typenum",
  "win-crypto-ng",
@@ -4005,7 +4042,7 @@ dependencies = [
  "chrono",
  "sequoia-openpgp",
  "serde",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "toml",
 ]
 
@@ -4055,7 +4092,7 @@ dependencies = [
  "termcolor",
  "terminal_size",
  "textwrap",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
  "toml_edit",
  "typenum",
@@ -4073,7 +4110,7 @@ dependencies = [
  "num_cpus",
  "sequoia-cert-store",
  "sequoia-openpgp",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -4392,9 +4429,9 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "subplot"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5eb998cc5b2599ac493bd0fd2972013c3f3c11ef37800f6d2d2f4067d78a0c01"
+checksum = "7a2d7d684d11cc4256f675dd026f2999762fdd407dcdfae7ed06005370359dc6"
 dependencies = [
  "anyhow",
  "base64",
@@ -4403,7 +4440,7 @@ dependencies = [
  "html-escape",
  "lazy_static",
  "line-col",
- "marked-yaml",
+ "marked-yaml 0.8.0",
  "pikchr",
  "pulldown-cmark",
  "regex",
@@ -4419,9 +4456,9 @@ dependencies = [
 
 [[package]]
 name = "subplot-build"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "008b31a93442526100369310bf717117df546b8259b7043aebcfdffa84af35bf"
+checksum = "1a1e4b117c4e8177c359b14cbea439ff70c4d8c91f81f1361c49987f8890e8c7"
 dependencies = [
  "subplot",
  "tracing",
@@ -4429,9 +4466,9 @@ dependencies = [
 
 [[package]]
 name = "subplotlib"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ddf898c1d4ef62f77028b546f7baf9c1e661c927587249da0b0fa5ec5906422"
+checksum = "e975eda1ad88fef962133294b2bfee9e3a586b92e2f57b4d7c7544485199f042"
 dependencies = [
  "base64",
  "culpa",
@@ -4449,9 +4486,9 @@ dependencies = [
 
 [[package]]
 name = "subplotlib-derive"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f37c9bc08dcdd72eb2a5f0d2f405c5384466c7c199921b00d4ab9d8f60972efb"
+checksum = "bd444e7bcbeb865f8337901f7266b9d6175b36cd16c4950fe2a49f4dbdbc7785"
 dependencies = [
  "culpa",
  "proc-macro2",
@@ -4537,7 +4574,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -5240,7 +5277,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -5540,7 +5577,18 @@ checksum = "2a1a1c0bc9823338a3bdf8c61f994f23ac004c6fa32c08cd152984499b445e8d"
 dependencies = [
  "arraydeque",
  "encoding_rs",
- "hashlink",
+ "hashlink 0.9.1",
+]
+
+[[package]]
+name = "yaml-rust2"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2462ea039c445496d8793d052e13787f2b90e750b833afee748e601c17621ed9"
+dependencies = [
+ "arraydeque",
+ "encoding_rs",
+ "hashlink 0.10.0",
 ]
 
 [[package]]
