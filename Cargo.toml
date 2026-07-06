@@ -79,7 +79,7 @@ clap_complete = "4"
 clap_lex = { version = ">=0.7, <2", default-features = false }
 chrono = "0.4.38"
 dirs = ">=5, <7"
-roff = "0.2.1"
+roff = ">=0.2.1, <2"
 serde = { version = "1.0.137", features = ["derive"] }
 sequoia-directories = "0.1"
 sequoia-man = "0.3"

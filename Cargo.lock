@@ -3518,6 +3518,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88f8660c1ff60292143c98d08fc6e2f654d722db50410e3f3797d40baaf9d8f3"
 
 [[package]]
+name = "roff"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323c417e1d9665a65b263ec744ba09030cfb277e9daa0b018a4ab62e57bc8189"
+
+[[package]]
 name = "rpassword"
 version = "7.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3890,7 +3896,7 @@ checksum = "961fa9711d7a1d9ccc13ac55b65482f828399dda12a0be7fa4e059dca410d217"
 dependencies = [
  "anyhow",
  "clap",
- "roff",
+ "roff 0.2.2",
 ]
 
 [[package]]
@@ -4029,7 +4035,7 @@ dependencies = [
  "predicates",
  "regex",
  "reqwest",
- "roff",
+ "roff 1.1.1",
  "rpassword",
  "rusqlite",
  "sequoia-autocrypt",
