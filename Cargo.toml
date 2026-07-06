@@ -141,6 +141,10 @@ complexity = { level = "allow", priority = -1 }
 opt-level = 2
 [profile.dev.package.aes-gcm]
 opt-level = 2
+[profile.dev.package.argon2]
+opt-level = 2
+[profile.dev.package.blake2]
+opt-level = 2
 [profile.dev.package.block-padding]
 opt-level = 2
 [profile.dev.package.blowfish]
@@ -152,6 +156,8 @@ opt-level = 2
 [profile.dev.package.cipher]
 opt-level = 2
 [profile.dev.package.cfb-mode]
+opt-level = 2
+[profile.dev.package.cx448]
 opt-level = 2
 [profile.dev.package.des]
 opt-level = 2
@@ -171,9 +177,19 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.idea]
 opt-level = 2
+[profile.dev.package.keccak]
+opt-level = 2
 [profile.dev.package.md-5]
 opt-level = 2
+[profile.dev.package.ml-dsa]
+opt-level = 2
+[profile.dev.package.ml-kem]
+opt-level = 2
 [profile.dev.package.num-bigint-dig]
+opt-level = 2
+[profile.dev.package.num-integer]
+opt-level = 2
+[profile.dev.package.ocb3]
 opt-level = 2
 [profile.dev.package.p256]
 opt-level = 2
@@ -186,6 +202,10 @@ opt-level = 2
 [profile.dev.package.rsa]
 opt-level = 2
 [profile.dev.package.sha2]
+opt-level = 2
+[profile.dev.package.sha3]
+opt-level = 2
+[profile.dev.package.slh-dsa]
 opt-level = 2
 [profile.dev.package.twofish]
 opt-level = 2
