@@ -10,10 +10,12 @@ use crate::cli::KEY_VALIDITY_IN_YEARS;
 use crate::cli::config;
 use crate::cli::types::ClapData;
 use crate::cli::types::EncryptPurpose;
+use crate::cli::types::EncryptionAlgorithm;
 use crate::cli::types::Expiration;
 use crate::cli::types::ExpirationArg;
 use crate::cli::types::FileOrStdout;
 use crate::cli::types::Profile;
+use crate::cli::types::SigningAlgorithm;
 
 use crate::cli::examples::*;
 use crate::cli::key::CipherSuite;
@@ -147,6 +149,31 @@ Canonical user IDs are of the form `Name (Comment) \
     /// Workaround for https://github.com/clap-rs/clap/issues/3846
     #[clap(skip)]
     pub cipher_suite_source: Option<clap::parser::ValueSource>,
+
+    #[clap(
+        long = "encryption-algorithm",
+        value_name = "ALGORITHM",
+        help = "Select the cryptographic algorithm for encryption keys",
+        long_help = "Select the cryptographic algorithm for encryption keys
+
+When set, the algorithm is used for encryption-capable keys.  This \
+parameter overrides the cipher suite parameter.",
+        value_enum,
+    )]
+    pub encryption_algorithm: Option<EncryptionAlgorithm>,
+
+    #[clap(
+        long = "signing-algorithm",
+        value_name = "ALGORITHM",
+        help = "Select the cryptographic algorithm for signing keys",
+        long_help = "Select the cryptographic algorithm for signing keys
+
+When set, the algorithm is used for keys used for signing.  This \
+includes keys with the signing, authentication, and the certification \
+capability.  This parameter overrides the cipher suite parameter.",
+        value_enum,
+    )]
+    pub signing_algorithm: Option<SigningAlgorithm>,
 
     #[clap(
         long = "profile",

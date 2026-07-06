@@ -31,6 +31,8 @@ use openpgp::types::SymmetricAlgorithm;
 
 pub mod cert_designator;
 pub use cert_designator::CertDesignators;
+mod encryption_algorithm;
+pub use encryption_algorithm::EncryptionAlgorithm;
 pub mod key_designator;
 pub use key_designator::KeyDesignators;
 pub mod paths;
@@ -43,6 +45,8 @@ pub mod profile;
 pub use profile::Profile;
 pub mod signature_notations;
 pub use signature_notations::SignatureNotationsArg;
+mod signing_algorithm;
+pub use signing_algorithm::SigningAlgorithm;
 pub mod special_names;
 pub use special_names::SpecialName;
 pub mod time;

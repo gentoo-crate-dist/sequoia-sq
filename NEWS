@@ -2,6 +2,13 @@
 #+TITLE: sequoia-sq NEWS – history of user-visible changes
 #+STARTUP: content hidestars
 
+* Changes in 1.3.2
+** New functionality
+   - You can use `sq key generate --encryption-algorithm` and `sq key
+     generate --signing-algorithm` to specify the precise algorithm
+     that `sq key generate` will use for encryption-capable keys and
+     signing-capable keys, respectively.
+
 * Changes in 1.3.1
   - This is a bugfix release, fixing and improving displayed hints,
     improving test vectors so that the tests work fine years into the

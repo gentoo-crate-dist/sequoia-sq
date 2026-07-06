@@ -97,6 +97,13 @@ pub fn generate(
         sq.config.cipher_suite(&command.cipher_suite,
                                command.cipher_suite_source));
 
+    if let Some(algo) = command.encryption_algorithm {
+        builder = builder.set_encryption_algorithm(algo.into());
+    }
+    if let Some(algo) = command.signing_algorithm {
+        builder = builder.set_signing_algorithm(algo.into());
+    }
+
     // Profile.  XXX: Currently, this is not actionable.
     let _profile = sq.config.key_generate_profile(
         &command.profile, command.profile_source);
