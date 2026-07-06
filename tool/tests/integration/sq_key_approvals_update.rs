@@ -383,7 +383,7 @@ fn ignore_revoked_userids() {
     );
 
     sq.tick(1);
-    let approvals_post = approval.userids()
+    let approvals_post: usize = approval.userids()
         .map(|ua| {
             ua.approvals().count()
         })
