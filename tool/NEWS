@@ -22,6 +22,10 @@
      revocation certificates, it restricts the output file's
      permissions on Unix-like operating systems so that the group
      permissions and other permissions don't allow access to the data.
+   - You can use `sq key generate --encryption-algorithm` and `sq key
+     generate --signing-algorithm` to specify the precise algorithm
+     that `sq key generate` will use for encryption-capable keys and
+     signing-capable keys, respectively.
 ** Notable fixes
    - `sq download` no longer freezes if some of the passed URLs return a
      '404 - not found' error when trying to fetch them.

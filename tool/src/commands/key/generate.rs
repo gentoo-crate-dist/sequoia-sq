@@ -77,6 +77,8 @@ pub fn generate(
     let result = sq.sequoia.key_generate()
         .profile(command.profile.into())
         .cipher_suite(command.cipher_suite.into())
+        .encryption_algorithm(command.encryption_algorithm.map(|a| a.into()))
+        .signing_algorithm(command.signing_algorithm.map(|a| a.into()))
         .password_policy(password_policy)
         .expiration(command.expiration.value())
         .own_key(own_key)

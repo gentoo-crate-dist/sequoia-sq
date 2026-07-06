@@ -3,11 +3,16 @@ use std::time;
 use sequoia::openpgp;
 use openpgp::Cert;
 use openpgp::Result;
+use openpgp::crypto::mpi::PublicKey;
 use openpgp::parse::Parse;
+use openpgp::types::Curve;
+use openpgp::types::KeyFlags;
+use openpgp::types::PublicKeyAlgorithm;
 
 use super::common;
 use super::common::UserIDArg;
 use super::common::NO_USERIDS;
+use super::common::NULL_POLICY;
 
 #[test]
 fn sq_key_generate_no_userid() -> Result<()> {
@@ -217,4 +222,171 @@ fn sq_key_generate_check_permissions() -> Result<()> {
     assert_eq!(permissions.mode() & 0o077, 0);
 
    Ok(())
+}
+
+#[test]
+fn sq_key_generate_encryption_algorithm() -> Result<()> {
+    let sq = common::Sq::new();
+
+    #[allow(deprecated)]
+    for (arg, profile, algo, curve) in
+        [
+            ("rsa2k", "rfc4880", PublicKeyAlgorithm::RSAEncryptSign, None),
+            ("rsa3k", "rfc4880", PublicKeyAlgorithm::RSAEncryptSign, None),
+            ("rsa4k", "rfc4880", PublicKeyAlgorithm::RSAEncryptSign, None),
+            ("elgamal2k", "rfc4880", PublicKeyAlgorithm::ElGamalEncrypt, None),
+            // >7 seconds on a fast machine, skip.
+            //("elgamal3k", "rfc4880", PublicKeyAlgorithm::ElGamalEncrypt, None),
+            ("cv25519", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::Cv25519)),
+            ("x25519", "rfc4880", PublicKeyAlgorithm::X25519, None),
+            ("x448", "rfc4880", PublicKeyAlgorithm::X448, None),
+            ("nistp256", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::NistP256)),
+            ("nistp384", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::NistP384)),
+            ("nistp521", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::NistP521)),
+            ("brainpoolp256", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::BrainpoolP256)),
+            ("brainpoolp384", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::BrainpoolP384)),
+            ("brainpoolp512", "rfc4880", PublicKeyAlgorithm::ECDH, Some(Curve::BrainpoolP512)),
+            ("mlkem768-x25519", "rfc4880", PublicKeyAlgorithm::MLKEM768_X25519, None),
+            ("mlkem1024-x448", "rfc9580", PublicKeyAlgorithm::MLKEM1024_X448, None),
+        ]
+    {
+        eprintln!("Checking {}/{}: {}, {:?}", arg, profile, algo, curve);
+
+        if ! algo.is_supported() {
+            eprintln!("Skipping {}/{}: {} not supported by crypto backend",
+                      arg, profile, algo);
+            continue;
+        }
+        if let Some(curve) = curve.as_ref() {
+            if ! curve.is_supported() {
+                eprintln!("Skipping {}/{}: {} not supported by crypto backend",
+                          arg, profile, curve);
+                continue;
+            }
+        }
+
+        let (cert, _, _) = sq.key_generate(
+            &[
+                "--encryption-algorithm", arg,
+                "--profile", profile,
+            ],
+            NO_USERIDS);
+
+        assert!(cert.is_tsk());
+
+        let mut have_one = false;
+        let vc = cert.with_policy(NULL_POLICY, None).expect("valid cert");
+        for k in vc.keys() {
+            let kf = k.key_flags().unwrap_or(KeyFlags::empty());
+            if kf.for_transport_encryption()
+                || kf.for_storage_encryption()
+            {
+                have_one = true;
+                assert_eq!(k.key().pk_algo(), algo);
+
+                let got_curve = match k.key().mpis() {
+                    PublicKey::EdDSA { curve, .. }
+                    | PublicKey::ECDSA { curve, .. }
+                    | PublicKey::ECDH { curve, .. } => {
+                        Some(curve)
+                    }
+                    _ => None,
+                };
+                assert_eq!(got_curve, curve.as_ref());
+            }
+        }
+        assert!(have_one);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn sq_key_generate_signing_algorithm() -> Result<()> {
+    let sq = common::Sq::new();
+
+    #[allow(deprecated)]
+    for (arg, profile, algo, curve) in
+        [
+            ("rsa2k", "rfc4880", PublicKeyAlgorithm::RSAEncryptSign, None),
+            ("rsa3k", "rfc4880", PublicKeyAlgorithm::RSAEncryptSign, None),
+            ("rsa4k", "rfc4880", PublicKeyAlgorithm::RSAEncryptSign, None),
+            // >4 seconds on a fast machine, skip.
+            //("dsa2k", "rfc4880", PublicKeyAlgorithm::DSA, None),
+            // >10 seconds on a fast machine, skip.
+            //("dsa3k", "rfc4880", PublicKeyAlgorithm::DSA, None),
+            ("cv25519", "rfc4880", PublicKeyAlgorithm::EdDSA, Some(Curve::Ed25519)),
+            ("ed25519", "rfc4880", PublicKeyAlgorithm::Ed25519, None),
+            ("ed448", "rfc4880", PublicKeyAlgorithm::Ed448, None),
+            ("nistp256", "rfc4880", PublicKeyAlgorithm::ECDSA, Some(Curve::NistP256)),
+            ("nistp384", "rfc4880", PublicKeyAlgorithm::ECDSA, Some(Curve::NistP384)),
+            ("nistp521", "rfc4880", PublicKeyAlgorithm::ECDSA, Some(Curve::NistP521)),
+            ("brainpoolp256", "rfc4880", PublicKeyAlgorithm::ECDSA, Some(Curve::BrainpoolP256)),
+            ("brainpoolp384", "rfc4880", PublicKeyAlgorithm::ECDSA, Some(Curve::BrainpoolP384)),
+            ("brainpoolp512", "rfc4880", PublicKeyAlgorithm::ECDSA, Some(Curve::BrainpoolP512)),
+            ("mldsa65-ed25519", "rfc9580", PublicKeyAlgorithm::MLDSA65_Ed25519, None),
+            ("mldsa87-ed448", "rfc9580", PublicKeyAlgorithm::MLDSA87_Ed448, None),
+            ("slhdsa128f", "rfc9580", PublicKeyAlgorithm::SLHDSA128f, None),
+            ("slhdsa128s", "rfc9580", PublicKeyAlgorithm::SLHDSA128s, None),
+            ("slhdsa256s", "rfc9580", PublicKeyAlgorithm::SLHDSA256s, None),
+        ]
+    {
+        eprintln!("Checking {}/{}: {}, {:?}", arg, profile, algo, curve);
+
+        if ! algo.is_supported() {
+            eprintln!("Skipping {}/{}: {} not supported by crypto backend",
+                      arg, profile, algo);
+            continue;
+        }
+        if algo == PublicKeyAlgorithm::DSA && cfg!(feature = "crypto-cng") {
+            // PublicKey::DSA::is_supported returns true with Windows
+            // CND, but Windows CNG only supports
+            eprintln!("Skipping {}/{}: {} not supported by crypto backend",
+                      arg, profile, algo);
+            continue;
+        }
+
+        if let Some(curve) = curve.as_ref() {
+            if ! curve.is_supported() {
+                eprintln!("Skipping {}/{}: {} not supported by crypto backend",
+                          arg, profile, curve);
+                continue;
+            }
+        }
+
+        let (cert, _, _) = sq.key_generate(
+            &[
+                "--signing-algorithm", arg,
+                "--profile", profile,
+            ],
+            NO_USERIDS);
+
+        assert!(cert.is_tsk());
+
+        let mut have = 0;
+        let vc = cert.with_policy(NULL_POLICY, None).expect("valid cert");
+        for k in vc.keys() {
+            let kf = k.key_flags().unwrap_or(KeyFlags::empty());
+            if kf.for_signing()
+                || kf.for_certification()
+                || kf.for_authentication()
+            {
+                have += 1;
+                assert_eq!(k.key().pk_algo(), algo);
+
+                let got_curve = match k.key().mpis() {
+                    PublicKey::EdDSA { curve, .. }
+                    | PublicKey::ECDSA { curve, .. }
+                    | PublicKey::ECDH { curve, .. } => {
+                        Some(curve)
+                    }
+                    _ => None,
+                };
+                assert_eq!(got_curve, curve.as_ref());
+            }
+        }
+        assert_eq!(have, 3);
+    }
+
+    Ok(())
 }
