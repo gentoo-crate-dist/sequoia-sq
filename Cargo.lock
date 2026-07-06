@@ -1036,15 +1036,6 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
-dependencies = [
- "dirs-sys 0.4.1",
-]
-
-[[package]]
-name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
@@ -2845,7 +2836,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3dd47b0b6df1022ca8a9a06791261c3153028abef191fe53aa326b7f443f2d6"
 dependencies = [
  "anyhow",
- "dirs 6.0.0",
+ "dirs",
  "fd-lock",
  "libc",
  "sha1collisiondetection",
@@ -3782,7 +3773,7 @@ checksum = "c4e07e420427eb5e0dc3bb61172d181fa3c87afb2a77e8c629e920f54a291a6d"
 dependencies = [
  "anyhow",
  "crossbeam",
- "dirs 6.0.0",
+ "dirs",
  "gethostname 1.1.0",
  "num_cpus",
  "openpgp-cert-d",
@@ -3837,7 +3828,7 @@ dependencies = [
  "capnp-rpc",
  "capnpc",
  "ctor",
- "dirs 6.0.0",
+ "dirs",
  "fs2",
  "lalrpop",
  "lalrpop-util",
@@ -3862,7 +3853,7 @@ dependencies = [
  "async-generic",
  "capnp",
  "capnpc",
- "dirs 6.0.0",
+ "dirs",
  "env_logger",
  "log",
  "paste",
@@ -3920,7 +3911,7 @@ checksum = "9e5c4944848f748ce22875020e9cff9e604d52c563aef8e19053f5abe037139e"
 dependencies = [
  "anyhow",
  "async-trait",
- "dirs 6.0.0",
+ "dirs",
  "futures",
  "log",
  "sequoia-keystore-backend",
@@ -4062,7 +4053,7 @@ dependencies = [
  "clap_complete",
  "clap_lex",
  "culpa",
- "dirs 5.0.1",
+ "dirs",
  "filetime",
  "fs_extra",
  "futures-util",
