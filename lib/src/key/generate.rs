@@ -70,6 +70,7 @@ use openpgp::packet::signature::SignatureBuilder;
 use openpgp::packet::signature::subpacket::NotationData;
 use openpgp::serialize::Serialize;
 use openpgp::types::KeyFlags;
+use openpgp::types::PublicKeyAlgorithmSpecification;
 use openpgp::types::SignatureType;
 
 use sequoia_wot::FULLY_TRUSTED;
@@ -238,6 +239,8 @@ impl Sequoia {
                 sequoia: self,
                 profile: Profile::RFC4880,
                 cipher_suite: CipherSuite::default(),
+                encryption_algorithm: None,
+                signing_algorithm: None,
                 password_policy: PasswordPolicy::Prompt,
                 expiration: Expiration::from_duration(
                     DEFAULT_KEY_VALIDITY_DURATION),
@@ -263,6 +266,8 @@ pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
     profile: Profile,
     cipher_suite: CipherSuite,
+    encryption_algorithm: Option<PublicKeyAlgorithmSpecification>,
+    signing_algorithm: Option<PublicKeyAlgorithmSpecification>,
     password_policy: PasswordPolicy,
     expiration: Expiration,
     own_key: bool,
@@ -302,6 +307,24 @@ impl<'sequoia> Params<'sequoia> {
     /// algorithms will be considered when generating the keys.
     pub fn cipher_suite(&self) -> CipherSuite {
         self.cipher_suite.clone()
+    }
+
+    /// Returns the encryption algorithm.
+    ///
+    /// If set, the encryption algorithm overrides the cipher suite.
+    pub fn encryption_algorithm(&self)
+        -> Option<PublicKeyAlgorithmSpecification>
+    {
+        self.encryption_algorithm.clone()
+    }
+
+    /// Returns the signing algorithm.
+    ///
+    /// If set, the signing algorithm overrides the cipher suite.
+    pub fn signing_algorithm(&self)
+        -> Option<PublicKeyAlgorithmSpecification>
+    {
+        self.signing_algorithm.clone()
     }
 
     /// When the certificate expires.
@@ -451,6 +474,30 @@ impl<'sequoia> Builder<'sequoia>
     /// considered when generating the keys.
     pub fn cipher_suite(mut self, cipher_suite: CipherSuite) -> Self {
         self.params.cipher_suite = cipher_suite;
+        self
+    }
+
+    /// Sets the encryption algorithm.
+    ///
+    /// If set, the encryption algorithm overrides the cipher suite.
+    pub fn encryption_algorithm<A>(mut self, algo: A)
+        -> Self
+    where
+        A: Into<Option<PublicKeyAlgorithmSpecification>>
+    {
+        self.params.encryption_algorithm = algo.into();
+        self
+    }
+
+    /// Sets the signing algorithm.
+    ///
+    /// If set, the signing algorithm overrides the cipher suite.
+    pub fn signing_algorithm<A>(mut self, algo: A)
+        -> Self
+    where
+        A: Into<Option<PublicKeyAlgorithmSpecification>>
+    {
+        self.params.signing_algorithm = algo.into();
         self
     }
 
@@ -624,6 +671,8 @@ impl<'sequoia> Builder<'sequoia>
                 sequoia,
                 profile,
                 cipher_suite,
+                ref encryption_algorithm,
+                ref signing_algorithm,
                 ref password_policy,
                 ref expiration,
                 own_key,
@@ -729,6 +778,13 @@ impl<'sequoia> Builder<'sequoia>
 
         // Cipher Suite
         builder = builder.set_cipher_suite(cipher_suite);
+
+        if let Some(algo) = encryption_algorithm {
+            builder = builder.set_encryption_algorithm(algo.clone());
+        }
+        if let Some(algo) = signing_algorithm {
+            builder = builder.set_signing_algorithm(algo.clone());
+        }
 
         // Primary key capabilities.
         builder = builder.set_primary_key_flags(

@@ -37,7 +37,7 @@ sequoia-directories = "0.1"
 sequoia-keystore = { version = "0.7" }
 sequoia-ipc = { version = "0.36", default-features = false }
 sequoia-net = { version = "0.30", default-features = false }
-sequoia-openpgp = { version = "2", default-features = false, features = ["compression"] }
+sequoia-openpgp = { version = "2.4", default-features = false, features = ["compression"] }
 sequoia-policy-config = "0.8"
 sequoia-wot = { version = "0.15.2", default-features = false }
 tempfile = "3.1"
@@ -67,11 +67,11 @@ clap = ["dep:clap"]
 
 [target.'cfg(not(windows))'.dev-dependencies]
 # Enables a crypto backend for the tests:
-sequoia-openpgp = { version = "2", default-features = false, features = ["crypto-nettle", "__implicit-crypto-backend-for-tests"]  }
+sequoia-openpgp = { version = "2.4", default-features = false, features = ["crypto-nettle", "__implicit-crypto-backend-for-tests"]  }
 
 [target.'cfg(windows)'.dev-dependencies]
 # Enables a crypto backend for the tests:
-sequoia-openpgp = { version = "2", default-features = false, features = ["crypto-cng", "__implicit-crypto-backend-for-tests"] }
+sequoia-openpgp = { version = "2.4", default-features = false, features = ["crypto-cng", "__implicit-crypto-backend-for-tests"] }
 
 [lints]
 workspace = true
