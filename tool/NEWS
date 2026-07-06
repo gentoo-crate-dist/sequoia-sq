@@ -8,6 +8,8 @@
      verify --cleartext` rejects inline messages.
 * Changes in 1.3.2
 ** New functionality
+   - `sq` now supports post quantum cryptography as defined in
+     RFC 9980.
    - Add `sq toc`, which recursively lists all commands.
    - When directing `sq` to write to a file that already exists, the
      user had to specify `--overwrite`.  This is no longer required
