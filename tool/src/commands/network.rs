@@ -124,7 +124,8 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
             .set_key_servers(servers)
             .query_wkd(use_wkd)
             .query_dane(use_dane)
-            .search(queries, output, &mut stream, prompt).await
+            .to_writer(output)
+            .search(queries, &mut stream, prompt).await
     })?;
 
     Ok(())
@@ -177,7 +178,8 @@ pub fn dispatch_keyserver(
                     .set_key_servers(servers)
                     .clear_sources()
                     .query_key_servers(true)
-                    .search(queries, output, &mut stream, prompt).await
+                    .to_writer(output)
+                    .search(queries, &mut stream, prompt).await
             })?;
         }
         Publish(c) => {
@@ -302,7 +304,8 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
                     .iterations(1)
                     .clear_sources()
                     .query_wkd(true)
-                    .search(queries, output, &mut stream, prompt).await
+                    .to_writer(output)
+                    .search(queries, &mut stream, prompt).await
             })?;
         }
         Publish(mut c) => {
@@ -679,7 +682,8 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
                     .iterations(1)
                     .clear_sources()
                     .query_dane(true)
-                    .search(queries, output, &mut stream, prompt).await
+                    .to_writer(output)
+                    .search(queries, &mut stream, prompt).await
             })?;
         }
     }

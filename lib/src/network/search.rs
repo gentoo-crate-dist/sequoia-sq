@@ -62,9 +62,6 @@
 //! #   .query_cert_store(true)
 //!     .search(
 //!         vec![Query::Address("alice@example.org".to_string())],
-//!         // Don't write to a file; write certificates to the
-//!         // certificate store.
-//!         None,
 //!         // Don't stream the results.  (See below.)
 //!         (),
 //!         // If a shadow CA is password protected, don't prompt for
@@ -134,9 +131,6 @@
 //! #   .query_cert_store(true)
 //!     .search(
 //!         vec![Query::Address("alice@example.org".to_string())],
-//!         // Don't write to a file; write certificates to the
-//!         // certificate store.
-//!         None,
 //!         // Don't stream the results.  (See below.)
 //!         (),
 //!         // If a shadow CA is password protected, don't prompt for
@@ -798,7 +792,7 @@ impl Sequoia {
     /// results of the previous iteration to generate related queries.
     ///
     /// See [`Builder`] for details.
-    pub fn network_search(&self) -> Builder<'_>
+    pub fn network_search(&self) -> Builder<'_, 'static>
     {
         Builder {
             params: Params {
@@ -813,16 +807,86 @@ impl Sequoia {
                 query_dane: true,
                 query_web: true,
                 query_cert_store: true,
-            }
+                destination: DestinationSummary::Store,
+            },
+            params_once: ParamsOnce {
+                destination: Destination::Store,
+            },
         }
+    }
+}
+
+/// Where to write the certificates.
+enum Destination<'w> {
+    /// Write to the store.
+    Store,
+
+    /// Write to a `Write`r.
+    Writer(&'w mut dyn std::io::Write),
+
+    /// Just return the certificates.
+    Ephemeral,
+}
+
+impl std::fmt::Debug for Destination<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dest = match self {
+            Destination::Store => "Store",
+            Destination::Writer(_) => "Writer",
+            Destination::Ephemeral => "Ephemeral",
+        };
+        write!(f, "{}", dest)
+    }
+}
+
+/// Where to store the certificates.
+enum DestinationSummary {
+    /// Write to the store.
+    Store,
+
+    /// Write to a `Write`r.
+    Writer,
+
+    /// Just return the certificates.
+    Ephemeral,
+}
+
+impl std::fmt::Debug for DestinationSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dest = match self {
+            DestinationSummary::Store => "Store",
+            DestinationSummary::Writer => "Writer",
+            DestinationSummary::Ephemeral => "Ephemeral",
+        };
+        write!(f, "{}", dest)
+    }
+}
+
+impl DestinationSummary {
+    /// Whether we will write to the store.
+    pub fn to_store(&self) -> bool {
+        matches!(self, DestinationSummary::Store)
+    }
+
+    /// Whether we will write to a writer.
+    pub fn to_writer(&self) -> bool {
+        matches!(self, DestinationSummary::Writer)
+    }
+
+    /// Whether we will just return the certificates.
+    ///
+    /// In this case, the certificates are not written to the store or
+    /// to a `Write`r.
+    pub fn ephemeral(&self) -> bool {
+        matches!(self, DestinationSummary::Ephemeral)
     }
 }
 
 /// Parameters to the network search function.
 ///
 /// The parameters passed to [`Sequoia::network_search`].
-pub struct Params<'a> {
-    sequoia: &'a Sequoia,
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
     iterations: u8,
     servers: Vec<Cow<'static, str>>,
     query_key_servers: bool,
@@ -830,12 +894,31 @@ pub struct Params<'a> {
     query_dane: bool,
     query_web: bool,
     query_cert_store: bool,
+    destination: DestinationSummary,
 }
 
-impl<'a> Params<'a> {
+impl<'sequoia> Params<'sequoia> {
     /// Returns the sequoia instance.
-    pub fn sequoia(&self) -> &'a Sequoia {
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
         self.sequoia
+    }
+
+    /// Whether we will write to the certificate store.
+    pub fn to_store(&self) -> bool {
+        self.destination.to_store()
+    }
+
+    /// Whether we will write to a writer.
+    pub fn to_writer(&self) -> bool {
+        self.destination.to_writer()
+    }
+
+    /// Whether we will just return the certificates.
+    ///
+    /// In this case, the certificates are not written to the
+    /// certificate store or to a `Write`r.
+    pub fn ephemeral(&self) -> bool {
+        self.destination.ephemeral()
     }
 
     /// The number of times to iterate.
@@ -934,18 +1017,82 @@ impl<'a> Params<'a> {
     }
 }
 
-/// Search for certificates on the network.
-pub struct Builder<'a> {
-    params: Params<'a>,
+/// Parameters to the network search function.
+///
+/// The parameters passed to [`Sequoia::network_search`].
+pub struct ParamsOnce<'writer> {
+    destination: Destination<'writer>,
 }
 
-impl<'a> Builder<'a> {
+/// Search for certificates on the network.
+pub struct Builder<'sequoia, 'writer> {
+    params: Params<'sequoia>,
+    params_once: ParamsOnce<'writer>,
+}
+
+impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
-    pub fn params(&self) -> &Params<'_> {
+    pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    /// Writes the certificates to the certificate store
+    ///
+    /// This is the default.
+    pub fn to_store(mut self) -> Self {
+        self.params.destination = DestinationSummary::Store;
+        self.params_once.destination = Destination::Store;
+        self
+    }
+
+    /// Writes the certificates to `Write`rs.
+    ///
+    /// If `Writer` is `None`, then writes them to the certificate store.
+    pub fn to_writer<'w, O, W>(self, writer: O)
+        -> Builder<'sequoia, 'w>
+    where
+        O: Into<Option<&'w mut W>>,
+        W: std::io::Write + 'w,
+    {
+        // This is a bit more complicated than other setters as we
+        // need to change self's lifetime from 'writer to 'w.
+        if let Some(writer) = writer.into() {
+            Builder {
+                params: Params {
+                    destination : DestinationSummary::Writer,
+                    ..self.params
+                },
+                params_once: ParamsOnce {
+                    destination: Destination::Writer(writer),
+                    ..self.params_once
+                },
+            }
+        } else {
+            Builder {
+                params: Params {
+                    destination : DestinationSummary::Store,
+                    ..self.params
+                },
+                params_once: ParamsOnce {
+                    destination: Destination::Store,
+                    ..self.params_once
+                },
+            }
+        }
+    }
+
+    /// Doesn't save the certificates; just returns them.
+    ///
+    /// In this case, the certificates are not written to the
+    /// certificate store or to a `Write`r.
+    pub fn ephemeral(mut self) -> Self {
+        self.params.destination = DestinationSummary::Ephemeral;
+        self.params_once.destination = Destination::Ephemeral;
+        self
+    }
+
 
     /// The number of times to iterate.
     ///
@@ -1114,22 +1261,22 @@ impl<'a> Builder<'a> {
     }
 
     /// Search for certificates on the network.
-    pub async fn search<S, P>(&self,
-                              queries: Vec<Query>,
-                              output: Option<&mut dyn std::io::Write>,
-                              stream: S,
-                              prompt: P)
+    pub async fn search<'stream, S, P>(self,
+                                       queries: Vec<Query>,
+                                       stream: S,
+                                       prompt: P)
         -> Result<(), Error>
     where
-        S: Stream,
+        S: Stream + 'stream,
         P: Prompt
     {
-        let mut stream = Box::new(stream) as Box<dyn Stream>;
+        let mut stream = Box::new(stream) as Box<dyn Stream + 'stream>;
 
         let mut report = output::Report::new();
 
-        let result = self.search_(
-            queries, output, &mut stream, prompt, &mut report).await;
+        let result = Self::search_(
+            &self.params, self.params_once,
+            queries, &mut stream, prompt, &mut report).await;
 
         let result = match result {
             Ok(()) => {
@@ -1158,7 +1305,7 @@ impl<'a> Builder<'a> {
 
         // Emit the report.
         stream.output(
-            self.params(),
+            &self.params,
             Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
@@ -1166,12 +1313,12 @@ impl<'a> Builder<'a> {
     }
 
     /// Search for certificates on the network.
-    async fn search_<P>(&self,
-                        mut queries: Vec<Query>,
-                        output: Option<&mut dyn std::io::Write>,
-                        stream: &mut Box<dyn Stream + 'a>,
-                        prompt: P,
-                        report: &mut output::Report)
+    async fn search_<'stream, P>(params: &Params<'sequoia>,
+                                 params_once: ParamsOnce<'writer>,
+                                 mut queries: Vec<Query>,
+                                 stream: &mut Box<dyn Stream + 'stream>,
+                                 prompt: P,
+                                 report: &mut output::Report)
         -> Result<(), Error>
     where
         P: Prompt
@@ -1185,13 +1332,17 @@ impl<'a> Builder<'a> {
             query_dane,
             query_web,
             query_cert_store,
-        } = &self.params;
+            destination: _,
+        } = params;
+        let ParamsOnce {
+            destination,
+        } = params_once;
 
         for q in queries.iter() {
             q.check()?;
         }
 
-        if output.is_none() {
+        if params.to_store() {
             // We're going to save the output to the certificate store.
             // Make sure it is enabled.
             sequoia.cert_store_or_else()?;
@@ -1199,7 +1350,7 @@ impl<'a> Builder<'a> {
 
         // Certify with the shadown CAs if we're saving to the
         // certificate store.
-        let certify = output.is_none();
+        let certify = params.to_store();
 
         // Whether to output ASCII-armored keyrings or binary-encoded
         // keyrings.
@@ -1308,7 +1459,7 @@ impl<'a> Builder<'a> {
                                 ks.url().as_str().to_string());
 
                             stream.output(
-                                self.params(),
+                                params,
                                 Output::RequestQueued(
                                     output::RequestQueued {
                                         source: source.clone(),
@@ -1343,7 +1494,7 @@ impl<'a> Builder<'a> {
                         let source = Source::WKD;
 
                         stream.output(
-                            self.params(),
+                            params,
                             Output::RequestQueued(
                                 output::RequestQueued {
                                     query: query.clone(),
@@ -1378,7 +1529,7 @@ impl<'a> Builder<'a> {
                         let source = Source::DANE;
 
                         stream.output(
-                            self.params(),
+                            params,
                             Output::RequestQueued(
                                 output::RequestQueued {
                                     query: query.clone(),
@@ -1412,7 +1563,7 @@ impl<'a> Builder<'a> {
                         let source = Source::Http(url.clone());
 
                         stream.output(
-                            self.params(),
+                            params,
                             Output::RequestQueued(
                                 output::RequestQueued {
                                     query: query.clone(),
@@ -1457,7 +1608,7 @@ impl<'a> Builder<'a> {
                         let source = Source::CertStore;
 
                         stream.output(
-                            self.params(),
+                            params,
                             Output::RequestQueued(
                                 output::RequestQueued {
                                     query: query.clone(),
@@ -1602,7 +1753,7 @@ impl<'a> Builder<'a> {
                             }
                         }
                         stream.output(
-                            self.params(),
+                            params,
                             Output::Response(
                                 output::Response {
                                     source: response.source.clone(),
@@ -1615,7 +1766,7 @@ impl<'a> Builder<'a> {
                     }
                     Err(err) => {
                         stream.output(
-                            self.params(),
+                            params,
                             Output::Response(
                                 output::Response {
                                     source: response.source.clone(),
@@ -1651,14 +1802,14 @@ impl<'a> Builder<'a> {
         // Write out a keyring or import the certs.
 
         stream.output(
-            self.params(),
+            params,
             Output::StartOfResults)
             .map_err(|err| Error::StreamOutputError(err))?;
 
         let certs = certs.into_values()
             .map(|(cert, sources)| {
                 stream.output(
-                    self.params(),
+                    params,
                     Output::CertResult(
                         output::CertResult {
                             sources: sources
@@ -1679,11 +1830,11 @@ impl<'a> Builder<'a> {
             .collect::<Result<Vec<_>, Error>>()?;
 
         stream.output(
-            self.params(),
+            params,
             Output::EndOfResults)
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        if let Some(mut output) = output {
+        if let Destination::Writer(mut output) = destination {
             // Serializes a keyring, adding descriptive headers if armored.
             let doit = || {
                 // Handle the easy options first.  No armor no cry:
@@ -1912,9 +2063,9 @@ mod tests {
             sq.network_search()
                 .clear_sources()
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
@@ -1927,9 +2078,9 @@ mod tests {
             sq.network_search()
                 .clear_sources()
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("invalid@alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
@@ -1951,9 +2102,9 @@ mod tests {
             sq.network_search()
                 .clear_sources()
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
@@ -1977,9 +2128,9 @@ mod tests {
             sq.network_search()
                 .clear_sources()
                 .query_cert_store(true)
+                .to_writer(&mut keyring)
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    Some(&mut keyring),
                     &mut output,
                     Cancel::new())
                 .await
@@ -2014,9 +2165,9 @@ mod tests {
             sq.network_search()
                 .clear_sources()
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
@@ -2033,9 +2184,9 @@ mod tests {
                 .clear_sources()
                 .iterations(1)
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
@@ -2058,9 +2209,9 @@ mod tests {
             sq.network_search()
                 .clear_sources()
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
@@ -2083,9 +2234,9 @@ mod tests {
                 .clear_sources()
                 .iterations(1)
                 .query_cert_store(true)
+                .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    None,
                     &mut output,
                     Cancel::new())
                 .await
