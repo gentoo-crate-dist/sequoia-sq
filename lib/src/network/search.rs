@@ -179,8 +179,11 @@ use crate::Ca;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
+use crate::Writer;
 use crate::cert::cert_exportable;
 use crate::config::DEFAULT_KEYSERVERS;
+use crate::destination::Destination;
+use crate::destination::DestinationSummary;
 use crate::network::http_client;
 use crate::prompt::Prompt;
 use crate::provenance::certify_downloads;
@@ -816,72 +819,6 @@ impl Sequoia {
     }
 }
 
-/// Where to write the certificates.
-enum Destination<'w> {
-    /// Write to the store.
-    Store,
-
-    /// Write to a `Write`r.
-    Writer(&'w mut dyn std::io::Write),
-
-    /// Just return the certificates.
-    Ephemeral,
-}
-
-impl std::fmt::Debug for Destination<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let dest = match self {
-            Destination::Store => "Store",
-            Destination::Writer(_) => "Writer",
-            Destination::Ephemeral => "Ephemeral",
-        };
-        write!(f, "{}", dest)
-    }
-}
-
-/// Where to store the certificates.
-enum DestinationSummary {
-    /// Write to the store.
-    Store,
-
-    /// Write to a `Write`r.
-    Writer,
-
-    /// Just return the certificates.
-    Ephemeral,
-}
-
-impl std::fmt::Debug for DestinationSummary {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let dest = match self {
-            DestinationSummary::Store => "Store",
-            DestinationSummary::Writer => "Writer",
-            DestinationSummary::Ephemeral => "Ephemeral",
-        };
-        write!(f, "{}", dest)
-    }
-}
-
-impl DestinationSummary {
-    /// Whether we will write to the store.
-    pub fn to_store(&self) -> bool {
-        matches!(self, DestinationSummary::Store)
-    }
-
-    /// Whether we will write to a writer.
-    pub fn to_writer(&self) -> bool {
-        matches!(self, DestinationSummary::Writer)
-    }
-
-    /// Whether we will just return the certificates.
-    ///
-    /// In this case, the certificates are not written to the store or
-    /// to a `Write`r.
-    pub fn ephemeral(&self) -> bool {
-        matches!(self, DestinationSummary::Ephemeral)
-    }
-}
-
 /// Parameters to the network search function.
 ///
 /// The parameters passed to [`Sequoia::network_search`].
@@ -903,23 +840,7 @@ impl<'sequoia> Params<'sequoia> {
         self.sequoia
     }
 
-    /// Whether we will write to the certificate store.
-    pub fn to_store(&self) -> bool {
-        self.destination.to_store()
-    }
-
-    /// Whether we will write to a writer.
-    pub fn to_writer(&self) -> bool {
-        self.destination.to_writer()
-    }
-
-    /// Whether we will just return the certificates.
-    ///
-    /// In this case, the certificates are not written to the
-    /// certificate store or to a `Write`r.
-    pub fn ephemeral(&self) -> bool {
-        self.destination.ephemeral()
-    }
+    destination_params_impl!("certificates", "are");
 
     /// The number of times to iterate.
     ///
@@ -1017,11 +938,9 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
-/// Parameters to the network search function.
-///
-/// The parameters passed to [`Sequoia::network_search`].
-pub struct ParamsOnce<'writer> {
-    destination: Destination<'writer>,
+/// Owned parameters.
+struct ParamsOnce<'writer> {
+    destination: Destination<Writer<'writer>>,
 }
 
 /// Search for certificates on the network.
@@ -1038,61 +957,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
         &self.params
     }
 
-    /// Writes the certificates to the certificate store
-    ///
-    /// This is the default.
-    pub fn to_store(mut self) -> Self {
-        self.params.destination = DestinationSummary::Store;
-        self.params_once.destination = Destination::Store;
-        self
-    }
-
-    /// Writes the certificates to `Write`rs.
-    ///
-    /// If `Writer` is `None`, then writes them to the certificate store.
-    pub fn to_writer<'w, O, W>(self, writer: O)
-        -> Builder<'sequoia, 'w>
-    where
-        O: Into<Option<&'w mut W>>,
-        W: std::io::Write + 'w,
-    {
-        // This is a bit more complicated than other setters as we
-        // need to change self's lifetime from 'writer to 'w.
-        if let Some(writer) = writer.into() {
-            Builder {
-                params: Params {
-                    destination : DestinationSummary::Writer,
-                    ..self.params
-                },
-                params_once: ParamsOnce {
-                    destination: Destination::Writer(writer),
-                    ..self.params_once
-                },
-            }
-        } else {
-            Builder {
-                params: Params {
-                    destination : DestinationSummary::Store,
-                    ..self.params
-                },
-                params_once: ParamsOnce {
-                    destination: Destination::Store,
-                    ..self.params_once
-                },
-            }
-        }
-    }
-
-    /// Doesn't save the certificates; just returns them.
-    ///
-    /// In this case, the certificates are not written to the
-    /// certificate store or to a `Write`r.
-    pub fn ephemeral(mut self) -> Self {
-        self.params.destination = DestinationSummary::Ephemeral;
-        self.params_once.destination = Destination::Ephemeral;
-        self
-    }
-
+    destination_builder_impl!("certificates", "are");
 
     /// The number of times to iterate.
     ///
@@ -1847,7 +1712,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
 
                 // Just one Cert?  Ez:
                 if certs.len() == 1 {
-                    return certs[0].armored().serialize(&mut output);
+                    return certs[0].armored().serialize(output.writer());
                 }
 
                 // Then, collect the headers.

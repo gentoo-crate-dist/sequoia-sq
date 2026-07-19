@@ -27,7 +27,7 @@
 //! # Ok(()) }
 //! ```
 //!
-//! Generate a key without importing it to the key store:
+//! Generate a key and write it and the revocation certificate to a `Write`r:
 //!
 //! ```
 //! # use sequoia::Sequoia;
@@ -43,7 +43,7 @@
 //!     .name("Alice")
 //!     .email("alice@example.org")
 //!     .password("secr3t".into())
-//!     .to_writer(&mut key, &mut revocation)
+//!     .to_writer((&mut key, &mut revocation))
 //!     // We already provided the password so we don't need a password prompt.
 //!     .generate(Cancel::new())?;
 //!
@@ -61,8 +61,8 @@ use sequoia_openpgp as openpgp;
 use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::Profile;
+use openpgp::armor;
 use openpgp::armor::Kind;
-use openpgp::armor::Writer;
 use openpgp::cert::CertBuilder;
 use openpgp::cert::CipherSuite;
 use openpgp::crypto;
@@ -76,11 +76,15 @@ use openpgp::types::SignatureType;
 
 use sequoia_wot::FULLY_TRUSTED;
 
+use crate::OptionalWriter;
 use crate::Result;
 use crate::Sequoia;
+use crate::Writer;
 use crate::SystemError;
 use crate::config::DEFAULT_KEY_VALIDITY_DURATION;
 use crate::config::Expiration;
+use crate::destination::Destination;
+use crate::destination::DestinationSummary;
 use crate::key::PasswordPolicy;
 use crate::key::certify_generated;
 use crate::prompt::check::CheckNewPassword;
@@ -254,59 +258,19 @@ impl Sequoia {
                 emails: Vec::new(),
                 userids: Vec::new(),
                 allow_non_canonical_userids: false,
-                destination: Destination::Keystore,
+                destination: DestinationSummary::Store,
+            },
+            params_once: ParamsOnce {
+                destination: Destination::Store,
             },
         }
-    }
-}
-
-/// Where to write the key to.
-enum Destination<'w> {
-    /// Write to the key store.
-    Keystore,
-
-    /// Write to a `Write`r.
-    Writer(&'w mut dyn std::io::Write, &'w mut dyn std::io::Write),
-
-    /// Just return the key.
-    Ephemeral,
-}
-
-impl std::fmt::Debug for Destination<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let dest = match self {
-            Destination::Keystore => "Keystore",
-            Destination::Writer(_, _) => "Writer",
-            Destination::Ephemeral => "Ephemeral",
-        };
-        write!(f, "{}", dest)
-    }
-}
-
-impl Destination<'_> {
-    /// Whether we will write to the keystore.
-    pub fn to_keystore(&self) -> bool {
-        matches!(self, Destination::Keystore)
-    }
-
-    /// Whether we will write to a writer.
-    pub fn to_writer(&self) -> bool {
-        matches!(self, Destination::Writer(_, _))
-    }
-
-    /// Whether we will just return the key.
-    ///
-    /// In this case, the key is not written to the key store or to a
-    /// `Write`r.
-    pub fn ephemeral(&self) -> bool {
-        matches!(self, Destination::Ephemeral)
     }
 }
 
 /// Key generation parameters.
 ///
 /// These parameters are used by [`generate`](Builder::generate).
-pub struct Params<'sequoia, 'writer> {
+pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
     profile: Profile,
     cipher_suite: CipherSuite,
@@ -323,10 +287,10 @@ pub struct Params<'sequoia, 'writer> {
     emails: Vec<String>,
     userids: Vec<UserID>,
     allow_non_canonical_userids: bool,
-    destination: Destination<'writer>,
+    destination: DestinationSummary,
 }
 
-impl<'sequoia> Params<'sequoia, '_> {
+impl<'sequoia> Params<'sequoia> {
     /// Returns the `Sequoia` instance.
     pub fn sequoia(&self) -> &'sequoia Sequoia {
         &self.sequoia
@@ -432,23 +396,7 @@ impl<'sequoia> Params<'sequoia, '_> {
         self.allow_non_canonical_userids
     }
 
-    /// Whether we will write to the keystore.
-    pub fn to_keystore(&self) -> bool {
-        self.destination.to_keystore()
-    }
-
-    /// Whether we will write to a writer.
-    pub fn to_writer(&self) -> bool {
-        self.destination.to_writer()
-    }
-
-    /// Whether we will just return the key.
-    ///
-    /// In this case, the key is not written to the key store or to a
-    /// `Write`r.
-    pub fn ephemeral(&self) -> bool {
-        self.destination.ephemeral()
-    }
+    destination_params_impl!("key");
 }
 
 /// An additional key.
@@ -505,11 +453,17 @@ impl KeyTemplate {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'writer> {
+    destination: Destination<(Writer<'writer>, OptionalWriter<'writer>)>,
+}
+
 /// Generates keys.
 ///
 /// A builder providing control over how to generate a new key.
 pub struct Builder<'sequoia, 'writer> {
-    params: Params<'sequoia, 'writer>,
+    params: Params<'sequoia>,
+    params_once: ParamsOnce<'writer>,
 }
 
 impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
@@ -517,9 +471,55 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
-    pub fn params(&self) -> &Params<'sequoia, 'writer> {
+    pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    destination_builder_to_store_impl!("key");
+
+    /// Writes the key and optionally the revocation certificate to
+    /// `Write`rs.
+    ///
+    /// If `writers` is `None`, then writes the key and the revocation
+    /// certificate to the store.
+    pub fn to_writer<'w, O, W1, W2>(self, writers: O)
+        -> Builder<'sequoia, 'w>
+    where
+        O: Into<Option<(W1, W2)>>,
+        W1: Into<crate::Writer<'w>>,
+        W2: Into<crate::OptionalWriter<'w>>,
+    {
+        let writers = writers.into();
+
+        // This is a bit more complicated than other setters as we
+        // need to change self's lifetime from 'writer to 'w.
+        if let Some((key_writer, rev_writer)) = writers {
+            Builder {
+                params: Params {
+                    destination : DestinationSummary::Writer,
+                    ..self.params
+                },
+                params_once: ParamsOnce {
+                    destination: Destination::Writer(
+                        (key_writer.into(), rev_writer.into())),
+                    ..self.params_once
+                },
+            }
+        } else {
+            Builder {
+                params: Params {
+                    destination : DestinationSummary::Store,
+                    ..self.params
+                },
+                params_once: ParamsOnce {
+                    destination: Destination::Store,
+                    ..self.params_once
+                },
+            }
+        }
+    }
+
+    destination_builder_to_ephemeral_impl!("key");
 
     /// Sets the certificate's profile.
     ///
@@ -715,34 +715,6 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         self
     }
 
-    /// Writes the generated key and revocation certificate to the
-    /// keystore.
-    ///
-    /// This is the default.
-    pub fn to_keystore(mut self) -> Self {
-        self.params.destination = Destination::Keystore;
-        self
-    }
-
-    /// Writes the generated key and revocation certificate to `Write`rs.
-    pub fn to_writer(mut self,
-                     key: &'writer mut dyn std::io::Write,
-                     rev_cert: &'writer mut dyn std::io::Write)
-        -> Self
-    {
-        self.params.destination = Destination::Writer(key, rev_cert);
-        self
-    }
-
-    /// Doesn't save the key; just returns it.
-    ///
-    /// In this case, the key is not written to the key store or to a
-    /// `Write`r.
-    pub fn ephemeral(mut self) -> Self {
-        self.params.destination = Destination::Ephemeral;
-        self
-    }
-
     /// Generates a key.
     ///
     /// By default, the key is saved to the key store.  Use
@@ -771,8 +743,11 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                 emails,
                 mut userids,
                 allow_non_canonical_userids,
-                destination
+                destination: _,
             },
+            params_once: ParamsOnce {
+                mut destination,
+            }
         } = self;
 
         macro_rules! arg {
@@ -792,7 +767,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             }
         }
 
-        let to_keystore = destination.to_keystore();
+        let to_keystore = destination.to_store();
         if to_keystore {
             // We're going to write to the key store and cert store.
             // Fail early if they are not available.
@@ -961,14 +936,13 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         let (mut cert, rev);
 
         let mut rev_writer_;
-        let mut rev_writer2_;
-        let (output_writer, rev_writer) = match destination {
-            Destination::Writer(output_writer, rev_writer) => {
+        let (mut output_writer, rev_writer) = match &mut destination {
+            Destination::Writer((ref mut output_writer, ref mut rev_writer)) => {
                 (cert, rev) = gen()?;
 
-                (Some(output_writer), rev_writer)
+                (Some(output_writer.writer()), rev_writer.writer())
             }
-            Destination::Keystore => {
+            Destination::Store => {
                 if let Some(home) = sequoia.home() {
                     let dir = home.data_dir(crate::directories::Component::Other(
                         "revocation-certificates".into()));
@@ -990,7 +964,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                         })
                         .map_err(sys!())?;
 
-                    (None, &mut rev_writer_ as &mut dyn std::io::Write)
+                    (None, Some(&mut rev_writer_ as _))
                 } else {
                     return Err(Error::SystemError(
                         SystemError::HomeDisabled));
@@ -999,22 +973,21 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             Destination::Ephemeral => {
                 (cert, rev) = gen()?;
 
-                rev_writer2_ = std::io::sink();
-                (None, &mut rev_writer2_ as _)
+                (None, None)
             }
         };
 
         let headers = cert.armor_headers();
 
         // Write out the revocation certificate.
-        {
+        if let Some(rev_writer) = rev_writer {
             let mut headers: Vec<_> = headers
                 .iter()
                 .map(|value| ("Comment", value.as_str()))
                 .collect();
             headers.insert(0, ("Comment", "Revocation certificate for"));
 
-            let mut w = Writer::with_headers(
+            let mut w = armor::Writer::with_headers(
                 rev_writer, Kind::PublicKey, headers)
                 .map_err(op!())?;
             Packet::from(cert.primary_key().key().clone()).serialize(&mut w)
@@ -1034,9 +1007,9 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                 .map(|value| ("Comment", value.as_str()))
                 .collect();
 
-            if let Some(output_writer) = output_writer {
+            if let Some(output_writer) = output_writer.as_mut() {
                 //// Write the key to a file or to stdout.
-                let mut w = Writer::with_headers(
+                let mut w = armor::Writer::with_headers(
                     output_writer, Kind::SecretKey, headers)
                     .map_err(op!())?;
                 cert.as_tsk().serialize(&mut w).map_err(op!())?;

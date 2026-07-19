@@ -55,8 +55,8 @@ pub fn generate(
         output_path_ = output_path_arg.clone();
         output_path = output_path_.path().map(|p| p.as_path());
         rev_ = rev_path_arg.for_secrets().create_safe(&sq)?;
-        Some((&mut output_ as &mut dyn std::io::Write,
-              &mut rev_ as &mut dyn std::io::Write))
+        Some((&mut output_ as &mut (dyn std::io::Write + Send + Sync),
+              &mut rev_ as &mut (dyn std::io::Write + Send + Sync)))
     } else {
         // Save to the key store.
         None
@@ -97,7 +97,7 @@ pub fn generate(
         .userids(command.userid)
         .allow_non_canonical_userids(command.allow_non_canonical_userids);
     if let Some((key, rev)) = output {
-        builder = builder.to_writer(key, rev);
+        builder = builder.to_writer((key, rev));
     }
     let result = builder.generate(prompt)?;
 

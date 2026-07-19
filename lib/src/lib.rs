@@ -224,6 +224,7 @@ use openpgp::packet::key::UnspecifiedRole;
 use cert_store::StoreUpdate;
 
 #[macro_use] mod transitional;
+#[macro_use] mod destination;
 #[macro_use] mod errors;
 pub use errors::Error;
 pub use errors::SystemError;
@@ -243,6 +244,9 @@ pub mod sign;
 pub mod types;
 pub mod userid;
 use types::StateDirectory;
+mod writer;
+pub use writer::OptionalWriter;
+pub use writer::Writer;
 
 mod best_userid;
 mod builder;

@@ -1988,7 +1988,7 @@ Failed:              {:8}{:8}",
             .key_generate()
             .name("alice")
             .without_password()
-            .to_writer(&mut alice_key, &mut alice_rev)
+            .to_writer((&mut alice_key, &mut alice_rev))
             .generate(prompt::Cancel::new())
             .expect("Can generate key")
             .into_cert();
@@ -2003,7 +2003,7 @@ Failed:              {:8}{:8}",
             .key_generate()
             .name("bob")
             .without_password()
-            .to_writer(&mut bob_key, &mut bob_rev)
+            .to_writer((&mut bob_key, &mut bob_rev))
             .generate(prompt::Cancel::new())
             .expect("Can generate key")
             .into_cert();
@@ -2018,7 +2018,7 @@ Failed:              {:8}{:8}",
             .key_generate()
             .name("carol")
             .without_password()
-            .to_writer(&mut carol_key, &mut carol_rev)
+            .to_writer((&mut carol_key, &mut carol_rev))
             .generate(prompt::Cancel::new())
             .expect("Can generate key")
             .into_cert();
@@ -2028,7 +2028,7 @@ Failed:              {:8}{:8}",
             .key_generate()
             .name("dave")
             .without_password()
-            .to_writer(&mut dave_key, &mut dave_rev)
+            .to_writer((&mut dave_key, &mut dave_rev))
             .generate(prompt::Cancel::new())
             .expect("Can generate key")
             .into_cert();
