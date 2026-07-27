@@ -34,9 +34,9 @@ use openpgp::{
     policy::StandardPolicy,
 };
 use sequoia_ipc as ipc;
-use sequoia_net::reqwest::Url;
 use sequoia_directories::{Component, Home};
 use sequoia_policy_config::ConfiguredStandardPolicy;
+use url::Url;
 
 use crate::Result;
 use crate::consts::SECONDS_IN_DAY;

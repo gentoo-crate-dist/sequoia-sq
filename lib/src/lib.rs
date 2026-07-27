@@ -216,6 +216,7 @@ pub use sequoia_cert_store as cert_store;
 pub use sequoia_directories as directories;
 pub use sequoia_keystore as key_store;
 pub use sequoia_ipc as ipc;
+#[cfg(feature = "net")]
 pub use sequoia_net as net;
 pub use sequoia_openpgp as openpgp;
 pub use sequoia_policy_config as policy_config;
@@ -247,6 +248,7 @@ mod decrypt_key;
 pub mod encrypt;
 pub mod inspect;
 pub mod key;
+#[cfg(feature = "net")]
 pub mod network;
 pub mod pki;
 pub mod provenance;
@@ -512,6 +514,7 @@ impl Sequoia {
     /// results of the previous iteration to generate related queries.
     ///
     /// See [`network::search::Builder`] for details.
+    #[cfg(feature = "net")]
     pub fn network_search<'sequoia, 'writer, 'stream, 'prompt>(&'sequoia self)
         -> network::search::Builder<'sequoia, 'writer, 'stream, 'prompt>
     {
