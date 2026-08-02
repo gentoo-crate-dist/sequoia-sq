@@ -187,6 +187,7 @@ use openpgp::types::KeyFlags;
 
 use sequoia_keystore as keystore;
 
+use crate::OptionalWriter;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
@@ -373,17 +374,17 @@ impl<'sequoia> Builder<'sequoia> {
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
     /// them.
-    pub fn decrypt<'a, I, O, S, P>(&self, input: I, output: O,
-                                   prompt: P, mut stream: S)
+    pub fn decrypt<'a, 'w, I, O, S, P>(&self, input: I, output: O,
+                                       prompt: P, mut stream: S)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<OptionalWriter<'w>>,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
         let mut report = verify::output::Report::new();
-        let result = self.decrypt_(input, output, prompt, &mut stream,
+        let result = self.decrypt_(input, output.into(), prompt, &mut stream,
                                    &mut report);
 
         let result = match result {
@@ -421,13 +422,12 @@ impl<'sequoia> Builder<'sequoia> {
         result
     }
 
-    fn decrypt_<'a, I, O, S, P>(&self, input: I, mut output: O,
-                                prompt: P, mut stream: S,
-                                report: &mut verify::output::Report)
+    fn decrypt_<'a, 'w, I, S, P>(&self, input: I, mut output: OptionalWriter,
+                                 prompt: P, mut stream: S,
+                                 report: &mut verify::output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
@@ -499,20 +499,20 @@ impl<'sequoia> Builder<'sequoia> {
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
     /// them.
-    pub fn decrypt_unwrap<I, O, S, P>(&self,
-                                      input: I, output: O,
-                                      prompt: P, mut stream: S)
+    pub fn decrypt_unwrap<'w, I, O, S, P>(&self,
+                                          input: I, output: O,
+                                          prompt: P, mut stream: S)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<OptionalWriter<'w>>,
         S: Stream,
         P: prompt::Prompt,
     {
         let mut report = verify::output::Report::new();
 
-        let result = self.decrypt_unwrap_(input, output, prompt, &mut stream,
-                                          &mut report);
+        let result = self.decrypt_unwrap_(
+            input, output.into(), prompt, &mut stream, &mut report);
 
         let result = match result {
             Ok(()) => {
@@ -549,14 +549,13 @@ impl<'sequoia> Builder<'sequoia> {
         result
     }
 
-    fn decrypt_unwrap_<I, O, S, P>(&self,
-                                   input: I, mut output: O,
+    fn decrypt_unwrap_<'w, I, S, P>(&self,
+                                   input: I, mut output: OptionalWriter<'w>,
                                    prompt: P, mut stream: S,
                                    report: &mut verify::output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
         S: Stream,
         P: prompt::Prompt,
     {
