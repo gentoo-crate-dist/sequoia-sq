@@ -67,6 +67,7 @@ use openpgp::types::SignatureType;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::Writer;
 use crate::cert::CertError;
 use crate::prompt;
 use crate::types::HashMode;
@@ -469,14 +470,14 @@ impl<'sequoia, T> Builder<'sequoia, T>
 where
     T: builder::SignatureType
 {
-    fn sign_<'a, I, O, S, P>(&self, mut input: I, output: O,
-                             prompt: P, mut stream: S,
-                             detached_signature: bool,
-                             preexisting_signatures: Vec<Signature>)
-                             -> Result<()>
+    fn sign_<'a, 'w, I, S, P>(&self, mut input: I,
+                              output: Writer<'w>,
+                              prompt: P, mut stream: S,
+                              detached_signature: bool,
+                              preexisting_signatures: Vec<Signature>)
+        -> Result<()>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
@@ -618,16 +619,16 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
     /// them.
-    pub fn sign<'a, I, O, S, P>(&self, input: I, output: O,
-                                prompt: P, stream: S)
-                                -> Result<()>
+    pub fn sign<'a, 'w, I, O, S, P>(&self, input: I, output: O,
+                                    prompt: P, stream: S)
+        -> Result<()>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<Writer<'w>>,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
-        self.sign_(input, output, prompt, stream, true, Vec::new())
+        self.sign_(input, output.into(), prompt, stream, true, Vec::new())
     }
 
     /// Adds signatures to a detached signature file.
@@ -650,7 +651,7 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
     /// them.
-    pub fn append<'a, I, D, O, S, P>(
+    pub fn append<'a, 'w, I, D, O, S, P>(
         &self, input: I,
         detached_signatures: D,
         output: O,
@@ -659,7 +660,7 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<Writer<'w>>,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
@@ -701,7 +702,7 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
         // not possible to replace a file that is open.
         drop(ppr);
 
-        self.sign_(input, output, prompt, stream, true, sigs)
+        self.sign_(input, output.into(), prompt, stream, true, sigs)
     }
 }
 
@@ -721,16 +722,16 @@ impl<'sequoia> Builder<'sequoia, builder::InlineSignature> {
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
     /// them.
-    pub fn sign<'a, I, O, S, P>(&self, input: I, output: O,
-                                prompt: P, stream: S)
-                                -> Result<()>
+    pub fn sign<'a, 'w, I, O, S, P>(&self, input: I, output: O,
+                                    prompt: P, stream: S)
+        -> Result<()>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<Writer<'w>>,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
-        self.sign_(input, output, prompt, stream, false, Vec::new())
+        self.sign_(input, output.into(), prompt, stream, false, Vec::new())
     }
 
     /// Adds signatures to an inline signed message.
