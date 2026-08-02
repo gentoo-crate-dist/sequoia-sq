@@ -27,6 +27,7 @@ use openpgp::types::SignatureType;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::Writer;
 use crate::cert::CertError;
 use crate::cert;
 use crate::prompt::check::CheckNewPassword;
@@ -484,15 +485,17 @@ impl<'sequoia> Builder<'sequoia> {
     /// If you don't want to implement [`Stream`], you can pass `&mut
     /// Vec<Output>` to collect the status messages, or `()` to ignore
     /// them.
-    pub fn encrypt<'a, I, O, S, P>(&self, mut input: I, output: O,
-                                   prompt: P, mut stream: S)
+    pub fn encrypt<'a, 'w, I, O, S, P>(&self, mut input: I, output: O,
+                                       prompt: P, mut stream: S)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<Writer<'w>>,
         S: Stream + 'a,
         P: prompt::Prompt,
     {
+        let output = output.into();
+
         let &Builder {
             params: Params {
                 sequoia,
