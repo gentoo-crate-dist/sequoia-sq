@@ -212,6 +212,7 @@ use openpgp::types::SymmetricAlgorithm;
 use sequoia_cert_store::Store;
 use sequoia_wot::store::Store as _;
 
+use crate::OptionalWriter;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
@@ -1064,15 +1065,15 @@ impl<'sequoia> Builder<'sequoia> {
     /// don't want to stream the status information, you can pass a
     /// `&mut Vec<Output>` to collect the output.  If you don't care
     /// about the status information, you can pass `()`.
-    pub fn inline_signature<I, O, S>(&self, input: I, output: O, stream: S)
+    pub fn inline_signature<'w, I, O, S>(&self, input: I, output: O, stream: S)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<OptionalWriter<'w>>,
         S: Stream,
 
     {
-        self.execute(input, None::<std::io::Empty>, output, stream)
+        self.execute(input, None::<std::io::Empty>, output.into(), stream)
     }
 
     /// Verifies a detached signature.
@@ -1100,29 +1101,28 @@ impl<'sequoia> Builder<'sequoia> {
     /// don't want to stream the status information, you can pass a
     /// `&mut Vec<Output>` to collect the output.  If you don't care
     /// about the status information, you can pass `()`.
-    pub fn detached_signature<I, D, O, S>(&self, input: I, detached: D,
-                                          output: O, stream: S)
+    pub fn detached_signature<'w, I, D, O, S>(&self, input: I, detached: D,
+                                              output: O, stream: S)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
+        O: Into<OptionalWriter<'w>>,
         S: Stream,
 
     {
-        self.execute(input, Some(detached), output, stream)
+        self.execute(input, Some(detached), output.into(), stream)
     }
 
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute<I, D, O, S>(&self, input: I, detached: Option<D>,
-                           output: O, mut stream: S)
+    fn execute<'w, I, D, S>(&self, input: I, detached: Option<D>,
+                            output: OptionalWriter<'w>, mut stream: S)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
         S: Stream,
     {
         let mut report = output::Report::new();
@@ -1165,14 +1165,13 @@ impl<'sequoia> Builder<'sequoia> {
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute_<I, D, O, S>(&self, input: I, detached: Option<D>,
-                            mut output: O, stream: S,
-                            report: &mut output::Report)
+    fn execute_<I, D, S>(&self, input: I, detached: Option<D>,
+                         mut output: OptionalWriter, stream: S,
+                         report: &mut output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
-        O: std::io::Write + Send + Sync,
         S: Stream,
     {
         let &Builder {
