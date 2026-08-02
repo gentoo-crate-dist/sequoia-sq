@@ -707,6 +707,38 @@ pub enum Output {
     Report(output::Report),
 }
 
+/// The success value.
+///
+/// Returned by [`Builder::certify`].
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    /// The updated certificate.
+    pub cert: Cert,
+
+    /// The generated certifications.
+    pub certifications: Vec<(UserID, Vec<Signature>)>,
+}
+
+impl Outcome {
+    /// Returns a reference to the updated certificate.
+    pub fn cert(&self) -> &Cert {
+        &self.cert
+    }
+
+    /// Returns the updated certificate.
+    pub fn into_cert(self) -> Cert {
+        self.cert
+    }
+
+    /// Returns the generated certifications.
+    pub fn certifications(&self)
+        -> impl Iterator<Item=&(UserID, Vec<Signature>)>
+    {
+        self.certifications.iter()
+    }
+}
+
 impl Sequoia {
     /// The default expiration of a third-party certification.
     const DEFAULT_CERTIFICATION_EXPIRATION: Expiration
@@ -1412,7 +1444,7 @@ impl<'sequoia> Builder<'sequoia>
                              stream: S,
                              prompt: P,
                              output: Option<&mut dyn std::io::Write>)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         S: Stream + 'a,
         P: prompt::Prompt,
@@ -1425,7 +1457,10 @@ impl<'sequoia> Builder<'sequoia>
                             output);
 
         let (result, certifications) = match result {
-            Ok(certifications) => (Ok(()), certifications),
+            Ok(outcome) => {
+                let certifications = outcome.certifications.clone();
+                (Ok(outcome), certifications)
+            }
             Err(err) => (Err(err), Vec::new()),
         };
 
@@ -1450,7 +1485,7 @@ impl<'sequoia> Builder<'sequoia>
                         stream: &mut Box<dyn Stream + 'a>,
                         prompt: Box<dyn prompt::Prompt + 'a>,
                         output: Option<&mut dyn std::io::Write>)
-        -> Result<Vec<(UserID, Vec<Signature>)>, Error>
+        -> Result<Outcome, Error>
     {
         tracer!(false, "certify");
 
@@ -1844,7 +1879,10 @@ impl<'sequoia> Builder<'sequoia>
 
         if certifications.iter().all(|(_u, s)| s.is_empty()) {
             // There are no signatures to insert.  We're done.
-            return Ok(Vec::new());
+            return Ok(Outcome {
+                cert: cert.clone(),
+                certifications: Vec::new(),
+            });
         }
 
         let cert = cert.clone()
@@ -1862,14 +1900,17 @@ impl<'sequoia> Builder<'sequoia>
             // Import it.
             let cert_store = sequoia.cert_store_or_else().map_err(op!())?;
 
-            if let Err(err) = cert_store.update(Arc::new(cert.into())) {
+            if let Err(err) = cert_store.update(Arc::new(cert.clone().into())) {
                 return Err(err)
                     .context("Importing updated certificate")
                     .map_err(op!());
             }
         }
 
-        Ok(certifications)
+        Ok(Outcome {
+            cert,
+            certifications,
+        })
     }
 }
 
@@ -1884,12 +1925,15 @@ mod tests {
     use crate::prompt::Cancel;
 
     fn check(output: Vec<Output>,
+             outcome: impl Into<Option<Outcome>>,
              expected_operational_errors: usize,
              expected_argument_errors: usize,
              expected_certifications: usize,
              expected_certifications_skipped: usize,
              expected_certifications_failed: usize)
     {
+        let outcome = outcome.into();
+
         let mut operational_errors = 0;
         let mut argument_errors = 0;
         let mut certifications = 0;
@@ -1976,6 +2020,9 @@ Failed:              {:8}{:8}",
                    "certifications skipped");
         assert_eq!(expected_certifications_failed, certifications_failed,
                    "certifications failed");
+
+        assert_eq!(outcome.map(|a| a.certifications.len()).unwrap_or(0),
+                   certifications);
     }
 
     #[test]
@@ -2038,7 +2085,7 @@ Failed:              {:8}{:8}",
         {
             let mut output = Vec::new();
             let mut certified = Vec::new();
-            sequoia
+            let outcome = sequoia
                 .pki_certify()
                 .certify(
                     &alice,
@@ -2048,7 +2095,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .expect("Can certify");
-            check(output, 0, 0, 1, 0, 0);
+            check(output, outcome, 0, 0, 1, 0, 0);
         }
 
         // Make a correct and reasonable certification over a
@@ -2056,7 +2103,7 @@ Failed:              {:8}{:8}",
         {
             let mut output = Vec::new();
             let mut certified = Vec::new();
-            sequoia
+            let outcome = sequoia
                 .pki_certify()
                 .certify(
                     &alice,
@@ -2066,7 +2113,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .expect("Can certify");
-            check(output, 0, 0, 2, 0, 0);
+            check(output, outcome, 0, 0, 2, 0, 0);
         }
 
         // Argument error: we can't supply a regular expression if the
@@ -2085,7 +2132,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .unwrap_err();
-            check(output, 0, 1, 0, 0, 0);
+            check(output, None, 0, 1, 0, 0, 0);
         }
 
         // Argument error: a certificate can't certify itself.
@@ -2103,7 +2150,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .unwrap_err();
-            check(output, 0, 1, 0, 0, 0);
+            check(output, None, 0, 1, 0, 0, 0);
         }
 
         // Operational error: the certifier can't actually generate a
@@ -2122,7 +2169,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .unwrap_err();
-            check(output, 1, 0, 0, 0, 0);
+            check(output, None, 1, 0, 0, 0, 0);
         }
 
         // We can't certify a revoked user ID.
@@ -2160,13 +2207,13 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .unwrap_err();
-            check(output, 0, 0, 0, 0, 1);
+            check(output, None, 0, 0, 0, 0, 1);
 
             // If we say ignore_certification_errors, `certify` will
             // return `Ok` (but it will still say that the
             // certification failed).
             let mut output = Vec::new();
-            sequoia
+            let outcome = sequoia
                 .pki_certify()
                 .ignore_certification_errors(true)
                 .certify(
@@ -2177,14 +2224,14 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     Some(&mut certified))
                 .unwrap();
-            check(output, 0, 0, 0, 0, 1);
+            check(output, outcome, 0, 0, 0, 0, 1);
         }
 
         // If we make the same certification twice, the second one
         // should be skipped.
         {
             let mut output = Vec::new();
-            sequoia
+            let outcome = sequoia
                 .pki_certify()
                 .expiration(Expiration::Never)
                 .certify(
@@ -2195,7 +2242,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     None)
                 .expect("Can certify");
-            check(output, 0, 0, 1, 0, 0);
+            check(output, outcome, 0, 0, 1, 0, 0);
 
             let bob2 = sequoia
                 .lookup()
@@ -2205,7 +2252,7 @@ Failed:              {:8}{:8}",
                 .expect("Certificate for bob is in cert store");
 
             let mut output = Vec::new();
-            sequoia
+            let outcome = sequoia
                 .pki_certify()
                 .expiration(Expiration::Never)
                 .certify(
@@ -2216,11 +2263,11 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     None)
                 .expect("Can certify");
-            check(output, 0, 0, 0, 1, 0);
+            check(output, outcome, 0, 0, 0, 1, 0);
 
             // Unless recreate is specified.
             let mut output = Vec::new();
-            sequoia
+            let outcome = sequoia
                 .pki_certify()
                 .recreate(true)
                 .expiration(Expiration::Never)
@@ -2232,7 +2279,7 @@ Failed:              {:8}{:8}",
                     prompt::Cancel::new(),
                     None)
                 .expect("Can certify");
-            check(output, 0, 0, 1, 0, 0);
+            check(output, outcome, 0, 0, 1, 0, 0);
         }
     }
 }

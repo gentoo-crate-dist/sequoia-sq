@@ -353,7 +353,7 @@ impl<'sequoia> Builder<'sequoia>
                     (), // stream: don't show anything.
                     &prompt,
                     None, // Output file.
-                )?
+                )?;
         }
 
         // Merge the new User IDs into cert.
