@@ -38,7 +38,7 @@ pub fn add(sq: Sq, mut c: add::Command)
 
         message_ = Some(message);
         Some((path_.as_deref(),
-              message_.as_mut().unwrap() as &mut dyn std::io::Write))
+              message_.as_mut().unwrap() as &mut (dyn std::io::Write + Send + Sync)))
     } else {
         None
     };
@@ -69,6 +69,7 @@ pub fn add(sq: Sq, mut c: add::Command)
     // XXX: Skip revoked user IDs.
 
     sq.sequoia.pki_certify()
+        .to_writer(output.map(|(_, f)| f))
         // Always recreate.
         .recreate(true)
         .ignore_certification_errors(true) // Filtered by stream.
@@ -82,9 +83,7 @@ pub fn add(sq: Sq, mut c: add::Command)
             &cert,
             &userids,
             stream,
-            prompt,
-            output.map(|(_, f)| f),
-        )?;
+            prompt)?;
 
     if let Some(message) = message_ {
         message.finalize()?;

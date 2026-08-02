@@ -581,9 +581,7 @@ pub fn dispatch(
                             &cert,
                             &userids,
                             stream,
-                            prompt,
-                            None, // Output.
-                        )?;
+                            prompt)?;
                 } else if command.shared_key && have_userids {
                     // Mark all user IDs as authenticated.
                     sq.sequoia.pki_certify()
@@ -598,9 +596,7 @@ pub fn dispatch(
                             &cert,
                             &userids,
                             stream,
-                            prompt,
-                            None, // Output.
-                        )?;
+                            prompt)?;
                 }
 
                 // And save any updates.

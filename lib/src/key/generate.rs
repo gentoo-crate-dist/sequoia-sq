@@ -1053,7 +1053,6 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                             &userids,
                             (), // stream: don't show anything.
                             prompt,
-                            None, // Output.
                         )
                         .map_err(op!())?;
                 } else if ! own_key /* shared key */ && have_userids {
@@ -1070,9 +1069,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                             &cert,
                             &userids,
                             (), // stream: don't show anything.
-                            prompt,
-                            None, // Output.
-                        )
+                            prompt)
                         .map_err(op!())?;
                 }
             } else {

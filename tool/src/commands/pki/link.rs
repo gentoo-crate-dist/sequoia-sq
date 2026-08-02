@@ -98,9 +98,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
             &cert,
             &userids,
             stream,
-            prompt,
-            None, // Output.
-        )?;
+            prompt)?;
 
     Ok(())
 }
@@ -149,9 +147,7 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
             &cert,
             &userids,
             stream,
-            prompt,
-            None, // Output.
-        )?;
+            prompt)?;
 
     Ok(())
 }
@@ -197,9 +193,7 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
             &cert,
             &userids,
             stream,
-            prompt,
-            None, // Output.
-        )?;
+            prompt)?;
 
     Ok(())
 }
