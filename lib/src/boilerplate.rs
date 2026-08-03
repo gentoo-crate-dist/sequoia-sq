@@ -54,5 +54,38 @@ macro_rules! stream {
                 Ok(())
             }
         }
+
+        impl<S> Stream for Option<S>
+        where
+            S: Stream
+        {
+            fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+                if let Some(stream) = self.as_mut() {
+                    stream.output(params, output)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+macro_rules! stream_builder_impl {
+    {} => {
+        /// Emits events on the specified stream.
+        pub fn stream<'s, S>(self, stream: S) -> Builder<'sequoia, 's>
+        where
+            S: Stream + 's
+        {
+            Builder {
+                params: Params {
+                    ..self.params
+                },
+                params_once: ParamsOnce {
+                    stream: Some(Box::new(stream)),
+                    ..self.params_once
+                },
+            }
+        }
     }
 }

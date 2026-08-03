@@ -28,8 +28,6 @@ pub fn dispatch(sq: Sq, cmd: import::Command) -> Result<()> {
     // Then, try to decrypt the message, and look for gossip headers.
     let prompt = password::Prompt::new(&sq, true);
 
-    let importer = sq.sequoia.cert_import();
-
     let mut stats = ImportStats::default();
 
     let mut stdout = std::io::stdout();
@@ -40,14 +38,18 @@ pub fn dispatch(sq: Sq, cmd: import::Command) -> Result<()> {
                 &sq, Some(&input_path), &mut stdout, false);
 
             if input_path == stdin_path {
-                importer.import(std::io::stdin(), &prompt, &mut stream)?;
+                sq.sequoia.cert_import()
+                    .stream(&mut stream)
+                    .import(std::io::stdin(), &prompt)?;
             } else {
                 let input = std::fs::File::open(&input_path)
                     .with_context(|| {
                         format!("Failed to open {}", input_path.display())
                     })?;
 
-                importer.import(input, &prompt, &mut stream)
+                sq.sequoia.cert_import()
+                    .stream(&mut stream)
+                    .import(input, &prompt)
                     .with_context(|| {
                         format!("Reading {}", input_path.display())
                     })?;
