@@ -104,7 +104,7 @@ impl Sequoia {
     /// Returns a builder providing control over how to encrypt a message.
     ///
     /// See [`Builder`] for details.
-    pub fn encrypt(&self) -> Builder<'_>
+    pub fn encrypt(&self) -> Builder<'_, '_>
     {
         Builder {
             params: Params {
@@ -123,6 +123,9 @@ impl Sequoia {
                 use_expired_encryption_keys: false,
 
                 filename: Vec::new(),
+            },
+            params_once: ParamsOnce {
+                stream: None,
             }
         }
     }
@@ -223,20 +226,28 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'stream> {
+    stream: Option<Box<dyn Stream + 'stream>>,
+}
+
 /// Encrypt messages.
 ///
 /// This command builder is used to encrypt messages.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'stream>,
 }
 
-impl<'sequoia> Builder<'sequoia> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    stream_builder_impl!();
 
     /// Signs the message with the specified certificate.
     ///
@@ -469,7 +480,7 @@ impl<'sequoia> Builder<'sequoia> {
     }
 }
 
-impl<'sequoia> Builder<'sequoia> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Encrypts the specified message with the configured parameters.
     ///
     /// The encrypted data is written to `output`.  By default, the
@@ -481,40 +492,35 @@ impl<'sequoia> Builder<'sequoia> {
     ///
     /// On failure some of the encrypted data may have been written to
     /// the output writer.  This should be ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn encrypt<'a, 'w, I, O, S, P>(&self, mut input: I, output: O,
-                                       prompt: P, mut stream: S)
+    pub fn encrypt<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
         let output = output.into();
 
-        let &Builder {
-            params: Params {
-                sequoia,
-                ref signers,
-                ref notations,
+        let &Params {
+            sequoia,
+            ref signers,
+            ref notations,
 
-                prompt_for_passwords,
-                ref passwords,
-                ref recipients,
+            prompt_for_passwords,
+            ref passwords,
+            ref recipients,
 
-                ref encryption_purpose,
-                ref compression_mode,
-                use_expired_encryption_keys,
+            ref encryption_purpose,
+            ref compression_mode,
+            use_expired_encryption_keys,
 
-                ref armor_headers,
+            ref armor_headers,
 
-                ref filename,
-            },
-        } = self;
+            ref filename,
+        } = &self.params;
+        let ParamsOnce {
+            stream,
+        } = &mut self.params_once;
 
         let mut signers = sequoia.get_signing_keys(&signers, None, &prompt)?;
 

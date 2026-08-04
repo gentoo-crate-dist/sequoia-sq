@@ -58,6 +58,7 @@ pub fn dispatch(sq: Sq, command: cli::encrypt::Command) -> Result<()> {
     let stream = Stream::new(&sq);
 
     sq.sequoia.encrypt()
+        .stream(stream)
         .add_signers(signers.into_iter())
         .add_notations(notations.into_iter())
         .prompt_for_passwords(npasswords)
@@ -74,8 +75,7 @@ pub fn dispatch(sq: Sq, command: cli::encrypt::Command) -> Result<()> {
                 .unwrap_or(b""))?
         .encrypt(command.input.open("data to encrypt")?,
                  output,
-                 prompt,
-                 stream)?;
+                 prompt)?;
 
     Ok(())
 }

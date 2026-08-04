@@ -29,8 +29,7 @@
 //! #     .encrypt(
 //! #         std::io::Cursor::new(message),
 //! #         &mut ciphertext,
-//! #         Cancel::new(),
-//! #         ())
+//! #         Cancel::new())
 //! #     .expect("can encrypt");
 //! # let ciphertext = std::io::Cursor::new(&ciphertext);
 //!
@@ -138,8 +137,7 @@
 //! #     .encrypt(
 //! #         std::io::Cursor::new(message),
 //! #         &mut ciphertext,
-//! #         Cancel::new(),
-//! #         ())
+//! #         Cancel::new())
 //! #     .expect("can encrypt");
 //! # let ciphertext = std::io::Cursor::new(&ciphertext);
 //!
@@ -1700,8 +1698,7 @@ mod tests {
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
                 &mut ciphertext,
-                Cancel::new(),
-                ())
+                Cancel::new())
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1770,8 +1767,7 @@ mod tests {
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
                 &mut ciphertext,
-                Cancel::new(),
-                ())
+                Cancel::new())
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1835,8 +1831,7 @@ mod tests {
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
                 &mut ciphertext,
-                Cancel::new(),
-                ())
+                Cancel::new())
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1905,8 +1900,7 @@ mod tests {
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
                 &mut ciphertext,
-                Cancel::new(),
-                ())
+                Cancel::new())
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -2007,8 +2001,7 @@ mod tests {
             .encrypt(
                 std::io::Cursor::new(&message),
                 &mut ciphertext,
-                Cancel::new(),
-                ())
+                Cancel::new())
             .expect("can encrypt");
 
         // Make sure we can decrypt the message.
