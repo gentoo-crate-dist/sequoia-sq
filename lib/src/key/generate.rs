@@ -1051,7 +1051,6 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                             &trust_root,
                             &cert,
                             &userids,
-                            (), // stream: don't show anything.
                             prompt,
                         )
                         .map_err(op!())?;
@@ -1068,7 +1067,6 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                             &trust_root,
                             &cert,
                             &userids,
-                            (), // stream: don't show anything.
                             prompt)
                         .map_err(op!())?;
                 }

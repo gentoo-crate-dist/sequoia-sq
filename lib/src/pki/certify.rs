@@ -41,7 +41,6 @@
 //!         &alice,
 //!         &bob,
 //!         &["<bob@example.org>".into()],
-//!         (),
 //!         Cancel::new())
 //! {
 //!     eprintln!("Failed to certify the user ID: {}", err);
@@ -49,10 +48,11 @@
 //! # Ok(()) }
 //! ```
 //!
-//! To get more information about what happened, we can implement
-//! [`Stream`].  Note: if you don't require the information
-//! asynchronously, you can also pass a [`&mut Vec<Output>`](Output)
-//! to collect the output and examine it after the call returns.
+//! To get more information about what happened, we can pass an
+//! implementation of the [`Stream`] trait.  Note: if you don't
+//! require the information asynchronously, you can also pass a [`&mut
+//! Vec<Output>`](Output) to collect the output and examine it after
+//! the call returns.
 //!
 //! ```
 //! # use sequoia::openpgp;
@@ -104,11 +104,11 @@
 //! let mut stream = Stream { };
 //! if let Err(err) = sq
 //!     .pki_certify()
+//!     .stream(&mut stream)
 //!     .certify(
 //!         &alice,
 //!         &bob,
 //!         &["<bob@example.org>".into()],
-//!         &mut stream,
 //!         Cancel::new())
 //! {
 //!     eprintln!("Failed to certify the user ID: {}", err);
@@ -749,7 +749,7 @@ impl Sequoia {
     /// keys.
     ///
     /// See [`Builder`] for details.
-    pub fn pki_certify(&self) -> Builder<'_, '_>
+    pub fn pki_certify(&self) -> Builder<'_, '_, '_>
     {
         Builder {
             params: Params {
@@ -770,6 +770,7 @@ impl Sequoia {
             },
             params_once: ParamsOnce {
                 destination: Destination::Store,
+                stream: None,
             }
         }
     }
@@ -1092,8 +1093,9 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'writer> {
+struct ParamsOnce<'writer, 'stream> {
     destination: Destination<Writer<'writer>>,
+    stream: Option<Box<dyn Stream + 'stream>>,
 }
 
 /// Makes third-party certifications.
@@ -1110,12 +1112,12 @@ struct ParamsOnce<'writer> {
 /// certificate's fingerprint.  Alice can record that information
 /// using a third-party certification.  This allows Alice's OpenPGP
 /// implementation to automatically
-pub struct Builder<'sequoia, 'writer> {
+pub struct Builder<'sequoia, 'writer, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'writer>,
+    params_once: ParamsOnce<'writer, 'stream>,
 }
 
-impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
+impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
 {
     /// Returns the parameters.
     ///
@@ -1124,7 +1126,9 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         &self.params
     }
 
-    destination_builder_impl!("certificate", "is");
+    destination_builder_impl!('sequoia; 'stream; "certificate", "is");
+
+    stream_builder_impl!('sequoia, 'writer;);
 
     /// Sets whether certification errors are ignored.
     ///
@@ -1453,23 +1457,20 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// If the trust amount is 0, the operation is interpreted as a
     /// retraction of any prior certifications by the certifier over
     /// the bindings.
-    pub fn certify<'a, S, P>(self,
-                             certifier: &Cert,
-                             cert: &Cert,
-                             userids: &[UserID],
-                             stream: S,
-                             prompt: P)
+    pub fn certify<'a, P>(mut self,
+                          certifier: &Cert,
+                          cert: &Cert,
+                          userids: &[UserID],
+                          prompt: P)
         -> Result<Outcome, Error>
     where
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let mut stream = Box::new(stream) as Box<dyn Stream>;
         let prompt = Box::new(prompt) as Box<dyn prompt::Prompt>;
 
         let result = Self::certify_(
-            &self.params, self.params_once,
-            certifier, cert, userids, &mut stream, prompt);
+            &self.params, &mut self.params_once,
+            certifier, cert, userids, prompt);
 
         let (result, certifications) = match result {
             Ok(outcome) => {
@@ -1478,6 +1479,8 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             }
             Err(err) => (Err(err), Vec::new()),
         };
+
+        let mut stream = self.params_once.stream;
 
         if let Err(Error::StreamOutputError(_)) = result.as_ref() {
         } else {
@@ -1494,11 +1497,10 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     }
 
     fn certify_<'a>(params: &Params<'sequoia>,
-                    params_once: ParamsOnce<'writer>,
+                    params_once: &mut ParamsOnce<'writer, 'stream>,
                     certifier: &Cert,
                     cert: &Cert,
                     userids: &[UserID],
-                    stream: &mut Box<dyn Stream + 'a>,
                     prompt: Box<dyn prompt::Prompt + 'a>)
         -> Result<Outcome, Error>
     {
@@ -1522,6 +1524,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         } = params;
         let ParamsOnce {
             destination,
+            stream,
         } = params_once;
 
         assert!(userids.len() > 0);
@@ -1912,8 +1915,8 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             .map_err(op!())?;
 
         match destination {
-            Destination::Writer(mut output) => {
-                cert.serialize(&mut output).map_err(op!())?;
+            Destination::Writer(ref mut output) => {
+                cert.serialize(output).map_err(op!())?;
             }
             Destination::Store => {
                 // Import it.
@@ -2110,12 +2113,12 @@ Failed:              {:8}{:8}",
             let mut certified = Vec::new();
             let outcome = sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .certify(
                     &alice,
                     &bob,
                     &["bob".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .expect("Can certify");
             check(output, outcome, 0, 0, 1, 0, 0);
@@ -2128,12 +2131,12 @@ Failed:              {:8}{:8}",
             let mut certified = Vec::new();
             let outcome = sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .certify(
                     &alice,
                     &bob,
                     &["bob".into(), "petname".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .expect("Can certify");
             check(output, outcome, 0, 0, 2, 0, 0);
@@ -2146,13 +2149,13 @@ Failed:              {:8}{:8}",
             let mut certified = Vec::new();
             sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .add_regular_expression_constraint("regex")
                 .certify(
                     &alice,
                     &bob,
                     &["bob".into(), "petname".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .unwrap_err();
             check(output, None, 0, 1, 0, 0, 0);
@@ -2164,13 +2167,13 @@ Failed:              {:8}{:8}",
             let mut certified = Vec::new();
             sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .add_regular_expression_constraint("regex")
                 .certify(
                     &bob,
                     &bob,
                     &["bob".into(), "petname".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .unwrap_err();
             check(output, None, 0, 1, 0, 0, 0);
@@ -2184,12 +2187,12 @@ Failed:              {:8}{:8}",
             let mut certified = Vec::new();
             sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .certify(
                     &carol_pub,
                     &dave,
                     &["dave".into(), "petname".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .unwrap_err();
             check(output, None, 1, 0, 0, 0, 0);
@@ -2222,12 +2225,12 @@ Failed:              {:8}{:8}",
             let mut certified = Vec::new();
             sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .certify(
                     &dave,
                     &carol_revoked,
                     &["carol".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .unwrap_err();
             check(output, None, 0, 0, 0, 0, 1);
@@ -2238,13 +2241,13 @@ Failed:              {:8}{:8}",
             let mut output = Vec::new();
             let outcome = sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .to_writer(&mut certified)
                 .ignore_certification_errors(true)
                 .certify(
                     &dave,
                     &carol_revoked,
                     &["carol".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .unwrap();
             check(output, outcome, 0, 0, 0, 0, 1);
@@ -2256,12 +2259,12 @@ Failed:              {:8}{:8}",
             let mut output = Vec::new();
             let outcome = sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .expiration(Expiration::Never)
                 .certify(
                     &alice,
                     &bob,
                     &["bob".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .expect("Can certify");
             check(output, outcome, 0, 0, 1, 0, 0);
@@ -2276,12 +2279,12 @@ Failed:              {:8}{:8}",
             let mut output = Vec::new();
             let outcome = sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .expiration(Expiration::Never)
                 .certify(
                     &alice,
                     &bob2,
                     &["bob".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .expect("Can certify");
             check(output, outcome, 0, 0, 0, 1, 0);
@@ -2290,13 +2293,13 @@ Failed:              {:8}{:8}",
             let mut output = Vec::new();
             let outcome = sequoia
                 .pki_certify()
+                .stream(&mut output)
                 .recreate(true)
                 .expiration(Expiration::Never)
                 .certify(
                     &alice,
                     &bob2,
                     &["bob".into()],
-                    &mut output,
                     prompt::Cancel::new())
                 .expect("Can certify");
             check(output, outcome, 0, 0, 1, 0, 0);

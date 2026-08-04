@@ -69,6 +69,7 @@ pub fn add(sq: Sq, mut c: add::Command)
     // XXX: Skip revoked user IDs.
 
     sq.sequoia.pki_certify()
+        .stream(stream)
         .to_writer(output.map(|(_, f)| f))
         // Always recreate.
         .recreate(true)
@@ -82,7 +83,6 @@ pub fn add(sq: Sq, mut c: add::Command)
             &certifier,
             &cert,
             &userids,
-            stream,
             prompt)?;
 
     if let Some(message) = message_ {

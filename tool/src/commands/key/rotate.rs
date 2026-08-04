@@ -570,6 +570,7 @@ pub fn dispatch(
                     // Mark all user IDs as authenticated, and mark
                     // the key as a trusted introducer.
                     sq.sequoia.pki_certify()
+                        .stream(stream)
                         .recreate(false)
                         .trust_amount(FULLY_TRUSTED as u8)
                         // Make it an unconstrained trusted introducer.
@@ -580,11 +581,11 @@ pub fn dispatch(
                             &trust_root,
                             &cert,
                             &userids,
-                            stream,
                             prompt)?;
                 } else if command.shared_key && have_userids {
                     // Mark all user IDs as authenticated.
                     sq.sequoia.pki_certify()
+                        .stream(stream)
                         .recreate(false)
                         .trust_amount(FULLY_TRUSTED as u8)
                         // Not a trusted introducer.
@@ -595,7 +596,6 @@ pub fn dispatch(
                             &trust_root,
                             &cert,
                             &userids,
-                            stream,
                             prompt)?;
                 }
 

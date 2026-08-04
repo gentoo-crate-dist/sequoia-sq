@@ -350,7 +350,6 @@ impl<'sequoia> Builder<'sequoia>
                     &trust_root,
                     &cert,
                     &userids,
-                    (), // stream: don't show anything.
                     &prompt)?;
         }
 

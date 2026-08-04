@@ -1524,7 +1524,6 @@ mod tests {
                     .certify(&certifier,
                              &cert,
                              &[UserID::from(format!("<{}>", email))],
-                             (),
                              Cancel::new())
                     .expect("can certify");
             }

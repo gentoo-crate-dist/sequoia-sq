@@ -84,6 +84,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
     let prompt = password::Prompt::new(&sq, true);
 
     sq.sequoia.pki_certify()
+        .stream(stream)
         .recreate(c.recreate)
         .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
@@ -97,7 +98,6 @@ pub fn add(sq: Sq, c: link::AddCommand)
             &trust_root,
             &cert,
             &userids,
-            stream,
             prompt)?;
 
     Ok(())
@@ -133,6 +133,7 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
     let prompt = password::Prompt::new(&sq, true);
 
     sq.sequoia.pki_certify()
+        .stream(stream)
         .recreate(c.recreate)
         .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
@@ -146,7 +147,6 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
             &trust_root,
             &cert,
             &userids,
-            stream,
             prompt)?;
 
     Ok(())
@@ -182,6 +182,7 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
     let prompt = password::Prompt::new(&sq, true);
 
     sq.sequoia.pki_certify()
+        .stream(stream)
         .recreate(c.recreate)
         .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(0)
@@ -192,7 +193,6 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
             &trust_root,
             &cert,
             &userids,
-            stream,
             prompt)?;
 
     Ok(())
