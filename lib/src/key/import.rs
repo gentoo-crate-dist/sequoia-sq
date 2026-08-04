@@ -31,16 +31,17 @@
 //! #
 //! # let mut input = std::io::Cursor::new(&input[..]);
 //! #
-//! if let Err(err) = sq.key_import().import_keyring(input, &mut ()) {
+//! if let Err(err) = sq.key_import().import_keyring(input) {
 //!     eprintln!("Failed to import at least one key: {}", err);
 //! }
 //! # Ok(()) }
 //! ```
 //!
-//! To get more information about what happened, we can implement
-//! [`Stream`].  Note: if you don't require the information
-//! asynchronously, you can also pass a [`&mut Vec<Output>`](Output)
-//! to collect the output and examine it after the call returns.
+//! To get more information about what happened, we can pass an
+//! implementation of the [`Stream`] trait.  Note: if you don't
+//! require the information asynchronously, you can also pass a [`&mut
+//! Vec<Output>`](Output) to collect the output and examine it after
+//! the call returns.
 //!
 //! ```
 //! # use sequoia::openpgp;
@@ -98,7 +99,10 @@
 //! }
 //!
 //! let mut stream = Stream { };
-//! if let Err(err) = sq.key_import().import_keyring(input, &mut stream) {
+//! if let Err(err) = sq.key_import()
+//!     .stream(&mut stream)
+//!     .import_keyring(input)
+//! {
 //!     eprintln!("Failed to import at least one key: {}", err);
 //! }
 //! # Ok(()) }
@@ -429,11 +433,14 @@ impl Sequoia {
     /// keys.
     ///
     /// See [`Builder`] for details.
-    pub fn key_import(&self) -> Builder<'_>
+    pub fn key_import(&self) -> Builder<'_, '_>
     {
         Builder {
             params: Params {
                 sequoia: self,
+            },
+            params_once: ParamsOnce {
+                stream: None,
             },
         }
     }
@@ -454,14 +461,20 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'stream> {
+    stream: Option<Box<dyn Stream + 'stream>>,
+}
+
 /// Imports keys.
 ///
 /// A builder providing control over how to import keys.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'stream>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 {
     /// Returns the parameters.
     ///
@@ -470,21 +483,27 @@ impl<'sequoia> Builder<'sequoia>
         &self.params
     }
 
+    stream_builder_impl!();
+
     /// Report that importing something failed.
     ///
     /// This also increments the stats, if appropriate.
-    fn report_failure<'a>(&self,
+    fn report_failure<'a>(params: &Params,
+                          params_once: &mut ParamsOnce,
                           error: Error,
-                          stats: &mut ImportStats,
-                          stream: &mut Box<dyn Stream + 'a>)
-                          -> Result<()>
+                          stats: &mut ImportStats)
+        -> Result<()>
     {
+        let ParamsOnce {
+            stream,
+        } = params_once;
+
         if matches!(error, Error::KeyError(_)) {
             stats.keys.errors += 1;
             stats.certs.inc_errors();
         }
         stream.output(
-            self.params(),
+            params,
             Output::ImportFailed(output::ImportFailed {
                 error,
             }))
@@ -513,18 +532,13 @@ impl<'sequoia> Builder<'sequoia>
     /// function conservatively returns an error.  Depending on the
     /// context, the error may not be fatal, and showing a warning may
     /// be sufficient.
-    pub fn import_keyring<'a, I, S>(&self, input: I, stream: S) -> Result<()>
+    pub fn import_keyring<I>(mut self, input: I) -> Result<()>
     where
         I: std::io::Read + Send + Sync,
-        S: Stream + 'a,
     {
-        let &Builder {
-            params: Params {
-                sequoia: _,
-            },
-        } = self;
-
-        let mut stream = Box::new(stream) as Box<dyn Stream>;
+        let Params {
+            sequoia: _,
+        } = &self.params;
 
         let mut stats = ImportStats::default();
 
@@ -535,16 +549,16 @@ impl<'sequoia> Builder<'sequoia>
             Ok(parser) => parser,
             Err(err) => {
                 let err_ = clone_anyhow(&err);
-                self.report_failure(
+                Self::report_failure(
+                    &self.params, &mut self.params_once,
                     Error::SystemError(
                         error::SystemError::ParseError(
                             error::ParseError {
                                 error: err,
                             })),
-                    &mut stats,
-                    &mut stream)?;
-                stream.output(
-                    self.params(),
+                    &mut stats)?;
+                self.params_once.stream.output(
+                    &self.params,
                     Output::Report(output::Report {
                         stats,
                     }))?;
@@ -569,22 +583,22 @@ impl<'sequoia> Builder<'sequoia>
                                     }))));
                     }
 
-                    self.report_failure(
+                    Self::report_failure(
+                        &self.params, &mut self.params_once,
                         Error::KeyError(
                             error::KeyError::CertParseError(
                                 error::CertParseError {
                                     error: err,
                                 })),
-                        &mut stats,
-                        &mut stream)?;
+                        &mut stats)?;
                     continue;
                 }
             };
 
             match self.import_key(cert, &mut stats) {
                 Ok(imported) => {
-                    stream.output(
-                        self.params(),
+                    self.params_once.stream.output(
+                        &self.params,
                         Output::Imported(imported))?;
                 }
 
@@ -594,22 +608,22 @@ impl<'sequoia> Builder<'sequoia>
                         ret = Err(clone_error(&err));
                     }
 
-                    self.report_failure(
+                    Self::report_failure(
+                        &self.params, &mut self.params_once,
                         err,
-                        &mut stats,
-                        &mut stream)?;
+                        &mut stats)?;
                 }
             }
         }
 
         if ! have_one {
-            self.report_failure(
+            Self::report_failure(
+                &self.params, &mut self.params_once,
                 Error::SystemError(
                     error::SystemError::NoData(
                         error::NoData {
                         })),
-                &mut stats,
-                &mut stream)?;
+                &mut stats)?;
 
             if ret.is_ok() {
                 ret = Err(Error::SystemError(
@@ -619,8 +633,8 @@ impl<'sequoia> Builder<'sequoia>
             }
         }
 
-        stream.output(
-            self.params(),
+        self.params_once.stream.output(
+            &self.params,
             Output::Report(output::Report {
                 stats,
             }))?;
@@ -632,11 +646,9 @@ impl<'sequoia> Builder<'sequoia>
     pub fn import_key(&self, cert: Cert, stats: &mut ImportStats)
         -> Result<output::Imported, Error>
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-            },
-        } = self;
+        let Params {
+            sequoia,
+        } = self.params;
 
         if ! cert.is_tsk() {
             return Err(Error::KeyError(
@@ -852,9 +864,9 @@ mod tests {
 
         // Empty file.
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(b""),
-            &mut output);
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(b""));
 
         check(output, 0, 0);
         assert!(result.is_err());
@@ -862,9 +874,9 @@ mod tests {
         // Junk.
         let input = vec![b'!'; 16 * 1024];
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(&input),
-            &mut output);
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input));
 
         check(output, 0, 0);
         assert!(result.is_err());
@@ -882,9 +894,9 @@ mod tests {
         let mut input = Vec::new();
         alice.serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(&input[..]),
-            &mut output);
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 0, 1);
         assert!(result.is_err());
@@ -893,9 +905,9 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(&input[..]),
-            &mut output);
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 1, 0);
         assert!(result.is_ok());
@@ -905,9 +917,9 @@ mod tests {
         alice.as_tsk().serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(&input[..]),
-            &mut output);
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 2, 0);
         assert!(result.is_ok());
@@ -917,9 +929,9 @@ mod tests {
         alice.serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(&input[..]),
-            &mut output);
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 1, 1);
         assert!(result.is_err());
@@ -930,9 +942,9 @@ mod tests {
         write!(&mut input, "foobar").unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import().import_keyring(
-            std::io::Cursor::new(&input[..]),
-            &mut output);
+        let result = sq.key_import()
+            .stream( &mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 2, 1);
         // An error is returned if there are any problems.

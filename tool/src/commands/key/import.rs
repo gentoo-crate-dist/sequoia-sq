@@ -29,7 +29,9 @@ pub fn import(sq: Sq, command: cli::key::import::Command)
         let mut stream = Stream::new(
             &sq, Some(file.as_path()), &mut output, false);
 
-        let r = sq.sequoia.key_import().import_keyring(input, &mut stream);
+        let r = sq.sequoia.key_import()
+            .stream(&mut stream)
+            .import_keyring(input);
 
         if let Some(s) = stream.stats {
             stats += s;

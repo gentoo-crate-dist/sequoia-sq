@@ -168,6 +168,15 @@ macro_rules! destination_builder_to_writer_impl {
         destination_builder_to_writer_impl!($artifact, "is");
     };
     ($artifact:literal, $is:literal) => {
+        destination_builder_to_writer_impl!('sequoia; ; $artifact, $is);
+    };
+    ($($prelifetimes:lifetime),*; $($postlifetimes:lifetime),*;
+     $artifact:literal) => {
+        destination_builder_to_writer_impl!(
+            $($prelifetimes),*; $($postlifetimes),*; $artifact, "is");
+    };
+    ($($prelifetimes:lifetime),*; $($postlifetimes:lifetime),*;
+     $artifact:literal, $is:literal) => {
         /// Writes the
         #[doc=$artifact]
         /// to the `Write`r.
@@ -177,7 +186,7 @@ macro_rules! destination_builder_to_writer_impl {
         #[doc=$artifact]
         /// to the store.
         pub fn to_writer<'writer_new, W>(self, writer: W)
-            -> Builder<'sequoia, 'writer_new>
+            -> Builder<$($prelifetimes,)* 'writer_new, $($postlifetimes,)* >
         where
             W: Into<crate::OptionalWriter<'writer_new>>,
         {
@@ -245,8 +254,20 @@ macro_rules! destination_builder_impl {
         destination_builder_impl!($artifact, "is");
     };
     ($artifact:literal, $is:literal) => {
+        destination_builder_impl!('sequoia; ; $artifact, $is);
+    };
+    ($($prelifetimes:lifetime),*; $($postlifetimes:lifetime),*;
+     $artifact:literal) =>
+    {
+        destination_builder_impl!(
+            $($prelifetimes),*; $($postlifetimes),*; $artifact, "is");
+    };
+    ($($prelifetimes:lifetime),*; $($postlifetimes:lifetime),*;
+     $artifact:literal, $is:literal) =>
+    {
         destination_builder_to_store_impl!($artifact, $is);
-        destination_builder_to_writer_impl!($artifact, $is);
+        destination_builder_to_writer_impl!(
+            $($prelifetimes),*; $($postlifetimes),*; $artifact, $is);
         destination_builder_to_ephemeral_impl!($artifact, $is);
     }
 }

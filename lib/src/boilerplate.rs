@@ -71,9 +71,12 @@ macro_rules! stream {
 }
 
 macro_rules! stream_builder_impl {
-    {} => {
+    () => {
+        stream_builder_impl!('sequoia; );
+    };
+    ($($prelifetimes:lifetime),*; $($postlifetimes:lifetime),*) => {
         /// Emits events on the specified stream.
-        pub fn stream<'s, S>(self, stream: S) -> Builder<'sequoia, 's>
+        pub fn stream<'s, S>(self, stream: S) -> Builder<$($prelifetimes,)* 's, $($postlifetimes,)* >
         where
             S: Stream + 's
         {

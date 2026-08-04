@@ -62,8 +62,6 @@
 //! #   .query_cert_store(true)
 //!     .search(
 //!         vec![Query::Address("alice@example.org".to_string())],
-//!         // Don't stream the results.  (See below.)
-//!         (),
 //!         // If a shadow CA is password protected, don't prompt for
 //!         // a password; ignore it;
 //!         Cancel::new())
@@ -126,13 +124,17 @@
 //! #     .expect("can generate a key");
 //! #
 //! # rt.block_on(async {
+//! let mut stream = Stream {
+//!     requests: 0,
+//!     responses: 0,
+//! };
+//!
 //! sq.network_search()
+//!     .stream(&mut stream)
 //! #   .clear_sources()
 //! #   .query_cert_store(true)
 //!     .search(
 //!         vec![Query::Address("alice@example.org".to_string())],
-//!         // Don't stream the results.  (See below.)
-//!         (),
 //!         // If a shadow CA is password protected, don't prompt for
 //!         // a password; ignore it;
 //!         Cancel::new())
@@ -143,7 +145,7 @@
 //! ```
 //!
 //! Alternatively, you can pass `&mut Vec<Output>` to gather the
-//! output and inspect to inspect it afterwards.
+//! output and inspect it afterwards.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -795,7 +797,7 @@ impl Sequoia {
     /// results of the previous iteration to generate related queries.
     ///
     /// See [`Builder`] for details.
-    pub fn network_search(&self) -> Builder<'_, 'static>
+    pub fn network_search(&self) -> Builder<'_, 'static, 'static>
     {
         Builder {
             params: Params {
@@ -814,6 +816,7 @@ impl Sequoia {
             },
             params_once: ParamsOnce {
                 destination: Destination::Store,
+                stream: None,
             },
         }
     }
@@ -939,17 +942,18 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'writer> {
+struct ParamsOnce<'writer, 'stream> {
     destination: Destination<Writer<'writer>>,
+    stream: Option<Box<dyn Stream + 'stream>>,
 }
 
 /// Search for certificates on the network.
-pub struct Builder<'sequoia, 'writer> {
+pub struct Builder<'sequoia, 'writer, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'writer>,
+    params_once: ParamsOnce<'writer, 'stream>,
 }
 
-impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
+impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
@@ -957,7 +961,9 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
         &self.params
     }
 
-    destination_builder_impl!("certificates", "are");
+    destination_builder_impl!('sequoia; 'stream; "certificates", "are");
+
+    stream_builder_impl!('sequoia, 'writer;);
 
     /// The number of times to iterate.
     ///
@@ -1126,22 +1132,18 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
     }
 
     /// Search for certificates on the network.
-    pub async fn search<'stream, S, P>(self,
-                                       queries: Vec<Query>,
-                                       stream: S,
-                                       prompt: P)
+    pub async fn search<P>(mut self, queries: Vec<Query>, prompt: P)
         -> Result<(), Error>
     where
-        S: Stream + 'stream,
         P: Prompt
     {
-        let mut stream = Box::new(stream) as Box<dyn Stream + 'stream>;
-
         let mut report = output::Report::new();
 
         let result = Self::search_(
-            &self.params, self.params_once,
-            queries, &mut stream, prompt, &mut report).await;
+            &self.params, &mut self.params_once,
+            queries, prompt, &mut report).await;
+
+        let mut stream = self.params_once.stream;
 
         let result = match result {
             Ok(()) => {
@@ -1178,12 +1180,11 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
     }
 
     /// Search for certificates on the network.
-    async fn search_<'stream, P>(params: &Params<'sequoia>,
-                                 params_once: ParamsOnce<'writer>,
-                                 mut queries: Vec<Query>,
-                                 stream: &mut Box<dyn Stream + 'stream>,
-                                 prompt: P,
-                                 report: &mut output::Report)
+    async fn search_<P>(params: &Params<'sequoia>,
+                        params_once: &mut ParamsOnce<'writer, 'stream>,
+                        mut queries: Vec<Query>,
+                        prompt: P,
+                        report: &mut output::Report)
         -> Result<(), Error>
     where
         P: Prompt
@@ -1201,6 +1202,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
         } = params;
         let ParamsOnce {
             destination,
+            stream,
         } = params_once;
 
         for q in queries.iter() {
@@ -1699,13 +1701,13 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
             Output::EndOfResults)
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        if let Destination::Writer(mut output) = destination {
+        if let Destination::Writer(ref mut output) = destination {
             // Serializes a keyring, adding descriptive headers if armored.
             let doit = || {
                 // Handle the easy options first.  No armor no cry:
                 if binary {
                     for cert in certs {
-                        cert.serialize(&mut output)?;
+                        cert.serialize(output)?;
                     }
                     return Ok(());
                 }
@@ -1726,7 +1728,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer> {
                     .map(|value| ("Comment", value.as_str()))
                     .collect();
                 let mut output = armor::Writer::with_headers(
-                    &mut output, armor::Kind::PublicKey, headers)?;
+                    output, armor::Kind::PublicKey, headers)?;
                 for cert in certs {
                     cert.serialize(&mut output)?;
                 }
@@ -1926,12 +1928,12 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect("should succeed");
@@ -1941,12 +1943,12 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("invalid@alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect_err("should fail on invalid address");
@@ -1965,12 +1967,12 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect_err("should fail with no cert store");
@@ -1991,12 +1993,12 @@ mod tests {
         let mut keyring = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .query_cert_store(true)
                 .to_writer(&mut keyring)
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect("should succeed");
@@ -2028,12 +2030,12 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect("should succeed");
@@ -2046,13 +2048,13 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .iterations(1)
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect("should succeed");
@@ -2072,12 +2074,12 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect("should succeed");
@@ -2096,13 +2098,13 @@ mod tests {
         let mut output = Vec::new();
         rt.block_on(async {
             sq.network_search()
+                .stream(&mut output)
                 .clear_sources()
                 .iterations(1)
                 .query_cert_store(true)
                 .to_store()
                 .search(
                     vec![Query::Address("alice@example.org".to_string())],
-                    &mut output,
                     Cancel::new())
                 .await
                 .expect("should succeed");
