@@ -115,9 +115,10 @@ pub fn dispatch(sq: Sq, command: Command)
             let prompt = password::Prompt::new(&sq, true);
 
             sq.sequoia.decrypt()
+                .stream(stream)
                 .add_secret_keys(secrets)
                 .add_session_keys(command.session_key)
-                .decrypt_unwrap(&mut input, &mut output, prompt, stream)?;
+                .decrypt_unwrap(&mut input, &mut output, prompt)?;
 
             output.finalize()?;
         },

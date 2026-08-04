@@ -44,11 +44,11 @@
 //! let mut output = Vec::new();
 //!
 //! sq.decrypt()
+//!     .stream(&mut output)
 //!     .decrypt(
 //!         ciphertext,
 //!         &mut plaintext,
-//!         Cancel::new(),
-//!         &mut output)?;
+//!         Cancel::new())?;
 //! // Examine output for more information about the decryption process.
 //! assert_eq!(plaintext, message);
 //! # Ok(()) }
@@ -60,7 +60,8 @@
 //! examine it after the call completes, or implement [`Stream`] for a
 //! data structure of your choice to examine the [`Output`]
 //! asynchronously.  The latter approach, demonstrated below, is
-//! better when the message is large.
+//! better when the message is large as you can provide feedback to
+//! the user before the decryption is completely decrypted.
 //!
 //! ```rust
 //! use sequoia::Sequoia;
@@ -149,13 +150,12 @@
 //! let mut output = Vec::new();
 //!
 //! sq.decrypt()
+//!     .stream(&mut output)
 //!     .decrypt(
 //!         ciphertext,
 //!         &mut plaintext,
-//!         Cancel::new(),
-//!         // If you wantx to examine the output, pass `()`.
-//!         &mut output)?;
-//! // Examine output for more information about the decryption process.
+//!         Cancel::new())?;
+//! // Examine `output` for more information about the decryption process.
 //! assert_eq!(plaintext, message);
 //! # Ok(()) }
 //! ```
@@ -255,20 +255,28 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'stream> {
+    stream: Option<Box<dyn Stream + 'stream>>,
+}
+
 /// Decrypt messages.
 ///
 /// This command builder is used to decrypt messages.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'stream>,
 }
 
-impl<'sequoia> Builder<'sequoia> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    stream_builder_impl!();
 
     /// Sets the number of required authenticated signatures.
     ///
@@ -370,39 +378,41 @@ impl<'sequoia> Builder<'sequoia> {
     /// Returns `Ok` if the message could be decrypted and verified.
     /// See [`verify::Builder`] for details.  By default, at least one
     /// signature needs to be authenticated.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn decrypt<'a, 'w, I, O, S, P>(&self, input: I, output: O,
-                                       prompt: P, mut stream: S)
+    pub fn decrypt<'w, I, O, P>(self, input: I, output: O, prompt: P)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
+        let Builder {
+            params,
+            mut params_once,
+        } = self;
+
         let mut report = verify::output::Report::new();
-        let result = self.decrypt_(input, output.into(), prompt, &mut stream,
-                                   &mut report);
+        let result = Self::decrypt_(
+            &params, &mut params_once, input, output.into(), prompt,
+            &mut report);
+
+        let mut stream = params_once.stream;
 
         let result = match result {
             Ok(()) => {
                 Ok(())
             }
             Err(Error::ArgumentError(err)) => {
-                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                stream.output(&params, Output::ArgumentError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::ArgumentError(err))
             }
             Err(Error::SystemError(err)) => {
-                stream.output(&self.params, Output::SystemError(err.clone()))
+                stream.output(&params, Output::SystemError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::SystemError(err))
             }
             Err(Error::OperationalError(err)) => {
-                stream.output(&self.params, Output::OperationalError(err.clone()))
+                stream.output(&params, Output::OperationalError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::OperationalError(err))
             }
@@ -413,7 +423,7 @@ impl<'sequoia> Builder<'sequoia> {
         };
 
         stream.output(
-            self.params(),
+            &params,
             Output::Report(output::Report {
                 verification: report,
             }))
@@ -422,31 +432,31 @@ impl<'sequoia> Builder<'sequoia> {
         result
     }
 
-    fn decrypt_<'a, 'w, I, S, P>(&self, input: I, mut output: OptionalWriter,
-                                 prompt: P, mut stream: S,
-                                 report: &mut verify::output::Report)
+    fn decrypt_<'a, 'w, I, P>(params: &Params, params_once: &mut ParamsOnce,
+                              input: I, mut output: OptionalWriter,
+                              prompt: P, report: &mut verify::output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let &Builder {
-            params: Params {
-                vparams: verify::Params {
-                    sequoia,
-                    signatures,
-                    ref designated_signers,
-                },
-                ref secret_keys,
-                ref session_keys,
+        let &Params {
+            vparams: verify::Params {
+                sequoia,
+                signatures,
+                ref designated_signers,
             },
-        } = self;
+            ref secret_keys,
+            ref session_keys,
+        } = params;
+        let ParamsOnce {
+            stream,
+        } = params_once;
 
         let proxy: Rc<RefCell<Box<dyn verify::VerifyDecryptStream>>>
             = Rc::new(RefCell::new(Box::new(StreamProxy {
-                stream: Box::new(&mut stream),
-                params: &self.params,
+                stream: Box::new(stream),
+                params: params,
             })));
 
         let mut helper = Helper::new(
@@ -454,12 +464,8 @@ impl<'sequoia> Builder<'sequoia> {
             secret_keys.clone(), session_keys.clone(), prompt,
             report);
 
-        helper.stream
-            = Some((Rc::clone(&proxy),
-                    &self.params));
-        helper.vhelper.stream
-            = Some((proxy,
-                    Cow::Borrowed(&self.params.vparams)));
+        helper.stream = Some((Rc::clone(&proxy), params));
+        helper.vhelper.stream = Some((proxy, Cow::Borrowed(&params.vparams)));
 
         DecryptorBuilder::from_reader(input)
             .map_err(op!())?
@@ -495,41 +501,44 @@ impl<'sequoia> Builder<'sequoia> {
     /// encryption container, it also does not verify the signatures.
     /// Thus, the signing policy parameters ([`Builder::signatures`]
     /// and [`Builder::add_designated_signer`]) are ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn decrypt_unwrap<'w, I, O, S, P>(&self,
-                                          input: I, output: O,
-                                          prompt: P, mut stream: S)
+    pub fn decrypt_unwrap<'w, I, O, P>(self,
+                                       input: I, output: O,
+                                       prompt: P)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        S: Stream,
         P: prompt::Prompt,
     {
+        let Builder {
+            params,
+            mut params_once,
+        } = self;
+
         let mut report = verify::output::Report::new();
 
-        let result = self.decrypt_unwrap_(
-            input, output.into(), prompt, &mut stream, &mut report);
+        let result = Self::decrypt_unwrap_(
+            &params, &mut params_once, input, output.into(), prompt,
+            &mut report);
+
+        let mut stream = params_once.stream;
 
         let result = match result {
             Ok(()) => {
                 Ok(())
             }
             Err(Error::ArgumentError(err)) => {
-                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                stream.output(&params, Output::ArgumentError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::ArgumentError(err))
             }
             Err(Error::SystemError(err)) => {
-                stream.output(&self.params, Output::SystemError(err.clone()))
+                stream.output(&params, Output::SystemError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::SystemError(err))
             }
             Err(Error::OperationalError(err)) => {
-                stream.output(&self.params, Output::OperationalError(err.clone()))
+                stream.output(&params, Output::OperationalError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::OperationalError(err))
             }
@@ -540,7 +549,7 @@ impl<'sequoia> Builder<'sequoia> {
         };
 
         stream.output(
-            self.params(),
+            &params,
             Output::Report(output::Report {
                 verification: report,
             }))
@@ -549,32 +558,32 @@ impl<'sequoia> Builder<'sequoia> {
         result
     }
 
-    fn decrypt_unwrap_<'w, I, S, P>(&self,
-                                   input: I, mut output: OptionalWriter<'w>,
-                                   prompt: P, mut stream: S,
-                                   report: &mut verify::output::Report)
+    fn decrypt_unwrap_<'w, I, P>(params: &Params, params_once: &mut ParamsOnce,
+                                 input: I, mut output: OptionalWriter<'w>,
+                                 prompt: P,
+                                 report: &mut verify::output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
-        S: Stream,
         P: prompt::Prompt,
     {
-        let &Builder {
-            params: Params {
-                vparams: verify::Params {
-                    sequoia,
-                    signatures: _,
-                    designated_signers: _,
-                },
-                ref secret_keys,
-                ref session_keys,
+        let &Params {
+            vparams: verify::Params {
+                sequoia,
+                signatures: _,
+                designated_signers: _,
             },
-        } = self;
+            ref secret_keys,
+            ref session_keys,
+        } = params;
+        let ParamsOnce {
+            stream,
+        } = params_once;
 
         let proxy: Rc<RefCell<Box<dyn verify::VerifyDecryptStream>>>
             = Rc::new(RefCell::new(Box::new(StreamProxy {
-                stream: Box::new(&mut stream),
-                params: &self.params,
+                stream: Box::new(stream),
+                params: params,
             })));
 
         let mut helper = Helper::new(
@@ -582,12 +591,8 @@ impl<'sequoia> Builder<'sequoia> {
             secret_keys.clone(), session_keys.clone(), prompt,
             report);
 
-        helper.stream
-            = Some((Rc::clone(&proxy),
-                    &self.params));
-        helper.vhelper.stream
-            = Some((proxy,
-                    Cow::Borrowed(&self.params.vparams)));
+        helper.stream = Some((Rc::clone(&proxy), params));
+        helper.vhelper.stream = Some((proxy, Cow::Borrowed(&params.vparams)));
 
         let mut ppr = PacketParser::from_reader(input).map_err(op!())?;
 
@@ -962,7 +967,9 @@ impl Sequoia {
     /// Returns a builder for decrypting and verifying messages.
     ///
     /// See [`Builder`] for details.
-    pub fn decrypt<'sequoia>(&'sequoia self) -> Builder<'sequoia> {
+    pub fn decrypt<'sequoia, 'stream>(&'sequoia self)
+        -> Builder<'sequoia, 'stream>
+    {
         Builder {
             params: Params {
                 vparams: verify::Params {
@@ -973,6 +980,9 @@ impl Sequoia {
                 secret_keys: Vec::new(),
                 session_keys: Vec::new(),
             },
+            params_once: ParamsOnce {
+                stream: None,
+            }
         }
     }
 }
@@ -1700,11 +1710,11 @@ mod tests {
         // Fail to decrypt, because, by default, we expect a valid
         // signature and the message is not signed.
         sq.decrypt()
+            .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
         check(&sq, &output, true, true);
 
@@ -1712,12 +1722,12 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect("can decrypt");
 
         check(&sq, &output, true, false);
@@ -1770,11 +1780,11 @@ mod tests {
         // Fail to decrypt, because we expect a valid signature, but
         // the signer is not authenticated.
         sq.decrypt()
+            .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
         check(&sq, &output, true, true);
 
@@ -1782,12 +1792,12 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .add_designated_signer(bob.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect("can decrypt");
 
         check(&sq, &output, true, false);
@@ -1836,11 +1846,11 @@ mod tests {
         // authenticate it with an authenticated certificate in the
         // cert store.
         sq.decrypt()
+            .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect("can decrypt");
         check(&sq, &output, true, false);
         assert_eq!(&plaintext, MESSAGE);
@@ -1850,12 +1860,12 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .add_designated_signer(alice.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
 
         // Fail to decrypt by designating the empty set of signers.
@@ -1864,12 +1874,12 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .add_designated_signers(std::iter::empty())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
 
         check(&sq, &output, true, true);
@@ -1905,11 +1915,11 @@ mod tests {
         // Fail to decrypt, because we expect a valid signature, but
         // there is none.
         sq.decrypt()
+            .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
         check(&sq, &output, true, true);
 
@@ -1936,11 +1946,11 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
         check(&sq, &output, false, true);
 
@@ -1948,13 +1958,13 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .add_session_key(session_key.into())
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect("can decrypt");
         check(&sq, &output, true, false);
 
@@ -1965,13 +1975,13 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .add_session_key(session_key.into())
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
         check(&sq, &output, false, true);
     }
@@ -2005,12 +2015,12 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect("can decrypt");
         check(&sq, &output, true, false);
         assert_eq!(&message, &plaintext);
@@ -2025,11 +2035,11 @@ mod tests {
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
         sq.decrypt()
+            .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&corrupted),
                 &mut plaintext,
-                Cancel::new(),
-                &mut output)
+                Cancel::new())
             .expect_err("fail to decrypt");
         check(&sq, &output, true, true);
     }

@@ -1342,6 +1342,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let mut decryption_output = Vec::new();
         let mut plaintext = Vec::new();
         let decryption_result = sequoia.decrypt()
+            .stream(&mut decryption_output)
             .add_designated_signer((*sender_attributes.0).clone())
             .add_secret_keys(secret_keys.clone())
             .add_session_keys(session_keys.clone())
@@ -1349,8 +1350,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             .decrypt(
                 dup,
                 &mut plaintext,
-                &prompt,
-                &mut decryption_output);
+                &prompt);
 
         let decrypted = decryption_output.iter().any(|o| {
             matches!(o, decrypt::Output::Decrypted(_))
