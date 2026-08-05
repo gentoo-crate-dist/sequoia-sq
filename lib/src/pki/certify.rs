@@ -740,42 +740,6 @@ impl Outcome {
     }
 }
 
-impl Sequoia {
-    /// The default expiration of a third-party certification.
-    const DEFAULT_CERTIFICATION_EXPIRATION: Expiration
-        = Expiration::from_duration(Duration::from_secs(10 * SECONDS_IN_YEAR));
-
-    /// Returns a builder providing control over how to import
-    /// keys.
-    ///
-    /// See [`Builder`] for details.
-    pub fn pki_certify(&self) -> Builder<'_, '_, '_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-
-                ignore_certification_errors: false,
-                recreate: false,
-                expiration: Self::DEFAULT_CERTIFICATION_EXPIRATION,
-                trust_amount: FULLY_TRUSTED as u8,
-                trust_depth: 0,
-                domains: Vec::new(),
-                regular_expressions: Vec::new(),
-                exportable: true,
-                revocable: true,
-                notations: Vec::new(),
-                additional_certifications: Vec::new(),
-                destination: DestinationSummary::Store,
-            },
-            params_once: ParamsOnce {
-                destination: Destination::Store,
-                stream: None,
-            }
-        }
-    }
-}
-
 /// A builder for a certification template.
 ///
 /// A builder for specifying a certification's parameters.
@@ -1119,6 +1083,37 @@ pub struct Builder<'sequoia, 'writer, 'stream> {
 
 impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
 {
+    /// The default expiration of a third-party certification.
+    const DEFAULT_CERTIFICATION_EXPIRATION: Expiration
+        = Expiration::from_duration(Duration::from_secs(10 * SECONDS_IN_YEAR));
+
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'writer, 'stream>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+
+                ignore_certification_errors: false,
+                recreate: false,
+                expiration: Self::DEFAULT_CERTIFICATION_EXPIRATION,
+                trust_amount: FULLY_TRUSTED as u8,
+                trust_depth: 0,
+                domains: Vec::new(),
+                regular_expressions: Vec::new(),
+                exportable: true,
+                revocable: true,
+                notations: Vec::new(),
+                additional_certifications: Vec::new(),
+                destination: DestinationSummary::Store,
+            },
+            params_once: ParamsOnce {
+                destination: Destination::Store,
+                stream: None,
+            }
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

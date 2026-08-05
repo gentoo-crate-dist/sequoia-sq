@@ -227,46 +227,6 @@ impl Artifact {
     }
 }
 
-impl Sequoia {
-    /// Returns a builder providing control over how to generate a
-    /// certificate.
-    ///
-    /// By default, this creates a certificate with a signing, an
-    /// authentication, and an encryption subkey.
-    ///
-    /// The default expiration is [`DEFAULT_KEY_VALIDITY_DURATION`].
-    ///
-    /// See [`Builder`] for details.
-    pub fn key_generate(&self) -> Builder<'_, '_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                profile: Profile::RFC4880,
-                cipher_suite: CipherSuite::default(),
-                encryption_algorithm: None,
-                signing_algorithm: None,
-                password_policy: PasswordPolicy::Prompt,
-                expiration: Expiration::from_duration(
-                    DEFAULT_KEY_VALIDITY_DURATION),
-                own_key: true,
-                can_sign: true,
-                can_authenticate: true,
-                can_encrypt: Some(EncryptPurpose::Universal),
-                additional_keys: Vec::new(),
-                names: Vec::new(),
-                emails: Vec::new(),
-                userids: Vec::new(),
-                allow_non_canonical_userids: false,
-                destination: DestinationSummary::Store,
-            },
-            params_once: ParamsOnce {
-                destination: Destination::Store,
-            },
-        }
-    }
-}
-
 /// Key generation parameters.
 ///
 /// These parameters are used by [`generate`](Builder::generate).
@@ -468,6 +428,36 @@ pub struct Builder<'sequoia, 'writer> {
 
 impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
 {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'writer>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+                profile: Profile::RFC4880,
+                cipher_suite: CipherSuite::default(),
+                encryption_algorithm: None,
+                signing_algorithm: None,
+                password_policy: PasswordPolicy::Prompt,
+                expiration: Expiration::from_duration(
+                    DEFAULT_KEY_VALIDITY_DURATION),
+                own_key: true,
+                can_sign: true,
+                can_authenticate: true,
+                can_encrypt: Some(EncryptPurpose::Universal),
+                additional_keys: Vec::new(),
+                names: Vec::new(),
+                emails: Vec::new(),
+                userids: Vec::new(),
+                allow_non_canonical_userids: false,
+                destination: DestinationSummary::Store,
+            },
+            params_once: ParamsOnce {
+                destination: Destination::Store,
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

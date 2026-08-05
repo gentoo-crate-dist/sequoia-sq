@@ -267,6 +267,25 @@ pub struct Builder<'sequoia, 'stream> {
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'stream>
+    {
+        Builder {
+            params: Params {
+                vparams: verify::Params {
+                    sequoia,
+                    signatures: 1,
+                    designated_signers: None,
+                },
+                secret_keys: Vec::new(),
+                session_keys: Vec::new(),
+            },
+            params_once: ParamsOnce {
+                stream: None,
+            }
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
@@ -959,30 +978,6 @@ pub enum Error {
 
     /// If [`Stream::output`] returns an error, it is propagated here.
     StreamOutputError(anyhow::Error),
-}
-
-impl Sequoia {
-    /// Returns a builder for decrypting and verifying messages.
-    ///
-    /// See [`Builder`] for details.
-    pub fn decrypt<'sequoia, 'stream>(&'sequoia self)
-        -> Builder<'sequoia, 'stream>
-    {
-        Builder {
-            params: Params {
-                vparams: verify::Params {
-                    sequoia: self,
-                    signatures: 1,
-                    designated_signers: None,
-                },
-                secret_keys: Vec::new(),
-                session_keys: Vec::new(),
-            },
-            params_once: ParamsOnce {
-                stream: None,
-            }
-        }
-    }
 }
 
 struct StreamProxy<'a> {

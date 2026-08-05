@@ -19,31 +19,6 @@ use crate::prompt;
 use crate::types::EncryptPurpose;
 use crate::types::import_stats::ImportStats;
 
-impl Sequoia {
-    /// Returns a builder providing control over how to add a subkey
-    /// to a certificate.
-    ///
-    /// The default expiration for the new subkey is
-    /// [`DEFAULT_KEY_VALIDITY_DURATION`].
-    ///
-    /// See [`Builder`] for details.
-    pub fn key_subkey_add(&self) -> Builder<'_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                cipher_suite: CipherSuite::default(),
-                password_policy: PasswordPolicy::Prompt,
-                expiration: Expiration::from_duration(
-                    DEFAULT_KEY_VALIDITY_DURATION),
-                can_sign: true,
-                can_authenticate: true,
-                can_encrypt: Some(EncryptPurpose::Universal),
-            },
-        }
-    }
-}
-
 /// The key generation parameters.
 ///
 /// These parameters are used by [`add`](Builder::add).
@@ -108,6 +83,21 @@ pub struct Builder<'sequoia> {
 
 impl<'sequoia> Builder<'sequoia>
 {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+        Builder {
+            params: Params {
+                sequoia,
+                cipher_suite: CipherSuite::default(),
+                password_policy: PasswordPolicy::Prompt,
+                expiration: Expiration::from_duration(
+                    DEFAULT_KEY_VALIDITY_DURATION),
+                can_sign: true,
+                can_authenticate: true,
+                can_encrypt: Some(EncryptPurpose::Universal),
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

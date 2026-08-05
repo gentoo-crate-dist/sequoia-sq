@@ -341,6 +341,163 @@ impl Sequoia {
         Sequoia::builder().build()
     }
 
+    /// Returns a builder providing control over how to import
+    /// certificates.
+    ///
+    /// See [`cert::import::Builder`] for details.
+    pub fn cert_import<'sequoia, 'stream>(&'sequoia self)
+        -> cert::import::Builder<'sequoia, 'stream>
+    {
+        cert::import::Builder::new(self)
+    }
+
+    /// List bindings.
+    ///
+    /// See [`cert::list::Builder`] for details.
+    pub fn cert_list<I>(&self, queries: I) -> cert::list::Builder<'_>
+    where
+        I: IntoIterator<Item=crate::types::Query>,
+    {
+        cert::list::Builder::new(self, queries)
+    }
+
+    /// Returns a builder for decrypting and verifying messages.
+    ///
+    /// See [`decrypt::Builder`] for details.
+    pub fn decrypt<'sequoia, 'stream>(&'sequoia self)
+        -> decrypt::Builder<'sequoia, 'stream>
+    {
+        decrypt::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to encrypt a message.
+    ///
+    /// See [`encrypt::Builder`] for details.
+    pub fn encrypt<'sequoia, 'stream>(&'sequoia self)
+        -> encrypt::Builder<'sequoia, 'stream>
+    {
+        encrypt::Builder::new(self)
+    }
+
+    pub fn key_approvals_list(&self) -> key::approvals::list::Builder<'_> {
+        key::approvals::list::Builder::new(self)
+    }
+
+    pub fn key_approvals_update(&self) -> key::approvals::update::Builder<'_> {
+        key::approvals::update::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to change a
+    /// certificate or a key's expiration.
+    ///
+    /// See [`key::expire::Builder`] for details.
+    pub fn key_expire(&self) -> key::expire::Builder<'_> {
+        key::expire::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to generate a
+    /// certificate.
+    ///
+    /// By default, this creates a certificate with a signing, an
+    /// authentication, and an encryption subkey.
+    ///
+    /// The default expiration is
+    /// [`DEFAULT_KEY_VALIDITY_DURATION`](crate::config::DEFAULT_KEY_VALIDITY_DURATION).
+    ///
+    /// See [`key::generate::Builder`] for details.
+    pub fn key_generate<'sequoia, 'writer>(&'sequoia self)
+        -> key::generate::Builder<'sequoia, 'writer>
+    {
+        key::generate::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to import
+    /// keys.
+    ///
+    /// See [`key::import::Builder`] for details.
+    pub fn key_import<'sequoia, 'stream>(&'sequoia self)
+        -> key::import::Builder<'sequoia, 'stream>
+    {
+        key::import::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to revoke
+    /// a certificate.
+    ///
+    /// See [`key::revoke::Builder`] for details.
+    pub fn key_revoke(&self) -> key::revoke::Builder<'_> {
+        key::revoke::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to add a subkey
+    /// to a certificate.
+    ///
+    /// The default expiration for the new subkey is
+    /// [`DEFAULT_KEY_VALIDITY_DURATION`](crate::config::DEFAULT_KEY_VALIDITY_DURATION).
+    ///
+    /// See [`key::subkey::add::Builder`] for details.
+    pub fn key_subkey_add(&self) -> key::subkey::add::Builder<'_>
+    {
+        key::subkey::add::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to revoke
+    /// subkeys.
+    ///
+    /// See [`key::subkey::revoke::Builder`] for details.
+    pub fn key_subkey_revoke(&self) -> key::subkey::revoke::Builder<'_> {
+        key::subkey::revoke::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to add a user ID
+    /// to a certificate.
+    ///
+    /// See [`key::userid::add::Builder`] for details.
+    pub fn key_userid_add(&self) -> key::userid::add::Builder<'_> {
+        key::userid::add::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to revoke
+    /// user IDs.
+    ///
+    /// See [`key::userid::revoke::Builder`] for details.
+    pub fn key_userid_revoke(&self) -> key::userid::revoke::Builder<'_> {
+        key::userid::revoke::Builder::new(self)
+    }
+
+    /// Search for certificates on the network.
+    ///
+    /// By default, the search function will search all sources, and
+    /// will iterate up to three times.  Each iteration uses the
+    /// results of the previous iteration to generate related queries.
+    ///
+    /// See [`network::search::Builder`] for details.
+    pub fn network_search<'sequoia, 'writer, 'stream>(&'sequoia self)
+        -> network::search::Builder<'sequoia, 'writer, 'stream>
+    {
+        network::search::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to import
+    /// keys.
+    ///
+    /// See [`pki::certify::Builder`] for details.
+    pub fn pki_certify<'sequoia, 'writer, 'stream>(&'sequoia self)
+        -> pki::certify::Builder<'sequoia, 'writer, 'stream>
+    {
+        pki::certify::Builder::new(self)
+    }
+
+    /// Returns a builder providing control over how to generate a
+    /// signature.
+    ///
+    /// See [`sign::Builder`] for details.
+    pub fn sign<'sequoia, 'stream>(&'sequoia self)
+        -> sign::Builder<'sequoia, 'stream, sign::builder::UnspecifiedSignatureType>
+    {
+        sign::Builder::new(self)
+    }
+
     /// Returns the home directory.
     ///
     /// This returns `None` if this `Sequoia` instance is configured to

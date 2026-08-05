@@ -100,37 +100,6 @@ pub enum Output {
     Encrypted(output::Encrypted),
 }
 
-impl Sequoia {
-    /// Returns a builder providing control over how to encrypt a message.
-    ///
-    /// See [`Builder`] for details.
-    pub fn encrypt(&self) -> Builder<'_, '_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                signers: Vec::new(),
-                notations: Vec::new(),
-
-                prompt_for_passwords: 0,
-                passwords: Vec::new(),
-                recipients: Vec::new(),
-
-                armor_headers: Some(Vec::new()),
-
-                encryption_purpose: EncryptPurpose::Universal,
-                compression_mode: CompressionMode::Pad,
-                use_expired_encryption_keys: false,
-
-                filename: Vec::new(),
-            },
-            params_once: ParamsOnce {
-                stream: None,
-            }
-        }
-    }
-}
-
 /// The encryption parameters.
 ///
 /// These parameters are used by [`encrypt`](Builder::encrypt).
@@ -240,6 +209,33 @@ pub struct Builder<'sequoia, 'stream> {
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'stream>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+                signers: Vec::new(),
+                notations: Vec::new(),
+
+                prompt_for_passwords: 0,
+                passwords: Vec::new(),
+                recipients: Vec::new(),
+
+                armor_headers: Some(Vec::new()),
+
+                encryption_purpose: EncryptPurpose::Universal,
+                compression_mode: CompressionMode::Pad,
+                use_expired_encryption_keys: false,
+
+                filename: Vec::new(),
+            },
+            params_once: ParamsOnce {
+                stream: None,
+            }
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

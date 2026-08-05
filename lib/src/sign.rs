@@ -127,31 +127,6 @@ pub enum Output {
     Signed(output::Signed),
 }
 
-impl Sequoia {
-    /// Returns a builder providing control over how to generate a
-    /// signature.
-    ///
-    /// See [`Builder`] for details.
-    pub fn sign(&self) -> Builder<'_, '_, builder::UnspecifiedSignatureType>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                signers: Vec::new(),
-                hash_mode: HashMode::Binary,
-                notarize: false,
-                notations: Vec::new(),
-
-                armor_headers: Some(Vec::new()),
-            },
-            params_once: ParamsOnce {
-                stream: None,
-            },
-            t: std::marker::PhantomData,
-        }
-    }
-}
-
 /// The signing parameters.
 ///
 /// These parameters are used by [`sign`](Builder::sign) and
@@ -224,6 +199,28 @@ pub struct Builder<'sequoia, 'stream, T> {
     params: Params<'sequoia>,
     params_once: ParamsOnce<'stream>,
     t: std::marker::PhantomData<T>,
+}
+
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignatureType> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'stream, builder::UnspecifiedSignatureType>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+                signers: Vec::new(),
+                hash_mode: HashMode::Binary,
+                notarize: false,
+                notations: Vec::new(),
+
+                armor_headers: Some(Vec::new()),
+            },
+            params_once: ParamsOnce {
+                stream: None,
+            },
+            t: std::marker::PhantomData,
+        }
+    }
 }
 
 /// Types related to [`Builder`].

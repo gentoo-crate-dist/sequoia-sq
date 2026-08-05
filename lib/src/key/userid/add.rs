@@ -27,25 +27,6 @@ use crate::userid::lint_emails;
 use crate::userid::lint_names;
 use crate::userid::lint_userids;
 
-impl Sequoia {
-    /// Returns a builder providing control over how to add a user ID
-    /// to a certificate.
-    ///
-    /// See [`Builder`] for details.
-    pub fn key_userid_add(&self) -> Builder<'_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                names: Vec::new(),
-                emails: Vec::new(),
-                userids: Vec::new(),
-                allow_non_canonical_userids: false,
-            },
-        }
-    }
-}
-
 /// Parameters for adding a user ID to a certificate.
 ///
 /// These parameters are used by [`add`](Builder::add).
@@ -100,6 +81,18 @@ pub struct Builder<'sequoia> {
 
 impl<'sequoia> Builder<'sequoia>
 {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+        Builder {
+            params: Params {
+                sequoia,
+                names: Vec::new(),
+                emails: Vec::new(),
+                userids: Vec::new(),
+                allow_non_canonical_userids: false,
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

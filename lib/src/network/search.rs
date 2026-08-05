@@ -789,39 +789,6 @@ pub enum Output {
     Report(output::Report),
 }
 
-impl Sequoia {
-    /// Search for certificates on the network.
-    ///
-    /// By default, the search function will search all sources, and
-    /// will iterate up to three times.  Each iteration uses the
-    /// results of the previous iteration to generate related queries.
-    ///
-    /// See [`Builder`] for details.
-    pub fn network_search(&self) -> Builder<'_, 'static, 'static>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                iterations: 3,
-                servers: DEFAULT_KEYSERVERS
-                    .iter()
-                    .map(|s| Cow::Borrowed(*s))
-                    .collect(),
-                query_key_servers: true,
-                query_wkd: true,
-                query_dane: true,
-                query_web: true,
-                query_cert_store: true,
-                destination: DestinationSummary::Store,
-            },
-            params_once: ParamsOnce {
-                destination: Destination::Store,
-                stream: None,
-            },
-        }
-    }
-}
-
 /// Parameters to the network search function.
 ///
 /// The parameters passed to [`Sequoia::network_search`].
@@ -954,6 +921,31 @@ pub struct Builder<'sequoia, 'writer, 'stream> {
 }
 
 impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'writer, 'stream>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+                iterations: 3,
+                servers: DEFAULT_KEYSERVERS
+                    .iter()
+                    .map(|s| Cow::Borrowed(*s))
+                    .collect(),
+                query_key_servers: true,
+                query_wkd: true,
+                query_dane: true,
+                query_web: true,
+                query_cert_store: true,
+                destination: DestinationSummary::Store,
+            },
+            params_once: ParamsOnce {
+                destination: Destination::Store,
+                stream: None,
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

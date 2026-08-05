@@ -428,24 +428,6 @@ pub enum Output {
     Report(output::Report),
 }
 
-impl Sequoia {
-    /// Returns a builder providing control over how to import
-    /// keys.
-    ///
-    /// See [`Builder`] for details.
-    pub fn key_import(&self) -> Builder<'_, '_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-            },
-            params_once: ParamsOnce {
-                stream: None,
-            },
-        }
-    }
-}
-
 /// The key import parameters.
 ///
 /// These parameters are used by [`key_import`](Builder::key_import).
@@ -476,6 +458,19 @@ pub struct Builder<'sequoia, 'stream> {
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia, 'stream>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+            },
+            params_once: ParamsOnce {
+                stream: None,
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

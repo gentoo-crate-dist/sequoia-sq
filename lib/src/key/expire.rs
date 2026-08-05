@@ -24,23 +24,6 @@ use crate::config::Expiration;
 use crate::prompt;
 use crate::utils::get_subkeys;
 
-impl Sequoia {
-    /// Returns a builder providing control over how to change a
-    /// certificate or a key's expiration.
-    ///
-    /// See [`Builder`] for details.
-    pub fn key_expire(&self) -> Builder<'_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                expiration: Expiration::from_duration(
-                    DEFAULT_KEY_VALIDITY_DURATION),
-            },
-        }
-    }
-}
-
 /// Key expiration parameters.
 ///
 /// These parameters are used by [`generate`](Builder::generate).
@@ -72,6 +55,16 @@ pub struct Builder<'sequoia> {
 
 impl<'sequoia> Builder<'sequoia>
 {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+        Builder {
+            params: Params {
+                sequoia,
+                expiration: Expiration::from_duration(
+                    DEFAULT_KEY_VALIDITY_DURATION),
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

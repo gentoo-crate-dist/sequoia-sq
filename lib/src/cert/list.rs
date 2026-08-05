@@ -333,30 +333,6 @@ pub enum Output {
     Report(output::Report),
 }
 
-impl Sequoia {
-    /// List bindings.
-    ///
-    /// See [`Builder`] for details.
-    pub fn cert_list<I>(&self, queries: I) -> Builder<'_>
-    where
-        I: IntoIterator<Item=Query>,
-    {
-        let queries: Vec<Query>
-            = queries.into_iter().map(|q| q.into()).collect();
-
-        Builder {
-            params: Params {
-                sequoia: self,
-                queries,
-                gossip: false,
-                unusable: false,
-                certification_network: false,
-                trust_amount: None,
-            }
-        }
-    }
-}
-
 /// Data structures related to [`Error`].
 ///
 /// The errors are divided into categories, and the categories contain
@@ -517,6 +493,28 @@ pub struct Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
+    /// List bindings.
+    ///
+    /// See [`Builder`] for details.
+    pub(crate) fn new<I>(sequoia: &Sequoia, queries: I) -> Builder<'_>
+    where
+        I: IntoIterator<Item=Query>,
+    {
+        let queries: Vec<Query>
+            = queries.into_iter().map(|q| q.into()).collect();
+
+        Builder {
+            params: Params {
+                sequoia,
+                queries,
+                gossip: false,
+                unusable: false,
+                certification_network: false,
+                trust_amount: None,
+            }
+        }
+    }
+
     /// Sets gossip mode.
     ///
     /// By default gossip mode is disabled.

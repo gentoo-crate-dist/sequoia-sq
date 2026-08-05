@@ -11,18 +11,6 @@ use crate::ca_creation_time;
 use crate::cert_store::Store;
 use crate::types::Safe;
 
-impl Sequoia {
-    pub fn key_approvals_list(&self) -> Builder<'_> {
-        Builder {
-            params: Params {
-                sequoia: self,
-                userids: Vec::new(),
-                pending: false,
-            }
-        }
-    }
-}
-
 /// Parameters for the list of approvals.
 ///
 /// These parameters are used by [`list`](Builder::list).
@@ -59,6 +47,16 @@ pub struct Builder<'sequoia> {
 }
 
 impl<'sequoia> Builder<'sequoia> {
+    pub(crate) fn new(sequoia: &Sequoia) -> Builder<'_> {
+        Builder {
+            params: Params {
+                sequoia,
+                userids: Vec::new(),
+                pending: false,
+            }
+        }
+    }
+
     /// Return the parameters.
     ///
     /// This is useful for examining the builder's configuration.

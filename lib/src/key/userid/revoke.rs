@@ -94,22 +94,6 @@ impl RevocationOutput for UserIDRevocation
     }
 }
 
-impl Sequoia {
-    /// Returns a builder providing control over how to revoke
-    /// user IDs.
-    ///
-    /// See [`Builder`] for details.
-    pub fn key_userid_revoke(&self) -> Builder<'_>
-    {
-        Builder {
-            params: Params {
-                sequoia: self,
-                notations: Vec::new(),
-            },
-        }
-    }
-}
-
 /// User ID revocation parameters.
 ///
 /// These parameters are used by [`revoke`](Builder::revoke).
@@ -141,6 +125,16 @@ pub struct Builder<'sequoia> {
 
 impl<'sequoia> Builder<'sequoia>
 {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia>
+    {
+        Builder {
+            params: Params {
+                sequoia,
+                notations: Vec::new(),
+            },
+        }
+    }
+
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.

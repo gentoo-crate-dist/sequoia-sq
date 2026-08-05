@@ -24,22 +24,6 @@ use crate::cert_store::Store;
 use crate::prompt::Prompt;
 use crate::types::Safe;
 
-impl Sequoia {
-    pub fn key_approvals_update(&self) -> Builder<'_> {
-        Builder {
-            params: Params {
-                sequoia: self,
-                userids: Vec::new(),
-                add_by: Vec::new(),
-                remove_by: Vec::new(),
-                add_all: true,
-                add_authenticated: true,
-                remove_all: false
-            }
-        }
-    }
-}
-
 /// Parameters for the update of approvals.
 ///
 /// These parameters are used by [`update`](Builder::update).
@@ -104,6 +88,20 @@ pub struct Builder<'sequoia> {
 }
 
 impl<'sequoia> Builder<'sequoia> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+        Builder {
+            params: Params {
+                sequoia,
+                userids: Vec::new(),
+                add_by: Vec::new(),
+                remove_by: Vec::new(),
+                add_all: true,
+                add_authenticated: true,
+                remove_all: false
+            }
+        }
+    }
+
     /// Return the parameters.
     ///
     /// This is useful for examining the builder's configuration.
