@@ -1899,8 +1899,7 @@ mod tests {
             .sign(
                 std::io::Cursor::new(MESSAGE),
                 &mut alice_signed,
-                crate::prompt::Cancel::new(),
-                ())
+                crate::prompt::Cancel::new())
             .expect("can sign");
 
         // Alice and Bob sign a message.
@@ -1912,8 +1911,7 @@ mod tests {
             .sign(
                 std::io::Cursor::new(MESSAGE),
                 &mut ab_signed,
-                crate::prompt::Cancel::new(),
-                ())
+                crate::prompt::Cancel::new())
             .expect("can sign");
 
 
@@ -2019,8 +2017,7 @@ mod tests {
             .sign(
                 std::io::Cursor::new(MESSAGE),
                 &mut alice_sig,
-                crate::prompt::Cancel::new(),
-                ())
+                crate::prompt::Cancel::new())
             .expect("can sign");
 
         // Double check that the signature is valid.
@@ -2081,8 +2078,7 @@ mod tests {
             .sign(
                 std::io::Cursor::new(MESSAGE),
                 &mut alice_sig,
-                crate::prompt::Cancel::new(),
-                ())
+                crate::prompt::Cancel::new())
             .expect("can sign");
 
         // Double check that the signature is valid.

@@ -62,7 +62,7 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
         .add_notations(notations.into_iter());
 
     if command.cleartext {
-        signer.clear().sign(input, output, prompt, stream)
+        signer.stream(stream).clear().sign(input, output, prompt)
     } else if append {
         if let Some(detached) = detached {
             let detached_signatures = if let Some(path) = detached.path() {
@@ -78,29 +78,33 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
 
             signer
                 .detached()
+                .stream(stream)
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .append(input, detached_signatures, output, prompt, stream)
+                .append(input, detached_signatures, output, prompt)
         } else {
             signer
                 .inline()
+                .stream(stream)
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .append(input, output, prompt, stream)
+                .append(input, output, prompt)
         }
     } else {
         if detached.is_some() {
             signer
+                .stream(stream)
                 .detached()
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .sign(input, output, prompt, stream)
+                .sign(input, output, prompt)
         } else {
             signer
+                .stream(stream)
                 .inline()
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .sign(input, output, prompt, stream)
+                .sign(input, output, prompt)
         }
     }
 }

@@ -78,8 +78,7 @@
 //! #   .sign(
 //! #       std::io::Cursor::new(file),
 //! #       &mut signature,
-//! #       sequoia::prompt::Cancel::new(),
-//! #       ())?;
+//! #       sequoia::prompt::Cancel::new())?;
 //! #
 //! # if false {
 //! let qubes_release_key = Cert::from_file("qubes-release-4.3-signing-key.asc")?;

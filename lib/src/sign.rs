@@ -33,9 +33,7 @@
 //!         std::io::Cursor::new(message),
 //!         &mut signed_message,
 //!         // Fail if the signing key is password protected.
-//!         sequoia::prompt::Cancel::new(),
-//!         // Ignore status reports; we only care about the result.
-//!         ())?;
+//!         sequoia::prompt::Cancel::new())?;
 //! #
 //! # sequoia.verify()
 //! #     .add_designated_signers(vec![ cert ])
@@ -135,7 +133,7 @@ impl Sequoia {
     /// signature.
     ///
     /// See [`Builder`] for details.
-    pub fn sign(&self) -> Builder<'_, builder::UnspecifiedSignatureType>
+    pub fn sign(&self) -> Builder<'_, '_, builder::UnspecifiedSignatureType>
     {
         Builder {
             params: Params {
@@ -146,6 +144,9 @@ impl Sequoia {
                 notations: Vec::new(),
 
                 armor_headers: Some(Vec::new()),
+            },
+            params_once: ParamsOnce {
+                stream: None,
             },
             t: std::marker::PhantomData,
         }
@@ -212,11 +213,17 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'stream> {
+    stream: Option<Box<dyn Stream + 'stream>>,
+}
+
 /// Sign messages.
 ///
 /// A builder providing control over how to sign a message.
-pub struct Builder<'sequoia, T> {
+pub struct Builder<'sequoia, 'stream, T> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'stream>,
     t: std::marker::PhantomData<T>,
 }
 
@@ -285,7 +292,7 @@ pub mod builder {
     impl SignatureType for CleartextSignature {}
 }
 
-impl<'sequoia> Builder<'sequoia, builder::UnspecifiedSignatureType>
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignatureType>
 {
     /// Sets that a detached signature should be created.
     ///
@@ -297,10 +304,11 @@ impl<'sequoia> Builder<'sequoia, builder::UnspecifiedSignatureType>
     /// the signed data.
     ///
     ///   [detached signature]: https://www.rfc-editor.org/rfc/rfc9580.html#section-10.4
-    pub fn detached(self) -> Builder<'sequoia, builder::DetachedSignature>
+    pub fn detached(self) -> Builder<'sequoia, 'stream, builder::DetachedSignature>
     {
         Builder {
             params: self.params,
+            params_once: self.params_once,
             t: std::marker::PhantomData,
         }
     }
@@ -315,10 +323,11 @@ impl<'sequoia> Builder<'sequoia, builder::UnspecifiedSignatureType>
     /// the signed data.
     ///
     ///   [detached signature]: https://www.rfc-editor.org/rfc/rfc9580.html#section-10.4
-    pub fn inline(self) -> Builder<'sequoia, builder::InlineSignature>
+    pub fn inline(self) -> Builder<'sequoia, 'stream, builder::InlineSignature>
     {
         Builder {
             params: self.params,
+            params_once: self.params_once,
             t: std::marker::PhantomData,
         }
     }
@@ -334,17 +343,18 @@ impl<'sequoia> Builder<'sequoia, builder::UnspecifiedSignatureType>
     /// with a dash.
     ///
     ///   [cleartext-signed message]: https://www.rfc-editor.org/rfc/rfc9580.html#name-cleartext-signature-framewo
-    pub fn clear(self) -> Builder<'sequoia, builder::CleartextSignature>
+    pub fn clear(self) -> Builder<'sequoia, 'stream, builder::CleartextSignature>
     {
         Builder {
             params: self.params,
+            params_once: self.params_once,
             t: std::marker::PhantomData,
         }
     }
 
 }
 
-impl<'sequoia, T> Builder<'sequoia, T>
+impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
 where
     T: builder::SignatureType
 {
@@ -354,6 +364,8 @@ where
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    stream_builder_impl!('sequoia; T);
 
     /// Signs the message with the specified certificate.
     ///
@@ -409,7 +421,7 @@ where
     }
 }
 
-impl<'sequoia, T> Builder<'sequoia, T>
+impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
 where
     T: builder::RichSignature
 {
@@ -466,33 +478,33 @@ where
     }
 }
 
-impl<'sequoia, T> Builder<'sequoia, T>
+impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
 where
     T: builder::SignatureType
 {
-    fn sign_<'a, 'w, I, S, P>(&self, mut input: I,
-                              output: Writer<'w>,
-                              prompt: P, mut stream: S,
-                              detached_signature: bool,
-                              preexisting_signatures: Vec<Signature>)
+    fn sign_<'a, 'w, I, P>(params: &Params, params_once: &mut ParamsOnce,
+                           mut input: I,
+                           output: Writer<'w>,
+                           prompt: P,
+                           detached_signature: bool,
+                           preexisting_signatures: Vec<Signature>)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                ref signers,
-                ref hash_mode,
-                notarize: _,
-                ref notations,
+        let Params {
+            sequoia,
+            ref signers,
+            ref hash_mode,
+            notarize: _,
+            ref notations,
 
-                ref armor_headers,
-            },
-            t: _,
-        } = self;
+            ref armor_headers,
+        } = params;
+        let ParamsOnce {
+            stream
+        } = params_once;
 
         if signers.is_empty() {
             return Err(anyhow::anyhow!("No signing keys specified"));
@@ -503,7 +515,7 @@ where
         {
             Ok(signers) => {
                 stream.output(
-                    &self.params,
+                    params,
                     Output::Signing(output::Signing {
                         signers: signers.iter()
                             .map(|(cert, signer)| {
@@ -520,7 +532,7 @@ where
                 let err2 = anyhow::anyhow!("{}", err);
 
                 stream.output(
-                    self.params(),
+                    params,
                     Output::SigningFailed(
                         output::SigningFailed {
                             unusable_certs: vec![ err ],
@@ -595,7 +607,7 @@ where
             .context("Failed to sign")?;
 
         stream.output(
-            &self.params,
+            params,
             Output::Signed(output::Signed {
             }))?;
 
@@ -603,7 +615,7 @@ where
     }
 }
 
-impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     /// Signs a message and generates a detached signature.
     ///
     /// The detached signature is written to `output`.  By default,
@@ -615,20 +627,15 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn sign<'a, 'w, I, O, S, P>(&self, input: I, output: O,
-                                    prompt: P, stream: S)
+    pub fn sign<'w, I, O, P>(mut self, input: I, output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        self.sign_(input, output.into(), prompt, stream, true, Vec::new())
+        Self::sign_(&self.params, &mut self.params_once,
+                    input, output.into(), prompt, true, Vec::new())
     }
 
     /// Adds signatures to a detached signature file.
@@ -647,36 +654,18 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn append<'a, 'w, I, D, O, S, P>(
-        &self, input: I,
+    pub fn append<'a, 'w, I, D, O, P>(
+        mut self, input: I,
         detached_signatures: D,
         output: O,
-        prompt: P, stream: S)
+        prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let &Builder {
-            params: Params {
-                sequoia: _,
-                signers: _,
-                hash_mode: _,
-                notarize: _,
-                notations: _,
-
-                armor_headers: _,
-            },
-            t: _,
-        } = self;
-
         // First, read the existing signatures.
         let mut sigs = Vec::new();
         let mut ppr =
@@ -702,11 +691,12 @@ impl<'sequoia> Builder<'sequoia, builder::DetachedSignature> {
         // not possible to replace a file that is open.
         drop(ppr);
 
-        self.sign_(input, output.into(), prompt, stream, true, sigs)
+        Self::sign_(&self.params, &mut self.params_once,
+                    input, output.into(), prompt, true, sigs)
     }
 }
 
-impl<'sequoia> Builder<'sequoia, builder::InlineSignature> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     /// Signs a message and generates an inline-signed message.
     ///
     /// The inlined-signed message is written to `output`.  By
@@ -718,20 +708,15 @@ impl<'sequoia> Builder<'sequoia, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn sign<'a, 'w, I, O, S, P>(&self, input: I, output: O,
-                                    prompt: P, stream: S)
+    pub fn sign<'w, I, O, P>(mut self, input: I, output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        self.sign_(input, output.into(), prompt, stream, false, Vec::new())
+        Self::sign_(&self.params, &mut self.params_once,
+                    input, output.into(), prompt, false, Vec::new())
     }
 
     /// Adds signatures to an inline signed message.
@@ -760,31 +745,25 @@ impl<'sequoia> Builder<'sequoia, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn append<'a, I, O, S, P>(&self, input: I, output: O,
-                                  prompt: P, mut stream: S)
-                                  -> Result<()>
+    pub fn append<I, O, P>(mut self, input: I, output: O, prompt: P)
+        -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                ref signers,
-                ref hash_mode,
-                notarize,
-                ref notations,
+        let Params {
+            sequoia,
+            ref signers,
+            ref hash_mode,
+            notarize,
+            ref notations,
 
-                ref armor_headers,
-            },
-            t: _,
-        } = self;
+            ref armor_headers,
+        } = self.params;
+        let ParamsOnce {
+            stream,
+        } = &mut self.params_once;
 
         if signers.is_empty() {
             return Err(anyhow::anyhow!("No signing keys specified"));
@@ -817,7 +796,7 @@ impl<'sequoia> Builder<'sequoia, builder::InlineSignature> {
                 let err2 = anyhow::anyhow!("{}", err);
 
                 stream.output(
-                    self.params(),
+                    &self.params,
                     Output::SigningFailed(
                         output::SigningFailed {
                             unusable_certs: vec![ err ],
@@ -1041,7 +1020,7 @@ impl<'sequoia> Builder<'sequoia, builder::InlineSignature> {
     }
 }
 
-impl<'sequoia> Builder<'sequoia, builder::CleartextSignature> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> {
     /// Clear signs a message.
     ///
     /// A clear-signed message is an inline signed text message that
@@ -1058,31 +1037,25 @@ impl<'sequoia> Builder<'sequoia, builder::CleartextSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    ///
-    /// If you don't want to implement [`Stream`], you can pass `&mut
-    /// Vec<Output>` to collect the status messages, or `()` to ignore
-    /// them.
-    pub fn sign<'a, I, O, S, P>(&self, mut input: I, mut output: O,
-                                prompt: P, mut stream: S)
-                                -> Result<()>
+    pub fn sign<I, O, P>(mut self, mut input: I, mut output: O, prompt: P)
+        -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
-        S: Stream + 'a,
         P: prompt::Prompt,
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                ref signers,
-                hash_mode: _,
-                notarize: _,
-                ref notations,
+        let Params {
+            sequoia,
+            ref signers,
+            hash_mode: _,
+            notarize: _,
+            ref notations,
 
-                armor_headers: _,
-            },
-            t: _,
-        } = self;
+            armor_headers: _,
+        } = &self.params;
+        let ParamsOnce {
+            stream
+        } = &mut self.params_once;
 
         if signers.is_empty() {
             return Err(anyhow::anyhow!("No signing keys specified"));
@@ -1117,7 +1090,7 @@ impl<'sequoia> Builder<'sequoia, builder::CleartextSignature> {
                 let err2 = anyhow::anyhow!("{}", err);
 
                 stream.output(
-                    self.params(),
+                    &self.params,
                     Output::SigningFailed(
                         output::SigningFailed {
                             unusable_certs: vec![ err ],
