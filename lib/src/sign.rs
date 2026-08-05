@@ -39,8 +39,7 @@
 //! #     .add_designated_signers(vec![ cert ])
 //! #     .inline_signature(
 //! #         std::io::Cursor::new(signed_message),
-//! #         std::io::empty(),
-//! #         ())
+//! #         std::io::empty())
 //! #     .expect("Valid signature");
 //! # Ok(()) }
 //! ```

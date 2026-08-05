@@ -645,19 +645,22 @@ pub fn dispatch(sq: Sq, c: download::Command)
 
         signature_file.as_mut().rewind()?;
 
-        verifier.detached_signature(
-            data_file.as_ref().try_clone()?,
-            signature_file.as_ref().try_clone()?,
-            &mut output_file,
-            stream)
+        verifier
+            .stream(stream)
+            .detached_signature(
+                data_file.as_ref().try_clone()?,
+                signature_file.as_ref().try_clone()?,
+                &mut output_file)
     } else {
         let stream = Stream::new(
             &sq, VerifyContext::Download,
             // Detached signature argument.
             None, None);
 
-        verifier.inline_signature(
-            data_file.as_ref().try_clone()?, &mut output_file, stream)
+        verifier
+            .stream(stream)
+            .inline_signature(
+                data_file.as_ref().try_clone()?, &mut output_file)
     }.map_err(|err| anyhow::Error::from(err));
 
     if let Err(err) = result {

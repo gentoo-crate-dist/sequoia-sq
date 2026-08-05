@@ -67,9 +67,7 @@
 //!     .verify()
 //!     .inline_signature(
 //!         std::io::Cursor::new(message),
-//!         &mut output,
-//!         // Discards the structured output.
-//!         ())
+//!         &mut output)
 //! {
 //!     eprintln!("Failed to verify message: {}.", err);
 //! } else {
@@ -171,10 +169,10 @@
 //!     sequoia: &sequoia,
 //! };
 //! if let Err(err) = sequoia.verify()
+//!     .stream(&mut output_handler)
 //!     .inline_signature(
 //!         std::io::Cursor::new(message),
-//!         &mut output,
-//!         &mut output_handler)
+//!         &mut output)
 //! {
 //!     eprintln!("Failed to verify message: {}.", err);
 //! } else {
@@ -910,14 +908,17 @@ impl Sequoia {
     /// Returns a builder for verifying messages.
     ///
     /// See [`Builder`] for details.
-    pub fn verify(&self) -> Builder<'_>
+    pub fn verify(&self) -> Builder<'_, '_>
     {
         Builder {
             params: Params {
                 sequoia: self,
                 signatures: 1,
                 designated_signers: None,
-            }
+            },
+            params_once: ParamsOnce {
+                stream: None,
+            },
         }
     }
 }
@@ -972,21 +973,28 @@ impl<'sequoia> Params<'sequoia> {
     // If you add any methods here, add forwarders in decrypt::Params.
 }
 
+/// Owned parameters.
+struct ParamsOnce<'stream> {
+    stream: Option<Box<dyn Stream + 'stream>>,
+}
+
 /// Verify signatures.
 ///
 /// This command builder is used to verify signatures.
-#[derive(Clone)]
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'stream>,
 }
 
-impl<'sequoia> Builder<'sequoia> {
+impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    stream_builder_impl!();
 
     /// Sets the number of required authenticated signatures.
     ///
@@ -1060,20 +1068,19 @@ impl<'sequoia> Builder<'sequoia> {
     /// using the wrong data.
     ///
     /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-    ///
-    /// `stream` allows you to stream the status information.  If you
-    /// don't want to stream the status information, you can pass a
-    /// `&mut Vec<Output>` to collect the output.  If you don't care
-    /// about the status information, you can pass `()`.
-    pub fn inline_signature<'w, I, O, S>(&self, input: I, output: O, stream: S)
+    pub fn inline_signature<'w, I, O>(self, input: I, output: O)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        S: Stream,
-
     {
-        self.execute(input, None::<std::io::Empty>, output.into(), stream)
+        let Builder {
+            params,
+            mut params_once,
+        } = self;
+
+        Self::execute(&params, &mut params_once,
+                      input, None::<std::io::Empty>, output.into())
     }
 
     /// Verifies a detached signature.
@@ -1096,55 +1103,56 @@ impl<'sequoia> Builder<'sequoia> {
     /// using the wrong data.
     ///
     /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-    ///
-    /// `stream` allows you to stream the status information.  If you
-    /// don't want to stream the status information, you can pass a
-    /// `&mut Vec<Output>` to collect the output.  If you don't care
-    /// about the status information, you can pass `()`.
-    pub fn detached_signature<'w, I, D, O, S>(&self, input: I, detached: D,
-                                              output: O, stream: S)
+    pub fn detached_signature<'w, I, D, O>(self, input: I, detached: D,
+                                           output: O)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        S: Stream,
-
     {
-        self.execute(input, Some(detached), output.into(), stream)
+        let Builder {
+            params,
+            mut params_once,
+        } = self;
+
+        Self::execute(&params, &mut params_once,
+                      input, Some(detached), output.into())
     }
 
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute<'w, I, D, S>(&self, input: I, detached: Option<D>,
-                            output: OptionalWriter<'w>, mut stream: S)
+    fn execute<'w, I, D>(params: &Params, params_once: &mut ParamsOnce,
+                         input: I, detached: Option<D>,
+                         output: OptionalWriter<'w>)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
-        S: Stream,
     {
         let mut report = output::Report::new();
-        let result = self.execute_(input, detached, output, &mut stream,
-                                   &mut report);
+        let result = Self::execute_(
+            params, params_once, input, detached, output, &mut report);
+
+        let stream = &mut params_once.stream;
 
         let result = match result {
             Ok(()) => {
                 Ok(())
             }
             Err(Error::ArgumentError(err)) => {
-                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                stream.output(params, Output::ArgumentError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::ArgumentError(err))
             }
             Err(Error::SystemError(err)) => {
-                stream.output(&self.params, Output::SystemError(err.clone()))
+                stream.output(params, Output::SystemError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::SystemError(err))
             }
             Err(Error::OperationalError(err)) => {
-                stream.output(&self.params, Output::OperationalError(err.clone()))
+                stream.output(params, Output::OperationalError(err.clone()))
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::OperationalError(err))
             }
@@ -1155,7 +1163,7 @@ impl<'sequoia> Builder<'sequoia> {
         };
 
         stream.output(
-            self.params(),
+            params,
             Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
@@ -1165,22 +1173,23 @@ impl<'sequoia> Builder<'sequoia> {
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute_<I, D, S>(&self, input: I, detached: Option<D>,
-                         mut output: OptionalWriter, stream: S,
-                         report: &mut output::Report)
+    fn execute_<I, D>(params: &Params, params_once: &mut ParamsOnce,
+                      input: I, detached: Option<D>,
+                      mut output: OptionalWriter,
+                      report: &mut output::Report)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
-        S: Stream,
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                signatures,
-                ref designated_signers,
-            }
-        } = self;
+        let &Params {
+            sequoia,
+            signatures,
+            ref designated_signers,
+        } = params;
+        let ParamsOnce {
+            stream,
+        } = params_once;
 
         let mut detached = if let Some(detached) = detached {
             Some(buffered_reader::Generic::with_cookie(
@@ -1212,7 +1221,7 @@ impl<'sequoia> Builder<'sequoia> {
 
         let mut helper = VerificationHelper::new(
             sequoia, signatures, designated_signers.clone(), report);
-        helper.stream = Some((proxy, Cow::Borrowed(&self.params)));
+        helper.stream = Some((proxy, Cow::Borrowed(params)));
         let helper = if let Some(ref mut dsig) = detached {
             let mut v = DetachedVerifierBuilder::from_reader(dsig)
                 .map_err(op!())?
@@ -1918,10 +1927,10 @@ mod tests {
         eprintln!("Verify Alice's signature using the web of trust.");
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("valid signature");
 
         check(&sq, &output, true,
@@ -1930,10 +1939,10 @@ mod tests {
         eprintln!("Verify both signatures using the web of trust.");
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .inline_signature(
                 std::io::Cursor::new(&ab_signed),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("valid signature");
 
         check(&sq, &output, true,
@@ -1942,11 +1951,11 @@ mod tests {
         eprintln!("Verify Alice's signature by designating her certificate.");
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("valid signature");
 
         check(&sq, &output, true,
@@ -1955,11 +1964,11 @@ mod tests {
         eprintln!("Fail to verify Alice's signature by designating Bob's certificate.");
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ bob.clone() ])
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect_err("unauthenticated signature");
 
         check(&sq, &output, false,
@@ -1968,12 +1977,12 @@ mod tests {
         eprintln!("Verify Alice's signature by designating Bob's certificate, but not requiring any signatures.");
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ bob.clone() ])
             .signatures(0)
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("authenticated signature");
 
         check(&sq, &output, true,
@@ -1982,12 +1991,12 @@ mod tests {
         eprintln!("Verify both signature by designating both certificate.");
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ alice.clone(), bob.clone() ])
             .signatures(0)
             .inline_signature(
                 std::io::Cursor::new(&ab_signed),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("authenticated signatures");
 
         check(&sq, &output, true,
@@ -2023,12 +2032,12 @@ mod tests {
         // Double check that the signature is valid.
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 std::io::Cursor::new(&MESSAGE),
                 std::io::Cursor::new(&alice_sig),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("valid signature");
 
         check(&sq, &output, true,
@@ -2038,13 +2047,13 @@ mod tests {
         // Reverse the arguments.
         let mut output = Vec::new();
         let result = sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 // Backwards...
                 std::io::Cursor::new(&alice_sig),
                 std::io::Cursor::new(&MESSAGE),
-                std::io::empty(),
-                &mut output);
+                std::io::empty());
 
         assert!(matches!(
             result,
@@ -2084,12 +2093,12 @@ mod tests {
         // Double check that the signature is valid.
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 std::io::Cursor::new(&MESSAGE),
                 std::io::Cursor::new(&alice_sig),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect("valid signature");
 
         check(&sq, &output, true,
@@ -2122,12 +2131,12 @@ mod tests {
         // If we try to verify the signature, we'll fail.
         let mut output = Vec::new();
         sq.verify()
+            .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 std::io::Cursor::new(&MESSAGE),
                 std::io::Cursor::new(&bad_signature),
-                std::io::empty(),
-                &mut output)
+                std::io::empty())
             .expect_err("bad signature");
 
         check(&sq, &output, false,

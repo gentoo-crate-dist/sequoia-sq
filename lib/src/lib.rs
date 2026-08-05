@@ -92,7 +92,7 @@
 //! sequoia
 //!     .verify()
 //!     .add_designated_signer(qubes_release_key)
-//!     .detached_signature(file, signature, std::io::empty(), ())?;
+//!     .detached_signature(file, signature, std::io::empty())?;
 //! # Ok(()) }
 //! ```
 //!
