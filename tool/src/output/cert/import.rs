@@ -9,6 +9,7 @@ use openpgp::types::KeyFlags;
 use sequoia::cert::import;
 use sequoia::decrypt;
 
+use import::error::*;
 use import::output::*;
 use import::Output;
 
@@ -117,91 +118,109 @@ impl import::Stream for Stream<'_> {
             }
 
             Output::ImportingFailed(
-                ImportingFailed {
-                    breakage,
-                    error,
-                    ..
-                }) =>
+                ImportError::BrokenArtifact(
+                    BrokenArtifact::BrokenCert(
+                        BrokenCert {
+                            cert,
+                            error,
+                            ..
+                        }))) =>
             {
-                match breakage {
-                    // Certificates
-                    Breakage::ImportError(Artifact::Cert(cert)) => {
-                        emit_cert(&mut self.output, self.sq, &cert)?;
+                if let Some(cert) = cert {
+                    emit_cert_key_handle_userid_str(
+                        &mut self.output,
+                        &KeyHandle::from(cert.fingerprint()),
+                        &cert.userids().next()
+                            .map(|userid| {
+                                Cow::Owned(format!(
+                                    "{} (UNAUTHENTICATED)",
+                                    String::from_utf8_lossy(userid.value())))
+                            })
+                            .unwrap_or_else(|| {
+                                Cow::Borrowed("<unknown>")
+                            }))?;
 
-                        wwriteln!(stream = &mut self.output,
-                                  initial_indent = "   - ", "failed: {}",
-                                  error);
-                        wwriteln!(&mut self.output);
-                    }
-                    Breakage::BrokenArtifact(
-                        BrokenArtifact::BrokenCert(cert)) =>
-                    {
-                        emit_cert_key_handle_userid_str(
-                            &mut self.output,
-                            &KeyHandle::from(cert.cert.fingerprint()),
-                            &cert.cert.userids().next()
-                                .map(|userid| {
-                                    Cow::Owned(format!(
-                                        "{} (UNAUTHENTICATED)",
-                                        String::from_utf8_lossy(userid.value())))
-                                })
-                                .unwrap_or_else(|| {
-                                    Cow::Borrowed("<unknown>")
-                                }))?;
-
-                        wwriteln!(stream = &mut self.output,
-                                  initial_indent = "   - ", "failed: {}",
-                                  error);
-                        wwriteln!(&mut self.output);
-                    }
-
-                    // Revocations.
-                    Breakage::ImportError(Artifact::Revocation(rev)) => {
-                        wwriteln!(stream = &mut self.output,
-                                  initial_indent = "   - ",
-                                  "Error importing revocation certificate: {}",
-                                  error);
-
-                        if let Some(issuer) = rev.rev.get_issuers()
-                            .into_iter().next()
-                        {
-                            self.sq.hint(
-                                format_args!("{}", "To search for a certificate, try:"))
-                                .sq().arg("network").arg("search")
-                                .arg(issuer.to_string())
-                                .done();
-                        }
-                    }
-                    Breakage::BrokenArtifact(
-                        BrokenArtifact::BrokenRevocation(
-                            BrokenRevocation {
-                                packet: _,
-                                ..
-                            })) =>
-                    {
-                        wwriteln!(stream = &mut self.output,
-                                  initial_indent = "   - ",
-                                  "Error importing revocation certificate: {}",
-                                  error);
-                    }
-
-                    // Autocrypt.
-                    Breakage::ImportError(
-                        Artifact::Autocrypt(
-                            Autocrypt {
-                                sender: _,
-                                sender_attributes: _,
-                                ..
-                            })) => {
-                    }
-                    Breakage::BrokenArtifact(
-                        BrokenArtifact::BrokenAutocrypt(
-                            BrokenAutocrypt {
-                                ..
-                            })) => {
-                    }
-                    _ => (),
+                    wwriteln!(stream = &mut self.output,
+                              initial_indent = "   - ", "failed: {}",
+                              error);
+                    wwriteln!(&mut self.output);
+                } else {
+                    wwriteln!(stream = &mut self.output,
+                              "Warning: Parse error: {}", error);
                 }
+            }
+            Output::ImportingFailed(
+                ImportError::BrokenArtifact(
+                    BrokenArtifact::BrokenRevocation(
+                        BrokenRevocation {
+                            packet: _,
+                            error,
+                            ..
+                        }))) =>
+            {
+                wwriteln!(stream = &mut self.output,
+                          initial_indent = "   - ",
+                          "Error importing revocation certificate: {}",
+                          error);
+            }
+            Output::ImportingFailed(
+                ImportError::BrokenArtifact(
+                    BrokenArtifact::BrokenAutocrypt(
+                        BrokenAutocrypt {
+                            ..
+                        }))) =>
+            {
+            }
+            Output::ImportingFailed(
+                ImportError::ImportingError(
+                    ImportingError::CertImportError(
+                        CertImportError {
+                            cert,
+                            error,
+                            ..
+                        }))) =>
+            {
+                emit_cert(&mut self.output, self.sq, &cert)?;
+
+                wwriteln!(stream = &mut self.output,
+                          initial_indent = "   - ", "failed: {}",
+                          error);
+                wwriteln!(&mut self.output);
+            }
+            Output::ImportingFailed(
+                ImportError::ImportingError(
+                    ImportingError::RevocationImportError(
+                        RevocationImportError {
+                            rev,
+                            error,
+                            ..
+                        }))) =>
+            {
+                wwriteln!(stream = &mut self.output,
+                          initial_indent = "   - ",
+                          "Error importing revocation certificate: {}",
+                          error);
+
+                if let Some(issuer) = rev.get_issuers()
+                    .into_iter().next()
+                {
+                    self.sq.hint(
+                        format_args!("{}", "To search for a certificate, try:"))
+                        .sq().arg("network").arg("search")
+                        .arg(issuer.to_string())
+                        .done();
+                }
+            }
+            Output::ImportingFailed(
+                ImportError::ImportingError(
+                    ImportingError::AutocryptImportError(
+                        AutocryptImportError {
+                            sender: _,
+                            sender_attributes: _,
+                            ..
+                        }))) =>
+            {
+                ()
             }
 
             Output::DecryptedAutocrypt(

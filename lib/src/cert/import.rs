@@ -124,7 +124,6 @@ use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::KeyID;
 use openpgp::Packet;
-use openpgp::Result;
 use openpgp::cert::raw::RawCert;
 use openpgp::cert::raw::RawCertParser;
 use openpgp::packet::Signature;
@@ -141,7 +140,9 @@ use cert_store::StoreUpdate;
 
 use sequoia_autocrypt as autocrypt;
 
+use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::decrypt;
 use crate::prompt;
 use crate::provenance::certify_downloads;
@@ -150,6 +151,260 @@ use crate::types::import_stats::ImportStats;
 
 // Stream trait.
 stream!{}
+
+/// Data structures related to [`Error`].
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+pub mod error {
+    use super::*;
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+
+    /// We failed to parse the input.
+    ///
+    /// Note: If we were unable to parse an individual artifact, then
+    /// we emit [`ImportError::BrokenArtifact`].
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parse error")]
+    pub struct ParseError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// Information about a broken certificate.
+    ///
+    /// If `cert` is `None`, then we expected a certificate and found
+    /// junk.  If `cert` is `Some`, we were able to parse some bytes
+    /// into something that resembles a certificate, but the
+    /// certificate is corrupted.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parsing certificate {}{}",
+            if .cert.is_some() {
+                " "
+            } else {
+                ""
+            },
+            if let Some(cert) = .cert.as_ref() {
+                Cow::Owned(cert.fingerprint().to_string())
+            } else {
+                Cow::Borrowed("")
+            })]
+    pub struct BrokenCert {
+        pub cert: Option<RawCert<'static>>,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// Information about a broken revocation certificate.
+    ///
+    /// We were able to parse some bytes into an OpenPGP packet, but
+    /// upon closer inspection, the certificate is broken.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parsing revocation certificate")]
+    pub struct BrokenRevocation {
+        pub packet: Packet,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// Information about an email that does not contain an autocrypt
+    /// header.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parsing autocrypt message")]
+    pub struct BrokenAutocrypt {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// An artifact is broken.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error(transparent)]
+    pub enum BrokenArtifact {
+        /// The certificate is broken.
+        BrokenCert(BrokenCert),
+
+        /// The packet is not a revocation certificate.
+        BrokenRevocation(BrokenRevocation),
+
+        /// The email does not contain autocrypt headers.
+        BrokenAutocrypt(BrokenAutocrypt),
+    }
+
+
+    /// An error occurred while importing the certificate into the
+    /// certificate store.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Importing {}", cert.fingerprint())]
+    pub struct CertImportError {
+        pub cert: Cert,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Importing revocation certificate{}",
+            if let Some(issuer) = rev.get_issuers().into_iter().next() {
+                Cow::Owned(format!(
+                    " for {}",
+                    issuer))
+            } else {
+                Cow::Borrowed("")
+            })]
+    pub struct RevocationImportError {
+        pub rev: Signature,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Importing autocrypt message")]
+    pub struct AutocryptImportError {
+        /// The sender.
+        pub sender: Arc<openpgp::Cert>,
+        /// The autocrypt header's attributes.
+        pub sender_attributes: Arc<Vec<autocrypt::Attribute>>,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Importing autocrypt gossip")]
+    pub struct AutocryptGossipImportError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// We tried to import an otherwise valid artifact into the
+    /// certificate store, but failed.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error(transparent)]
+    pub enum ImportingError {
+        CertImportError(CertImportError),
+        RevocationImportError(RevocationImportError),
+        AutocryptImportError(AutocryptImportError),
+        AutocryptGossipImportError(AutocryptGossipImportError),
+    }
+
+    /// The input source did not contain any certificates.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("No certificates found")]
+    pub struct NoCertificates {
+    }
+
+    /// While parsing the input source, we encountered errors parsing
+    /// some of the certificates.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Error importing {}",
+            if *.bad == 1 {
+                Cow::Borrowed("a certificate")
+            } else {
+                Cow::Owned(format!("{} certificates", *.bad))
+            })]
+    pub struct BadCerts {
+        pub bad: usize,
+    }
+
+    /// We failed to import something.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error(transparent)]
+    pub enum ImportError {
+        /// We failed to parse the input.
+        ///
+        /// Note: If we were unable to parse an individual artifact,
+        /// then we emit [`ImportError::BrokenArtifact`].
+        ParseError(ParseError),
+
+        /// An artifact is broken.
+        BrokenArtifact(BrokenArtifact),
+
+        /// We tried to import an otherwise valid artifact into the
+        /// certificate store, but failed.
+        ImportingError(ImportingError),
+
+        /// No certificates found.
+        NoCertificates(NoCertificates),
+
+        /// We failed to import some certificates.
+        BadCerts(BadCerts),
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        ImportError(ImportError),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to generating a searching the network for certificates.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
+}
 
 /// Data structures related to [`Output`].
 pub mod output {
@@ -197,7 +452,7 @@ pub mod output {
 
     /// A certificate, revocation, autocrypt, or an error.
     ///
-    /// Used by [`Imported`] and [`ImportingFailed`].
+    /// Used by [`Imported`].
     #[non_exhaustive]
     #[derive(Debug)]
     pub enum Artifact {
@@ -256,153 +511,6 @@ pub mod output {
         pub recorded_provenance: Vec<Arc<openpgp::Cert>>,
     }
 
-    /// We can't import anything, because we don't have a
-    /// certificate store.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct NoCertStore {
-    }
-
-    /// We didn't find any artifacts.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct NoData {
-    }
-
-    /// An error occurred parsing the low-level repsentation of the
-    /// artifact.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct ParseError {
-    }
-
-    /// Information about a broken certificate.
-    ///
-    /// We were able to parse some bytes into something that resembles
-    /// a certificate, but upon closer inspection, the certificate is
-    /// broken.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct BrokenCert {
-        pub cert: RawCert<'static>,
-    }
-
-    /// Information about a broken revocation certificate.
-    ///
-    /// We were able to parse some bytes into an OpenPGP packet, but
-    /// upon closer inspection, the certificate is broken.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct BrokenRevocation {
-        pub packet: Packet,
-    }
-
-    /// Information about an email that does not contain an autocrypt
-    /// header.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct BrokenAutocrypt {
-    }
-
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub enum BrokenArtifact {
-        /// The certificate is broken.
-        BrokenCert(BrokenCert),
-
-        /// The packet is not a revocation certificate.
-        BrokenRevocation(BrokenRevocation),
-
-        /// The email does not contain autocrypt headers.
-        BrokenAutocrypt(BrokenAutocrypt),
-    }
-
-    /// Information about the breakage.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub enum Breakage {
-        /// We can't import anything, because we don't have a
-        /// certificate store.
-        NoCertStore(NoCertStore),
-
-        /// We didn't find any artifacts, or we failed to parse the
-        /// file.
-        NoData(NoData),
-
-        /// We failed to parse an artifact.
-        ///
-        /// Note: if we completely failed to parse the file, we emit
-        /// [`Breakage::NoData`].
-        ParseError(ParseError),
-
-        /// An artifact is broken.
-        BrokenArtifact(BrokenArtifact),
-
-        /// We tried to import an otherwise valid artifact into the
-        /// certificate store, but failed.
-        ImportError(Artifact),
-    }
-
-    /// We failed to import something.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("{}: {}",
-            match .breakage {
-                Breakage::NoCertStore(_) =>
-                    Cow::Borrowed("Certificate store not available"),
-                Breakage::NoData(_) =>
-                    Cow::Borrowed("Input is empty"),
-                Breakage::ParseError(_) =>
-                    Cow::Borrowed("Parse error"),
-                Breakage::BrokenArtifact(artifact) => {
-                    match artifact {
-                        BrokenArtifact::BrokenCert(cert) => {
-                            Cow::Owned(format!(
-                                "Parsing certificate {}",
-                                cert.cert.fingerprint()))
-                        }
-                        BrokenArtifact::BrokenRevocation(_) => {
-                            Cow::Borrowed("Parsing revocation certificate")
-                        }
-                        BrokenArtifact::BrokenAutocrypt(_) => {
-                            Cow::Borrowed("Parsing autocrypt message")
-                        }
-                    }
-                }
-                Breakage::ImportError(artifact) => {
-                    match artifact {
-                        Artifact::Cert(cert) => {
-                            Cow::Owned(format!(
-                                "Importing {}", cert.fingerprint()))
-                        }
-                        Artifact::Revocation(rev) => {
-                            if let Some(issuer) = rev.rev.get_issuers().into_iter().next() {
-                                Cow::Owned(format!(
-                                    "Importing revocation certificate for {}",
-                                    issuer))
-                            } else {
-                                Cow::Borrowed(
-                                    "Importing revocation certificate")
-                            }
-                        }
-                        Artifact::Autocrypt(_) => {
-                            Cow::Borrowed("Importing autocrypt message")
-                        }
-                        Artifact::AutocryptGossip(_) => {
-                            Cow::Borrowed("Importing autocrypt gossip")
-                        }
-                    }
-                }
-            },
-            .error)]
-    pub struct ImportingFailed {
-        /// The thing that we tried to import.
-        pub breakage: Breakage,
-
-        /// The related error.
-        pub error: anyhow::Error,
-    }
-
     /// Decryption status.
     ///
     /// This is only emitted when processing an autocrypt message.
@@ -433,12 +541,39 @@ pub mod output {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
+    /// An operational error occurred.
+    ///
+    /// This may be because the operation requires the certificate
+    /// store, but it is disabled.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    OperationalError(error::OperationalError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// Errors related to incorrectly calling the function.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    ArgumentError(error::ArgumentError),
+
     /// Emitted after the artifact being imported was successfully
     /// imported to the store.
     Imported(output::Imported),
 
     /// Emitted when something can't be imported to the store.
-    ImportingFailed(output::ImportingFailed),
+    ///
+    /// This is not considered an operational error, as processing is
+    /// not aborted.
+    ImportingFailed(error::ImportError),
 
     /// Emitted after attempting to decrypt an autocrypt message.
     ///
@@ -571,7 +706,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     pub fn import<'a, P>(self,
                          input: impl std::io::Read + Send + Sync + 'a,
                          prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -644,7 +779,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             &params,
             Output::Report(output::Report {
                 stats,
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         result
     }
@@ -652,31 +788,28 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// Report that importing something failed.
     fn report_failure<'a>(params: &Params,
                           params_once: &mut ParamsOnce,
-                          breakage: output::Breakage,
-                          error: anyhow::Error,
+                          err: error::ImportError,
                           stats: &mut ImportStats)
-                          -> Result<()>
+                          -> Result<(), Error>
     {
         let ParamsOnce {
             stream,
         } = params_once;
 
-        match breakage {
-            output::Breakage::NoCertStore(_) => (),
-            output::Breakage::NoData(_) => (),
-            output::Breakage::ParseError(_)
-                | output::Breakage::BrokenArtifact(_)
-                | output::Breakage::ImportError(_) =>
+        match err {
+            error::ImportError::BrokenArtifact(_)
+                | error::ImportError::ImportingError(_) =>
             {
                 stats.certs.inc_errors();
-            }
+            },
+            _ => (),
         }
         stream.output(
             params,
-            Output::ImportingFailed(output::ImportingFailed {
-                breakage,
-                error,
-            }))
+            Output::ImportingFailed(err))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        Ok(())
     }
 
     /// Imports the certs and reports on the individual certs.
@@ -686,7 +819,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                              artifact: output::Artifact,
                              provenance: Vec<Arc<Cert>>,
                              stats: &mut ImportStats)
-        -> Result<bool>
+        -> Result<bool, Error>
     {
         let Params {
             sequoia,
@@ -700,17 +833,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let cert_store = match sequoia.cert_store_or_else() {
             Ok(cert_store) => cert_store,
             Err(err) => {
-                // XXX: Make a shallow copy, because anyhow::Error
-                // doesn't implement clone.
-                let err_ = anyhow::anyhow!(err.to_string());
-                Self::report_failure(
-                    params, params_once,
-                    output::Breakage::NoCertStore(
-                        output::NoCertStore {
-                        }),
-                    err.into(),
-                    &mut *stats)?;
-                return Err(err_);
+                stream.output(
+                    params,
+                    Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                return Err(Error::SystemError(err));
             }
         };
 
@@ -719,8 +846,16 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             Err(err) => {
                 Self::report_failure(
                     params, params_once,
-                    output::Breakage::ImportError(artifact),
-                    err,
+                    error::ImportError::ImportingError(
+                        error::ImportingError::CertImportError(
+                            error::CertImportError {
+                                // Extract the cert that we just
+                                // wrapped.
+                                cert: Arc::unwrap_or_clone(cert)
+                                    .into_cert()
+                                    .expect("have a cert"),
+                                error: err.into(),
+                            })),
                     &mut *stats)?;
 
                 Ok(false)
@@ -738,7 +873,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                             .iter()
                             .map(|ca| Arc::clone(&ca))
                             .collect(),
-                    }))?;
+                    }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
                 Ok(true)
             }
@@ -760,7 +896,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// returns an error.  Depending on the context, the error may not
     /// be fatal, and showing a warning may be sufficient.
     pub fn import_certs<'a>(self, source: impl std::io::Read + Send + Sync + 'a)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let Builder {
             params,
@@ -783,7 +919,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             &params,
             Output::Report(output::Report {
                 stats,
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         result
     }
@@ -793,9 +930,23 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                          params_once: &mut ParamsOnce,
                          source: Box<dyn BufferedReader<Cookie> + 'a>,
                          stats: &mut ImportStats)
-                         -> Result<()>
+                         -> Result<(), Error>
     {
-        let raw_certs = RawCertParser::from_buffered_reader(source)?;
+        let raw_certs = match RawCertParser::from_buffered_reader(source) {
+            Ok(raw_certs) => raw_certs,
+            Err(err) => {
+                let err = error::ImportError::ParseError(
+                    error::ParseError {
+                        error: err.into(),
+                    });
+
+                Self::report_failure(
+                    params, params_once, err.clone(), stats)?;
+
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
+            }
+        };
 
         let mut ok = 0;
         let mut errors = 0;
@@ -805,10 +956,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     errors += 1;
                     Self::report_failure(
                         params, params_once,
-                        output::Breakage::ParseError(
-                            output::ParseError {
-                            }),
-                        err,
+                        error::ImportError::BrokenArtifact(
+                            error::BrokenArtifact::BrokenCert(
+                                error::BrokenCert {
+                                    cert: None,
+                                    error: err.into(),
+                                })),
                         stats)?;
                     continue;
                 }
@@ -820,14 +973,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                             errors += 1;
                             Self::report_failure(
                                 params, params_once,
-                                output::Breakage::BrokenArtifact(
-                                    output::BrokenArtifact::BrokenCert(
-                                        output::BrokenCert {
-                                            cert: lc.into_raw_cert()
+                                error::ImportError::BrokenArtifact(
+                                    error::BrokenArtifact::BrokenCert(
+                                        error::BrokenCert {
+                                            cert: Some(lc.into_raw_cert()
                                                 .expect("have a rawcert")
-                                                .into_owned(),
+                                                .into_owned()),
+                                            error: err.into(),
                                         })),
-                                err,
                                 &mut *stats)?;
                             continue;
                         }
@@ -855,12 +1008,19 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     Ok(())
                 } else {
                     // This likely wasn't a keyring.
-                    Err(anyhow::anyhow!("No certificates found"))
+                    Err(Error::OperationalError(
+                        error::OperationalError::ImportError(
+                            error::ImportError::NoCertificates(
+                                error::NoCertificates {
+                                }))))
                 }
             }
-            1 => Err(anyhow::anyhow!("Error importing a certificate")),
-            _ => Err(anyhow::anyhow!("Error importing {} certificates",
-                                     errors)),
+            bad => Err(Error::OperationalError(
+                        error::OperationalError::ImportError(
+                            error::ImportError::BadCerts(
+                                error::BadCerts {
+                                    bad,
+                                }))))
         }
     }
 
@@ -881,7 +1041,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     pub fn import_revocation(
         self,
         source: impl std::io::Read + Send + Sync)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let Builder {
             params,
@@ -904,7 +1064,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             &params,
             Output::Report(output::Report {
                 stats,
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         result
     }
@@ -915,38 +1076,37 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         params_once: &mut ParamsOnce,
         source: Box<dyn BufferedReader<Cookie> + 'a>,
         stats: &mut ImportStats)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let ppr = match PacketParser::from_buffered_reader(source) {
             Err(err) => {
-                // anyhow doesn't implement clone; make a shallow
-                // copy.
-                let err_ = anyhow::anyhow!(err.to_string());
+                let err = error::ImportError::ParseError(
+                    error::ParseError {
+                        error: err.into(),
+                    });
+
                 Self::report_failure(
                     params, params_once,
-                    output::Breakage::NoData(
-                        output::NoData {
-                        }),
-                    err,
-                    &mut *stats)?;
-                return Err(err_);
+                    err.clone(), &mut *stats)?;
+
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
             }
             Ok(ppr) => ppr,
         };
         let sig = if let PacketParserResult::Some(pp) = ppr {
             let (packet, next_ppr) = match pp.next() {
                 Err(err) => {
-                    // anyhow doesn't implement clone; make a shallow
-                    // copy.
-                    let err_ = anyhow::anyhow!(err.to_string());
-                    Self::report_failure(
-                        params, params_once,
-                        output::Breakage::NoData(
-                            output::NoData {
-                            }),
-                        err,
-                        &mut *stats)?;
-                    return Err(err_);
+                    let err = error::ImportError::ParseError(
+                        error::ParseError {
+                            error: err.into(),
+                        });
+
+                    Self::report_failure(params, params_once,
+                                         err.clone().into(), &mut *stats)?;
+
+                    return Err(Error::OperationalError(
+                        error::OperationalError::ImportError(err)));
                 }
                 Ok(ppr) => ppr,
             };
@@ -954,70 +1114,70 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             let sig = if let Packet::Signature(sig) = packet {
                 sig
             } else {
-                let tag = packet.tag();
+                let err = error::ImportError::BrokenArtifact(
+                    error::BrokenArtifact::BrokenRevocation(
+                        error::BrokenRevocation {
+                            packet: packet.clone(),
+                            error: Arc::new(anyhow::anyhow!(
+                                "Not a revocation certificate: got a {}",
+                                packet.tag())),
+                        }));
+
                 Self::report_failure(
-                    params, params_once,
-                    output::Breakage::BrokenArtifact(
-                        output::BrokenArtifact::BrokenRevocation(
-                            output::BrokenRevocation {
-                                packet: packet.clone(),
-                            })),
-                    anyhow::anyhow!(
-                        "Not a revocation certificate: got a {}",
-                        tag),
-                    &mut *stats)?;
-                return Err(anyhow::anyhow!(
-                    "Not a revocation certificate: got a {}",
-                    tag));
+                    params, params_once, err.clone(), &mut *stats)?;
+
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
             };
 
             if let PacketParserResult::Some(_) = next_ppr {
+                let err = error::ImportError::BrokenArtifact(
+                    error::BrokenArtifact::BrokenRevocation(
+                        error::BrokenRevocation {
+                            packet: sig.clone().into(),
+                            error: Arc::new(anyhow::anyhow!(
+                                "Not a revocation certificate: \
+                                 got more than one packet")),
+                        }));
+
                 Self::report_failure(
-                    params, params_once,
-                    output::Breakage::BrokenArtifact(
-                        output::BrokenArtifact::BrokenRevocation(
-                            output::BrokenRevocation {
-                                packet: sig.clone().into(),
-                            })),
-                    anyhow::anyhow!(
-                        "Not a revocation certificate: \
-                         got more than one packet"),
-                    &mut *stats)?;
-                return Err(anyhow::anyhow!(
-                    "Not a revocation certificate: \
-                     got more than one packet"));
+                    params, params_once, err.clone(), &mut *stats)?;
+
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
             }
 
             sig
         } else {
+            let err = error::ImportError::ParseError(
+                error::ParseError {
+                    error: Arc::new(anyhow::anyhow!(
+                        "Unnexpected end of file")),
+                });
+
             Self::report_failure(
-                params, params_once,
-                output::Breakage::NoData(
-                    output::NoData {
-                    }),
-                anyhow::anyhow!(
-                    "Unnexpected end of file"),
-                &mut *stats)?;
-            return Err(anyhow::anyhow!(
-                "Unexpected end of file"));
+                params, params_once, err.clone(), &mut *stats)?;
+
+            return Err(Error::OperationalError(
+                error::OperationalError::ImportError(err)));
         };
 
         if sig.typ() != SignatureType::KeyRevocation {
             let typ = sig.typ();
+            let err = error::ImportError::BrokenArtifact(
+                error::BrokenArtifact::BrokenRevocation(
+                    error::BrokenRevocation {
+                        packet: sig.into(),
+                        error: Arc::new(anyhow::anyhow!(
+                            "Not a revocation certificate: got a {} signature",
+                            typ)),
+                    }));
+
             Self::report_failure(
-                params, params_once,
-                output::Breakage::BrokenArtifact(
-                    output::BrokenArtifact::BrokenRevocation(
-                        output::BrokenRevocation {
-                            packet: sig.into()
-                        })),
-                anyhow::anyhow!(
-                    "Not a revocation certificate: got a {} signature",
-                    typ),
-                &mut *stats)?;
-            return Err(anyhow::anyhow!(
-                "Not a revocation certificate: got a {} signature",
-                typ));
+                params, params_once, err.clone(), &mut *stats)?;
+
+            return Err(Error::OperationalError(
+                error::OperationalError::ImportError(err)));
         }
 
         let issuers = sig.get_issuers();
@@ -1040,7 +1200,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     cert.primary_key().key(),
                     cert.primary_key().key())
                 {
-                    let cert = cert.insert_packets(sig.clone())?.0;
+                    let cert = cert.insert_packets(sig.clone())
+                        // This should not fail.
+                        .map_err(|err| {
+                            Error::OperationalError(
+                                error::OperationalError::ImportError(
+                                    error::ImportError::BrokenArtifact(
+                                        error::BrokenArtifact::BrokenRevocation(
+                                            error::BrokenRevocation {
+                                                packet: sig.clone().into(),
+                                                error: Arc::new(err),
+                                            }))))
+                        })?.0;
 
                     let artifact = output::Artifact::Revocation(
                         output::Revocation {
@@ -1061,20 +1232,21 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         }
 
-        if let Some(&bad) = bad.first() {
+        let err = if let Some(&bad) = bad.first() {
+            let err = error::ImportError::ImportingError(
+                error::ImportingError::RevocationImportError(
+                    error::RevocationImportError {
+                        rev: sig,
+                        error: Arc::new(anyhow::anyhow!(
+                            "Appears to be a revocation for {}, \
+                             but the revocation certificate is not valid \
+                             for that certificate",
+                            bad)),
+                    }));
             Self::report_failure(
-                params, params_once,
-                output::Breakage::ImportError(
-                    output::Artifact::Revocation(
-                        output::Revocation {
-                            rev: sig,
-                        })),
-                anyhow::anyhow!(
-                    "Appears to be a revocation for {}, \
-                     but the revocation certificate is not valid \
-                     for that certificate",
-                    bad),
-                &mut *stats)?;
+                params, params_once, err.clone(), &mut *stats)?;
+
+            err
         } else if ! missing.is_empty() {
             // Dedup issuers.  If we have a key ID that aliases a
             // fingerprint, only keep the fingerprint.
@@ -1102,35 +1274,41 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 .chain(keyids.into_iter())
                 .collect::<Vec<&KeyHandle>>();
 
-            Self::report_failure(
-                params, params_once,
-                output::Breakage::ImportError(
-                    output::Artifact::Revocation(
-                        output::Revocation {
-                            rev: sig,
-                        })),
-                anyhow::anyhow!(
-                    "Appears to be a revocation for {}, \
-                     but no certificate is available",
-                    missing.iter()
-                        .map(|issuer| issuer.to_string())
-                        .collect::<Vec<_>>()
-                        .join(" or ")),
-                &mut *stats)?;
-        } else {
-            Self::report_failure(
-                params, params_once,
-                output::Breakage::BrokenArtifact(
-                    output::BrokenArtifact::BrokenRevocation(
-                        output::BrokenRevocation {
-                            packet: sig.into(),
-                        })),
-                anyhow::anyhow!(
-                    "Revocation is malformed, missing issuer packet"),
-                &mut *stats)?;
-        }
+            let err = error::ImportError::ImportingError(
+                error::ImportingError::RevocationImportError(
+                    error::RevocationImportError {
+                        rev: sig,
+                        error: Arc::new(anyhow::anyhow!(
+                            "Appears to be a revocation for {}, \
+                             but no certificate is available",
+                            missing.iter()
+                                .map(|issuer| issuer.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" or "))),
+                    }));
 
-        Err(anyhow::anyhow!("Failed to import revocation certificate"))
+            Self::report_failure(
+                params, params_once, err.clone(), &mut *stats)?;
+
+            err
+        } else {
+            let err = error::ImportError::BrokenArtifact(
+                error::BrokenArtifact::BrokenRevocation(
+                    error::BrokenRevocation {
+                        packet: sig.into(),
+                        error: Arc::new(anyhow::anyhow!(
+                            "Revocation is malformed, missing issuer \
+                             packet")),
+                    }));
+
+            Self::report_failure(
+                params, params_once, err.clone(), &mut *stats)?;
+
+            err
+        };
+
+        Err(Error::OperationalError(
+            error::OperationalError::ImportError(err)))
     }
 
     /// Imports certificates from autocrypt headers.
@@ -1161,7 +1339,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         self,
         source: impl std::io::Read + Send + Sync,
         prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -1188,7 +1366,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             &params,
             Output::Report(output::Report {
                 stats,
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         result
     }
@@ -1199,7 +1378,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                              mut source: Box<dyn BufferedReader<Cookie> + 'a>,
                              mut stats: &mut ImportStats,
                              prompt: Box<dyn prompt::Prompt + 'a>)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let Params {
             sequoia,
@@ -1221,15 +1400,16 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         };
         let (ac, from_addr) = match ac() {
             Err(err) => {
+                let err = error::ImportError::BrokenArtifact(
+                    error::BrokenArtifact::BrokenAutocrypt(
+                        error::BrokenAutocrypt {
+                            error: Arc::new(err.context("Not an email")),
+                        }));
+
                 Self::report_failure(
-                    params, params_once,
-                    output::Breakage::BrokenArtifact(
-                        output::BrokenArtifact::BrokenAutocrypt(
-                            output::BrokenAutocrypt {
-                            })),
-                    err.context("Not an email"),
-                    &mut *stats)?;
-                return Err(anyhow::anyhow!("Input is not an email"));
+                    params, params_once, err.clone(), &mut *stats)?;
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
             }
             Ok((ac, from_addr)) => (ac, from_addr),
         };
@@ -1323,11 +1503,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         } else {
             Self::report_failure(
                 params, params_once,
-                output::Breakage::BrokenArtifact(
-                    output::BrokenArtifact::BrokenAutocrypt(
-                        output::BrokenAutocrypt {
+                error::ImportError::BrokenArtifact(
+                    error::BrokenArtifact::BrokenAutocrypt(
+                        error::BrokenAutocrypt {
+                            error: Arc::new(anyhow::anyhow!(
+                                "No autocrypt header")),
                         })),
-                anyhow::anyhow!("No autocrypt header"),
                 &mut *stats)?;
             return Ok(());
         };
@@ -1358,7 +1539,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 sender_attributes: Arc::clone(&sender_attributes.1),
                 decryption_output,
                 decrypted,
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         if let Err(_err) = decryption_result {
             // The decryption failed, but we imported the Autocrypt
@@ -1368,19 +1550,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let ac = match autocrypt::AutocryptHeaders::from_bytes(&plaintext) {
             Err(err) => {
-                // anyhow doesn't implement clone; make a shallow
-                // copy.
-                let err_ = anyhow::anyhow!(err.to_string())
-                    .context("Parsing email");
+                let err = error::ImportError::BrokenArtifact(
+                    error::BrokenArtifact::BrokenAutocrypt(
+                        error::BrokenAutocrypt {
+                            error: Arc::new(err),
+                        }));
+
                 Self::report_failure(
-                    params, params_once,
-                    output::Breakage::BrokenArtifact(
-                        output::BrokenArtifact::BrokenAutocrypt(
-                            output::BrokenAutocrypt {
-                            })),
-                    err,
-                    &mut *stats)?;
-                return Err(err_);
+                    params, params_once, err.clone(), &mut *stats)?;
+
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
             }
             Ok(ac) => {
                 ac
@@ -1440,6 +1620,10 @@ mod tests {
         eprintln!("Start of import");
         for o in output.iter() {
             match o {
+                Output::OperationalError(_) => (),
+                Output::SystemError(_) => (),
+                Output::ArgumentError(_) => (),
+
                 Output::Imported(_) => {
                     assert!(! saw_report);
                     eprintln!("- Imported");
@@ -1448,15 +1632,13 @@ mod tests {
                 Output::ImportingFailed(failure) => {
                     assert!(! saw_report);
                     eprintln!("- ImportingFailed: {}", failure);
-                    match failure.breakage {
-                        output::Breakage::NoCertStore(_) => (),
-                        output::Breakage::NoData(_) => (),
-                        output::Breakage::ParseError(_)
-                            | output::Breakage::BrokenArtifact(_)
-                            | output::Breakage::ImportError(_) =>
+                    match failure {
+                        error::ImportError::BrokenArtifact(_)
+                            | error::ImportError::ImportingError(_) =>
                         {
                             errors_count += 1;
                         }
+                        _ => (),
                     }
                 }
                 Output::DecryptedAutocrypt(_) => {
