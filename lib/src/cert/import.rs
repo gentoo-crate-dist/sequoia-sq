@@ -305,27 +305,6 @@ pub mod error {
         AutocryptGossipImportError(AutocryptGossipImportError),
     }
 
-    /// The input source did not contain any certificates.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("No certificates found")]
-    pub struct NoCertificates {
-    }
-
-    /// While parsing the input source, we encountered errors parsing
-    /// some of the certificates.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("Error importing {}",
-            if *.bad == 1 {
-                Cow::Borrowed("a certificate")
-            } else {
-                Cow::Owned(format!("{} certificates", *.bad))
-            })]
-    pub struct BadCerts {
-        pub bad: usize,
-    }
-
     /// We failed to import something.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
@@ -343,12 +322,6 @@ pub mod error {
         /// We tried to import an otherwise valid artifact into the
         /// certificate store, but failed.
         ImportingError(ImportingError),
-
-        /// No certificates found.
-        NoCertificates(NoCertificates),
-
-        /// We failed to import some certificates.
-        BadCerts(BadCerts),
     }
 
     /// An operational error that prevents processing from continuing.
@@ -528,9 +501,20 @@ pub mod output {
         pub decrypted: bool,
     }
 
+    /// The type of artifact that we imported (or tried to import).
+    #[non_exhaustive]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ArtifactType {
+        Keyring,
+        Revocation,
+        Autocrypt,
+    }
+
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Report {
+        pub artifact_type: ArtifactType,
+
         /// Statistics.
         pub stats: ImportStats,
     }
@@ -761,23 +745,28 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let input = Box::new(input) as Box<dyn BufferedReader<Cookie> + 'a>;
         let prompt = Box::new(prompt) as Box<dyn prompt::Prompt + 'a>;
-        let result = match typ {
+        let (artifact_type, result) = match typ {
             Type::Keyring => {
-                Self::import_certs_(&params, &mut params_once, input, &mut stats)
+                (output::ArtifactType::Keyring,
+                 Self::import_certs_(
+                     &params, &mut params_once, input, &mut stats))
             }
             Type::Signature => {
-                Self::import_revocation_(
-                    &params, &mut params_once, input, &mut stats)
+                (output::ArtifactType::Revocation,
+                 Self::import_revocation_(
+                     &params, &mut params_once, input, &mut stats))
             }
             Type::Other => {
-                Self::import_autocrypt_(
-                    &params, &mut params_once, input, &mut stats, prompt)
+                (output::ArtifactType::Autocrypt,
+                 Self::import_autocrypt_(
+                     &params, &mut params_once, input, &mut stats, prompt))
             }
         };
 
         params_once.stream.output(
             &params,
             Output::Report(output::Report {
+                artifact_type,
                 stats,
             }))
             .map_err(|err| Error::StreamOutputError(err))?;
@@ -881,20 +870,32 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         }
     }
 
-    /// Imports certificates encoded as OpenPGP keyring.
+    /// Imports certificates from an OpenPGP keyring.
+    ///
+    /// This function imports certificates from an OpenPGP keyring.  A
+    /// keyring consists of zero or more certificates.  It may be
+    /// binary encoded or encoded using ASCII armor.
+    ///
+    /// This function returns an error if the certificate store is
+    /// disabled.
     ///
     /// This function returns an error if the input is not an OpenPGP
-    /// keyring.  If the OpenPGP keyring contains recoverable errors,
-    /// these are reported using [`Output::ImportingFailed`], but
-    /// parsing is not aborted.
+    /// keyring.  (Note: an empty file is consider a valid keyring.)
     ///
-    /// This function returns an error if the input is not an OpenPGP
-    /// keyring, if there was an issue importing one or more
-    /// certificates, or if the input contains no certificates.  In
-    /// other words, if five certificates are imported and there is a
-    /// problem with one certificate, this function conservatively
-    /// returns an error.  Depending on the context, the error may not
-    /// be fatal, and showing a warning may be sufficient.
+    /// Recoverable errors, such as failing to import a certificate
+    /// into the certificate store, or a certificate being corrupted,
+    /// do not cause this function to return an error.  These errors
+    /// are reported using [`Output::ImportingFailed`].  Parsing is
+    /// not aborted.  An example of a recoverable error is a keyring
+    /// that contains two valid certificates and a corrupted
+    /// certificate.  Unless the corrupted certificate is at the start
+    /// of the file and is so corrupted that the input is not
+    /// recognizable as a keyring, this function will not return an
+    /// error; it will import the other two certificates, and emit
+    /// [`Output::ImportingFailed`] for the corrupted certificate.
+    ///
+    /// This function does not return an error if the keyring is
+    /// empty.
     pub fn import_certs<'a>(self, source: impl std::io::Read + Send + Sync + 'a)
         -> Result<(), Error>
     {
@@ -918,6 +919,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         params_once.stream.output(
             &params,
             Output::Report(output::Report {
+                artifact_type: output::ArtifactType::Keyring,
                 stats,
             }))
             .map_err(|err| Error::StreamOutputError(err))?;
@@ -948,12 +950,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        let mut ok = 0;
-        let mut errors = 0;
         for raw_cert in raw_certs {
             let cert = match raw_cert {
                 Err(err) => {
-                    errors += 1;
                     Self::report_failure(
                         params, params_once,
                         error::ImportError::BrokenArtifact(
@@ -970,7 +969,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     match lc.to_cert().cloned() {
                         Ok(cert) => cert,
                         Err(err) => {
-                            errors += 1;
                             Self::report_failure(
                                 params, params_once,
                                 error::ImportError::BrokenArtifact(
@@ -988,40 +986,15 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 }
             };
 
-            let imported = Self::import_and_report(
+            Self::import_and_report(
                 params, params_once,
                 cert.clone(),
                 output::Artifact::Cert(cert),
                 Vec::new(), // No provenance.
                 &mut *stats)?;
-
-            if imported {
-                ok += 1;
-            } else {
-                errors += 1;
-            }
         }
 
-        match errors {
-            0 => {
-                if ok > 0 {
-                    Ok(())
-                } else {
-                    // This likely wasn't a keyring.
-                    Err(Error::OperationalError(
-                        error::OperationalError::ImportError(
-                            error::ImportError::NoCertificates(
-                                error::NoCertificates {
-                                }))))
-                }
-            }
-            bad => Err(Error::OperationalError(
-                        error::OperationalError::ImportError(
-                            error::ImportError::BadCerts(
-                                error::BadCerts {
-                                    bad,
-                                }))))
-        }
+        Ok(())
     }
 
     /// Imports a bare revocation certificate.
@@ -1063,6 +1036,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         params_once.stream.output(
             &params,
             Output::Report(output::Report {
+                artifact_type: output::ArtifactType::Revocation,
                 stats,
             }))
             .map_err(|err| Error::StreamOutputError(err))?;
@@ -1365,6 +1339,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         params_once.stream.output(
             &params,
             Output::Report(output::Report {
+                artifact_type: output::ArtifactType::Autocrypt,
                 stats,
             }))
             .map_err(|err| Error::StreamOutputError(err))?;
@@ -1613,41 +1588,53 @@ mod tests {
     fn check(output: Vec<Output>,
              imports_expected: usize, errors_expected: usize)
     {
+        let mut saw_error = false;
         let mut saw_report = false;
-        let mut imports_count = 0;
-        let mut errors_count = 0;
+        let mut import_count = 0;
+        let mut import_error_count = 0;
 
         eprintln!("Start of import");
         for o in output.iter() {
             match o {
-                Output::OperationalError(_) => (),
-                Output::SystemError(_) => (),
-                Output::ArgumentError(_) => (),
+                err @ Output::OperationalError(_)
+                    | err @ Output::SystemError(_)
+                    | err @ Output::ArgumentError(_) =>
+                {
+                    eprintln!("Error: {:?}", err);
+                    assert!(! saw_error);
+                    assert!(! saw_report);
+
+                    saw_error = true;
+                }
 
                 Output::Imported(_) => {
-                    assert!(! saw_report);
                     eprintln!("- Imported");
-                    imports_count += 1;
+                    assert!(! saw_report);
+                    assert!(! saw_error);
+                    import_count += 1;
                 }
                 Output::ImportingFailed(failure) => {
-                    assert!(! saw_report);
                     eprintln!("- ImportingFailed: {}", failure);
+                    assert!(! saw_report);
+                    assert!(! saw_error);
                     match failure {
                         error::ImportError::BrokenArtifact(_)
                             | error::ImportError::ImportingError(_) =>
                         {
-                            errors_count += 1;
+                            import_error_count += 1;
                         }
                         _ => (),
                     }
                 }
                 Output::DecryptedAutocrypt(_) => {
-                    assert!(! saw_report);
                     eprintln!("- DecryptedAutocrypt");
+                    assert!(! saw_report);
+                    assert!(! saw_error);
                 }
                 Output::Report(report) => {
                     eprintln!("- Report");
                     assert!(! saw_report);
+                    assert!(! saw_error);
                     saw_report = true;
 
                     eprintln!("  Imported {}, updated {}, \
@@ -1661,21 +1648,21 @@ mod tests {
                         + report.stats.certs.unchanged_certs()
                         + report.stats.certs.updated_certs();
                     assert_eq!(stats_imported,
-                               imports_count,
+                               import_count,
                                "imports: stats: {}; count: {}",
-                               stats_imported, imports_count);
+                               stats_imported, import_count);
                     assert_eq!(report.stats.certs.errors(),
-                               errors_count,
+                               import_error_count,
                                "errors: stats {}; count: {}",
-                               report.stats.certs.errors(), errors_count);
+                               report.stats.certs.errors(), import_error_count);
 
-                    if imports_expected != imports_count
-                        || errors_expected != errors_count
+                    if imports_expected != import_count
+                        || errors_expected != import_error_count
                     {
                         panic!("Imported {}, expected {}; \
                                 {} errors, expected: {}",
-                               imports_count, imports_expected,
-                               errors_count, errors_expected);
+                               import_count, imports_expected,
+                               import_error_count, errors_expected);
                     }
                 }
             }
@@ -1696,7 +1683,7 @@ mod tests {
             .import_certs(std::io::Cursor::new(b""));
 
         check(output, 0, 0);
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         // Junk.
         let input = vec![b'!'; 16 * 1024];
@@ -1751,8 +1738,7 @@ mod tests {
             .import_certs(std::io::Cursor::new(&input[..]));
 
         check(output, 2, 1);
-        // An error is returned if there are any problems.
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

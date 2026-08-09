@@ -108,6 +108,88 @@ fn sq_cert_import() -> Result<()>
 }
 
 #[test]
+fn sq_cert_import_non_existant()
+{
+    let sq = Sq::new();
+
+    let non_existant = sq.scratch_file("non_existant");
+    assert!(! non_existant.exists());
+
+    // Import.
+    let mut cmd = sq.command();
+    cmd.args(["cert", "import"]);
+    cmd.arg(&non_existant);
+    cmd.assert().failure();
+}
+
+#[test]
+fn sq_cert_import_empty()
+{
+    let sq = Sq::new();
+
+    let empty = sq.scratch_file("empty");
+    std::fs::write(&empty, "").expect("can write");
+
+    // Import.
+    let mut cmd = sq.command();
+    cmd.args(["cert", "import"]);
+    cmd.arg(&empty);
+    cmd.assert().success();
+}
+
+#[test]
+fn sq_cert_import_junk()
+{
+    let sq = Sq::new();
+
+    let junk = sq.scratch_file("junk");
+    std::fs::write(&junk, &[b'1'; 16 * 1024]).expect("can write");
+
+    // Import just junk.
+    let mut cmd = sq.command();
+    cmd.args(["cert", "import"]);
+    cmd.arg(&junk);
+    cmd.assert().failure();
+
+    // Import a certificate followed by junk.
+    let sq = Sq::new();
+
+    let (alice, _) = CertBuilder::general_purpose(
+        Some("alice@example.org"))
+        .set_creation_time(sq.now())
+        .generate()
+        .expect("can generate key");
+
+    let mut bytes = Vec::new();
+    alice.as_tsk().serialize(&mut bytes).expect("can serialize");
+    bytes.extend(&[b'!'; 2024]);
+
+    std::fs::write(&junk, &bytes).expect("can write to file");
+    let mut cmd = sq.command();
+    cmd.args(["cert", "import"]);
+    cmd.arg(&junk);
+    cmd.assert().failure();
+
+    // Import a certificate followed by junk followed by a certificate.
+    let (bob, _) = CertBuilder::general_purpose(
+        Some("bob@example.org"))
+        .set_creation_time(sq.now())
+        .generate()
+        .expect("can generate key");
+
+    let mut bytes = Vec::new();
+    alice.as_tsk().serialize(&mut bytes).expect("can serialize");
+    bytes.extend(&[b'!'; 2024]);
+    bob.as_tsk().serialize(&mut bytes).expect("can serialize");
+
+    std::fs::write(&junk, &bytes).expect("can write to file");
+    let mut cmd = sq.command();
+    cmd.args(["cert", "import"]);
+    cmd.arg(&junk);
+    cmd.assert().failure();
+}
+
+#[test]
 fn sq_cert_import_rev() -> Result<()>
 {
     let sq = Sq::new();

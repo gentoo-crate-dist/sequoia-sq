@@ -335,6 +335,7 @@ impl import::Stream for Stream<'_> {
             Output::Report(
                 Report {
                     stats,
+                    artifact_type,
                     ..
                 }) =>
             {
@@ -342,7 +343,32 @@ impl import::Stream for Stream<'_> {
                     wwriteln!(&mut self.output);
                     stats.print_summary(&mut self.output, &self.sq.sequoia)?;
                 }
+
+                let errors = stats.certs.errors();
+                let ok = stats.certs.new_certs()
+                    + stats.certs.unchanged_certs()
+                    + stats.certs.updated_certs();
+
                 self.stats = Some(stats);
+
+                if artifact_type == ArtifactType::Keyring {
+                    match errors {
+                        0 => {
+                            if ok == 0 {
+                                return Err(anyhow::anyhow!("No certificates found"));
+                            }
+                        }
+                        1 => {
+                            return Err(anyhow::anyhow!(
+                                "Error importing a certificate"));
+                        }
+                        errors => {
+                            return Err(anyhow::anyhow!(
+                                "Error importing {} certificates",
+                                errors))
+                        }
+                    }
+                }
             }
 
             _output => {
