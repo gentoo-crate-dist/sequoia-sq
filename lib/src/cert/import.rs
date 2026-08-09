@@ -5,7 +5,7 @@
 //! supported, if the corresponding certificate is already available
 //! in the certificate store or in one of the supplied keyrings.
 //! [`Builder::import`] auto-detects the file's type.
-//! [`Builder::import_certs`], [`Builder::import_revocation`], and
+//! [`Builder::import_keyring`], [`Builder::import_revocation`], and
 //! [`Builder::import_autocrypt`] each handle a specific file type.
 //!
 //! If an imported certificate includes secret key material, the
@@ -710,7 +710,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     ///
     /// This function detects if `input` contains an OpenPGP keyring,
     /// a bare revocation certificate, or an email, and calls
-    /// [`Builder::import_certs`], [`Builder::import_revocation`], or
+    /// [`Builder::import_keyring`], [`Builder::import_revocation`], or
     /// [`Builder::import_autocrypt`], as appropriate.
     ///
     /// See those functions for a description of the return value.
@@ -775,7 +775,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let (artifact_type, result) = match typ {
             Type::Keyring => {
                 (output::ArtifactType::Keyring,
-                 Self::import_certs_(
+                 Self::import_keyring_(
                      &params, &mut params_once, input, &mut stats))
             }
             Type::Signature => {
@@ -923,7 +923,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     ///
     /// This function does not return an error if the keyring is
     /// empty.
-    pub fn import_certs<'a>(self, source: impl std::io::Read + Send + Sync + 'a)
+    pub fn import_keyring<'a>(self,
+                              source: impl std::io::Read + Send + Sync + 'a)
         -> Result<(), Error>
     {
         let Builder {
@@ -940,7 +941,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let mut stats = ImportStats::default();
 
-        let result = Self::import_certs_(
+        let result = Self::import_keyring_(
             &params, &mut params_once, source, &mut stats);
 
         params_once.stream.output(
@@ -955,11 +956,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports certs encoded as OpenPGP keyring.
-    fn import_certs_<'a>(params: &Params,
-                         params_once: &mut ParamsOnce,
-                         source: Box<dyn BufferedReader<Cookie> + 'a>,
-                         stats: &mut ImportStats)
-                         -> Result<(), Error>
+    fn import_keyring_<'a>(params: &Params,
+                           params_once: &mut ParamsOnce,
+                           source: Box<dyn BufferedReader<Cookie> + 'a>,
+                           stats: &mut ImportStats)
+        -> Result<(), Error>
     {
         let raw_certs = match RawCertParser::from_buffered_reader(source) {
             Ok(raw_certs) => raw_certs,
@@ -1707,14 +1708,14 @@ mod tests {
     }
 
     #[test]
-    fn certs() {
+    fn keyring() {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 
         // Empty file.
         let mut output = Vec::new();
         let result = sq.cert_import()
             .stream(&mut output)
-            .import_certs(std::io::Cursor::new(b""));
+            .import_keyring(std::io::Cursor::new(b""));
 
         check(output, 0, 0);
         assert!(result.is_ok());
@@ -1724,7 +1725,7 @@ mod tests {
         let mut output = Vec::new();
         let result = sq.cert_import()
             .stream(&mut output)
-            .import_certs(std::io::Cursor::new(&input));
+            .import_keyring(std::io::Cursor::new(&input));
 
         check(output, 0, 0);
         assert!(result.is_err());
@@ -1744,7 +1745,7 @@ mod tests {
         let mut output = Vec::new();
         let result = sq.cert_import()
             .stream(&mut output)
-            .import_certs(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 1, 0);
         assert!(result.is_ok());
@@ -1756,7 +1757,7 @@ mod tests {
         let mut output = Vec::new();
         let result = sq.cert_import()
             .stream(&mut output)
-            .import_certs(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 2, 0);
         assert!(result.is_ok());
@@ -1769,7 +1770,7 @@ mod tests {
         let mut output = Vec::new();
         let result = sq.cert_import()
             .stream(&mut output)
-            .import_certs(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 2, 1);
         assert!(result.is_ok());
@@ -1851,7 +1852,7 @@ mod tests {
         let mut output = Vec::new();
         let result = sq.cert_import()
             .stream(&mut output)
-            .import_certs(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 1, 0);
         assert!(result.is_ok());
