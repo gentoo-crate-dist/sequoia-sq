@@ -1,9 +1,21 @@
-//! Functionality for importing certificates.
+//! Import certificates and revocation certificates.
+//!
+//! The certificates can be imported from a keyring or from an email's
+//! autocrypt headers.  Importing bare revocation certificates is also
+//! supported, if the corresponding certificate is already available
+//! in the certificate store or in one of the supplied keyrings.
+//! [`Builder::import`] auto-detects the file's type.
+//! [`Builder::import_certs`], [`Builder::import_revocation`], and
+//! [`Builder::import_autocrypt`] each handle a specific file type.
+//!
+//! If an imported certificate includes secret key material, the
+//! secret key material is silently dropped.  To import secret key
+//! material, use [`Sequoia::key_import`].
 //!
 //! # Examples
 //!
-//! Import some certificates, a revocation certificate, or
-//! certificates from an email with autocrypt headers:
+//! Import certificates from a keyring, a bare revocation certificate,
+//! or certificates from an email with autocrypt headers:
 //!
 //! ```
 //! # use sequoia::openpgp;
@@ -26,12 +38,12 @@
 //! #
 //! # let mut input = std::io::Cursor::new(&input[..]);
 //! #
-//! // The prompt is used to ask for a password when decrypting an
+//! // The prompt is used to ask for a password to decrypt an
 //! // Autocrypt message.  Here we suppress the prompt.
 //! let prompt = Cancel::new();
 //!
 //! if let Err(err) = sq.cert_import().import(input, prompt) {
-//!     eprintln!("Failed to import at least one certificate: {}", err);
+//!     eprintln!("Failed to import the file: {}", err);
 //! }
 //! # Ok(()) }
 //! ```
@@ -73,12 +85,15 @@
 //! impl import::Stream for Stream {
 //!     fn output(&mut self,
 //!               _params: &import::Params,
-//!               output: import::Output)
+//!               output: Output)
 //!         -> sequoia::Result<()>
 //!     {
 //!         match output {
 //!             Output::Imported(Imported { merged, .. }) => {
 //!                 eprintln!("Imported {}", merged.fingerprint());
+//!             }
+//!             Output::ImportingFailed(err) => {
+//!                 eprintln!("Failed to import: {}", err);
 //!             }
 //!             Output::Report(Report { stats, ..}) => {
 //!                 eprintln!("New {}, updated: {}, unchanged: {}, errors: {}",
@@ -97,7 +112,7 @@
 //!     }
 //! }
 //!
-//! // The prompt is used to ask for a password when decrypting an
+//! // The prompt is used to ask for a password to decrypt an
 //! // Autocrypt message.  Here we suppress the prompt.
 //! let prompt = Cancel::new();
 //!
@@ -510,6 +525,11 @@ pub mod output {
         Autocrypt,
     }
 
+    /// A report about the operation.
+    ///
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether anything is imported or not.
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Report {
@@ -571,6 +591,11 @@ pub enum Output {
     /// usually ignore this.
     DecryptedAutocrypt(output::DecryptedAutocrypt),
 
+    /// A report about the operation.
+    ///
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether anything is imported or not.
     Report(output::Report),
 }
 
@@ -683,10 +708,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
     /// Import certificates or revocation certificates.
     ///
-    /// This auto-detects if `input` contains an OpenPGP keyring, a
-    /// bare revocation certificate, or an email, and calls
+    /// This function detects if `input` contains an OpenPGP keyring,
+    /// a bare revocation certificate, or an email, and calls
     /// [`Builder::import_certs`], [`Builder::import_revocation`], or
     /// [`Builder::import_autocrypt`], as appropriate.
+    ///
+    /// See those functions for a description of the return value.
     pub fn import<'a, P>(self,
                          input: impl std::io::Read + Send + Sync + 'a,
                          prompt: P)
@@ -1007,10 +1034,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// in which case the certificate is also imported into the
     /// certificate store).
     ///
-    /// This function returns an error if the input does not contain
-    /// exactly one revocation certificate.  Note: if the input
-    /// contains multiple ASCII-armored blocks, only the first one is
-    /// considered.
+    /// This function emits [`error::ImportError`] and returns an
+    /// error if the input does not contain exactly one valid
+    /// revocation certificate.  This function also returns an error
+    /// if the revoked certificate is not available.
+    ///
+    /// Note: if the input contains multiple ASCII-armored blocks,
+    /// only the first one is considered.
     pub fn import_revocation(
         self,
         source: impl std::io::Read + Send + Sync)
@@ -1044,7 +1074,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         result
     }
 
-    /// Import a bare revocation certificate.
+    /// Imports a bare revocation certificate.
     fn import_revocation_<'a>(
         params: &Params,
         params_once: &mut ParamsOnce,
@@ -1291,24 +1321,28 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// communicate to the receiver what the sender's OpenPGP
     /// certificate is.  If the message is sent to multiple parties,
     /// the message may also include so-called gossip, which are the
-    /// certificates that the sender used for each of the recipients.
+    /// certificates that the sender allegedly` used for each of the
+    /// recipients.
     ///
-    /// This function imports certificates found in autocrypt headers.
-    /// As the gossip headers are stored in the message, it also
-    /// decrypt the message, and verifies the signature.  If the
-    /// plaintext was signed using the sender's certificate, it
-    /// imports the gossip headers.
+    /// This function imports certificates found in any autocrypt
+    /// headers.  If the email headers include an autocrypt header,
+    /// this function will also attempt to decrypt message body and
+    /// verify the signature.  If the body was encrypted and the
+    /// signature is valid, it will import any gossip headers.  Note:
+    /// this function will not try to decrypt the message body if
+    /// there are no autocrypt headers.
     ///
     /// This function processes a single email message.  If passed a
     /// mailbox, it will only process the first message.
     ///
     /// This function emits [`Output::ImportingFailed`] and returns an
     /// error if the input is not an email.  If the input is an email,
-    /// and does not contain an autocrypt, this function emits
-    /// [`Output::ImportingFailed`] and returns success.  If the
-    /// message can't be decrypted or the signature can't be verified,
-    /// the error is propagated using [`Output::DecryptedAutocrypt`],
-    /// but it does not cause the function to return an error.
+    /// and does not contain an autocrypt header, this function emits
+    /// [`Output::ImportingFailed`], but it does not cause the
+    /// function to return an error.  Similarly, if the message can't
+    /// be decrypted or the signature can't be verified, the error is
+    /// propagated using [`Output::DecryptedAutocrypt`], but it does
+    /// not cause the function to return an error.
     pub fn import_autocrypt<'a, P>(
         self,
         source: impl std::io::Read + Send + Sync,
