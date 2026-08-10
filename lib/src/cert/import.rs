@@ -261,6 +261,13 @@ pub mod error {
     }
 
 
+    /// Email does not contain any Autocrypt headers.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Email does not contain any Autocrypt headers")]
+    pub struct NoAutocryptHeader {
+    }
+
     /// An error occurred while importing the certificate into the
     /// certificate store.
     #[non_exhaustive]
@@ -333,6 +340,12 @@ pub mod error {
 
         /// An artifact is broken.
         BrokenArtifact(BrokenArtifact),
+
+        /// No autocrypt header.
+        ///
+        /// The input appears to be an email, but it does not contain
+        /// an autocrypt header.
+        NoAutocryptHeader(NoAutocryptHeader),
 
         /// We tried to import an otherwise valid artifact into the
         /// certificate store, but failed.
@@ -1513,12 +1526,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         } else {
             Self::report_failure(
                 params, params_once,
-                error::ImportError::BrokenArtifact(
-                    error::BrokenArtifact::BrokenAutocrypt(
-                        error::BrokenAutocrypt {
-                            error: Arc::new(anyhow::anyhow!(
-                                "No autocrypt header")),
-                        })),
+                error::ImportError::NoAutocryptHeader(
+                    error::NoAutocryptHeader {
+                    }),
                 &mut *stats)?;
             return Ok(());
         };
@@ -1917,7 +1927,7 @@ Hi!
 "),
                 prompt::Cancel::new());
 
-        check(output, 0, 1);
+        check(output, 0, 0);
         if let Err(err) = result {
             panic!("Failed to import certificates: {:?}", err);
         }
