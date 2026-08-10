@@ -534,6 +534,7 @@ pub mod output {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ArtifactType {
         Keyring,
+        Certs,
         Revocation,
         Autocrypt,
     }
@@ -1034,6 +1035,46 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 Vec::new(), // No provenance.
                 &mut *stats)?;
         }
+
+        Ok(())
+    }
+
+    /// Imports the certificates.
+    ///
+    /// This function returns an error if the certificate store is
+    /// disabled.
+    ///
+    /// Recoverable errors, such as failing to import a certificate
+    /// into the certificate store, do not cause this function to
+    /// return an error.  These errors are reported using
+    /// [`Output::ImportingFailed`].  Parsing is not aborted.
+    pub fn import_certs<I>(self, certs: I) -> Result<(), Error>
+    where
+        I: IntoIterator<Item=Cert>,
+    {
+        let Builder {
+            params,
+            mut params_once,
+        } = self;
+
+        let mut stats = ImportStats::default();
+
+        for cert in certs.into_iter() {
+            Self::import_and_report(
+                &params, &mut params_once,
+                cert.clone(),
+                output::Artifact::Cert(cert),
+                Vec::new(), // No provenance.
+                &mut stats)?;
+        }
+
+        params_once.stream.output(
+            &params,
+            Output::Report(output::Report {
+                artifact_type: output::ArtifactType::Certs,
+                stats,
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }
@@ -1784,6 +1825,62 @@ mod tests {
 
         check(output, 2, 1);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn certs() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let mut output = Vec::new();
+        sq.cert_import()
+            .stream(&mut output)
+            .import_certs(Vec::new())
+            .expect("Can import zero certificates");
+        check(output, 0, 0);
+
+        let mut output = Vec::new();
+        sq.cert_import()
+            .stream(&mut output)
+            .import_certs([])
+            .expect("Can import zero certificates");
+        check(output, 0, 0);
+
+        let mut output = Vec::new();
+        sq.cert_import()
+            .stream(&mut output)
+            .import_certs(std::iter::empty())
+            .expect("Can import zero certificates");
+        check(output, 0, 0);
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+        let (bob, _bob_rev) = CertBuilder::new()
+            .add_userid("<bob@example.org>")
+            .generate()
+            .unwrap();
+
+        let mut output = Vec::new();
+        sq.cert_import()
+            .stream(&mut output)
+            .import_certs(vec![alice.clone(), bob.clone()])
+            .expect("Can import zero certificates");
+        check(output, 2, 0);
+
+        let mut output = Vec::new();
+        sq.cert_import()
+            .stream(&mut output)
+            .import_certs([alice.clone(), bob.clone()])
+            .expect("Can import zero certificates");
+        check(output, 2, 0);
+
+        let mut output = Vec::new();
+        sq.cert_import()
+            .stream(&mut output)
+            .import_certs([alice.clone(), bob.clone()].iter().cloned())
+            .expect("Can import zero certificates");
+        check(output, 2, 0);
     }
 
     #[test]
