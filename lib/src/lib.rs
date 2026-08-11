@@ -225,7 +225,6 @@ use cert_store::StoreUpdate;
 #[macro_use] mod transitional;
 #[macro_use] mod destination;
 #[macro_use] mod errors;
-pub use errors::Error;
 pub use errors::SystemError;
 
 pub mod cert;
@@ -842,8 +841,8 @@ impl Sequoia {
             .unwrap_or(self.stateless())
     }
 
-    fn no_key_store_err() -> errors::Error {
-        errors::Error::state_disabled("key store")
+    fn no_key_store_err() -> SystemError {
+        errors::SystemError::KeyStoreDisabled
     }
 
     /// Returns the key store's path.
@@ -864,7 +863,16 @@ impl Sequoia {
     ///
     /// If the key store is disabled, returns `Ok(None)`.  If it is not yet
     /// open, opens it.
-    pub fn key_store(&self) -> Result<Option<&Mutex<key_store::Keystore>>> {
+    pub fn key_store(&self)
+        -> Result<Option<&Mutex<key_store::Keystore>>, SystemError>
+    {
+        self.key_store_()
+            .map_err(|err| {
+                SystemError::KeyStoreError(err.into())
+            })
+    }
+
+    fn key_store_(&self) -> Result<Option<&Mutex<key_store::Keystore>>> {
         if self.no_key_store() {
             return Ok(None);
         }
@@ -887,10 +895,16 @@ impl Sequoia {
     /// Returns the key store.
     ///
     /// If the key store is disabled, returns an error.
-    pub fn key_store_or_else(&self) -> Result<&Mutex<key_store::Keystore>> {
-        self.key_store().and_then(|key_store| key_store.ok_or_else(|| {
-            Self::no_key_store_err().into()
-        }))
+    pub fn key_store_or_else(&self)
+        -> Result<&Mutex<key_store::Keystore>, SystemError>
+    {
+        self.key_store()
+            .and_then(|key_store| {
+                key_store
+                    .ok_or_else(|| {
+                        Self::no_key_store_err()
+                    })
+            })
     }
 
     /// Returns the secret keys found in any specified keyrings.

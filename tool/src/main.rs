@@ -320,14 +320,12 @@ fn real_main() -> Result<()> {
         Ok(()) => Ok(()),
         Err(mut err) => {
             // Map some errors.
-            if let Some(e) = err.downcast_ref::<sequoia::Error>() {
-                if let &sequoia::Error::StateDisabled { state, .. } = e {
-                    if state == "key store" {
-                        err = clap::Error::raw(
-                            clap::error::ErrorKind::ArgumentConflict,
-                            "Operation requires a key store, \
-                             but the key store is disabled").into();
-                    }
+            if let Some(e) = err.downcast_ref::<sequoia::SystemError>() {
+                if let &sequoia::SystemError::KeyStoreDisabled = e {
+                    err = clap::Error::raw(
+                        clap::error::ErrorKind::ArgumentConflict,
+                        "Operation requires a key store, \
+                         but the key store is disabled").into();
                 }
             }
 

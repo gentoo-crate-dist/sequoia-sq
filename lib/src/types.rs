@@ -4,8 +4,6 @@ use std::{
     path::PathBuf,
 };
 
-use crate::errors::Result;
-
 mod as_ref;
 pub use as_ref::MyAsRef;
 mod cert_designator;
@@ -61,16 +59,5 @@ impl StateDirectory {
     /// Returns whether this state has been disabled.
     pub fn is_none(&self) -> bool {
         matches!(self, StateDirectory::None)
-    }
-
-    /// Returns the absolute path, or `None` if the default path is to
-    /// be used.
-    pub fn path(&self) -> Result<Option<PathBuf>> {
-        match self {
-            StateDirectory::Absolute(p) => Ok(Some(p.clone())),
-            StateDirectory::Default => Ok(None),
-            StateDirectory::None =>
-                Err(crate::Error::state_disabled("state").into()),
-        }
     }
 }

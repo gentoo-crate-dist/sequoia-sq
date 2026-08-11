@@ -1515,7 +1515,7 @@ impl<'c> DecryptionHelper for Helper<'c> {
                 t!("Failed to connect to the key store: {}", err);
                 self.output(Output::Info(output::Info::KeyStoreUnreachable(
                     output::KeyStoreUnreachable {
-                        error: err,
+                        error: err.into(),
                     })))?;
             }
         }

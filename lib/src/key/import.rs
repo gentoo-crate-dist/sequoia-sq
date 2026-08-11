@@ -658,7 +658,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 Error::SystemError(
                     error::SystemError::NoKeyStore(
                         error::NoKeyStore {
-                            error: err,
+                            error: err.into(),
                         }))
             })?;
         let mut keystore = keystore.lock().unwrap();

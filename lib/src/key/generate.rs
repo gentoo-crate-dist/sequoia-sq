@@ -761,7 +761,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         if to_keystore {
             // We're going to write to the key store and cert store.
             // Fail early if they are not available.
-            sequoia.key_store_or_else().map_err(sys!())?;
+            sequoia.key_store_or_else()?;
             sequoia.cert_store_or_else()?;
         }
 

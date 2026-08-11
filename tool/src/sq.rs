@@ -168,7 +168,7 @@ impl Sq {
     ///
     /// If the key store is disabled, returns `Ok(None)`.  If it is not yet
     /// open, opens it.
-    pub fn key_store(&self) -> Result<Option<&Mutex<keystore::Keystore>>> {
+    pub fn key_store(&self) -> Result<Option<&Mutex<keystore::Keystore>>, SystemError> {
         self.sequoia.key_store()
     }
 
@@ -183,12 +183,11 @@ impl Sq {
     /// If the key store is disabled, returns an error.
     pub fn key_store_or_else(&self) -> Result<&Mutex<keystore::Keystore>> {
         self.sequoia.key_store_or_else().map_err(|err| {
-            if let Some(err) = err.downcast_ref::<sequoia::Error>() {
-                if let sequoia::Error::StateDisabled { .. } = err {
-                    return Self::no_key_store_err().into();
-                }
+            if let &sequoia::SystemError::KeyStoreDisabled = &err {
+                Self::no_key_store_err().into()
+            } else {
+                err.into()
             }
-            err
         })
     }
 
