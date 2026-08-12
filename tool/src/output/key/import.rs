@@ -3,7 +3,6 @@ use std::error::Error as _;
 use std::path::Path;
 use std::path::PathBuf;
 
-use sequoia::key::import::Error;
 use sequoia::key::import::error;
 use sequoia::key::import;
 use sequoia::types::PreferredUserID;
@@ -123,8 +122,8 @@ impl import::Stream for Stream<'_> {
                     .done();
             }
 
-            Output::ImportFailed(
-                ImportFailed {
+            Output::ImportingFailed(
+                ImportingFailed {
                     error,
                     ..
                 }) =>
@@ -136,61 +135,49 @@ impl import::Stream for Stream<'_> {
                 };
 
                 match error {
-                    Error::SystemError(error) => {
-                        match error {
-                            error::SystemError::NoKeyStore(
-                                error::NoKeyStore {
-                                    error,
-                                    ..
-                                }) =>
-                            {
-                                // Return immediately.  This is fatal;
-                                // we can't do anything else.
-                                return Err(error);
-                            }
-                            error::SystemError::ParseError(
-                                error::ParseError {
-                                    error,
-                                    ..
-                                }) =>
-                            {
-                                return Err(error.context(format!(
-                                    "Reading {}", input)));
-                            }
-                            error::SystemError::NoData(
-                                error::NoData {
-                                    ..
-                                }) =>
-                            {
-                                if ! self.sq.quiet() {
-                                    wwriteln!(&mut self.output,
-                                              "Warning: {} does not contain any certificates",
-                                              input);
-                                }
-                            }
-                            // No special handling for these errors.
-                            _ => {
-                                wwriteln!(&mut self.output,
-                                          "Error importing key from {}: {}",
-                                          input, error);
-                            }
+                    error::ImportError::ParseError(
+                        error::ParseError {
+                            error: _,
+                            ..
+                        }) =>
+                    {
+                        return Err(anyhow::Error::from(error)
+                                   .context(format!("Reading {}", input)));
+                    }
+                    error::ImportError::NoData(
+                        error::NoData {
+                            ..
+                        }) =>
+                    {
+                        if ! self.sq.quiet() {
+                            wwriteln!(&mut self.output,
+                                      "Warning: {} does not contain any certificates",
+                                      input);
                         }
                     }
-                    Error::KeyError(error) => {
-                        let id = error.fingerprint()
-                            .map(|fpr| {
-                                let userid = error
-                                    .cert()
+                    error::ImportError::BrokenCert(
+                        error::BrokenCert {
+                            ref cert,
+                            // error,
+                            ..
+                        }) =>
+                    {
+                        let id = cert
+                            .as_ref()
+                            .map(|cert| {
+                                let userid = cert
+                                    .clone()
+                                    .try_into()
                                     .map(|cert| {
-                                        self.sq.best_userid(cert, true)
+                                        self.sq.best_userid(&cert, true)
                                     })
-                                    .unwrap_or_else(|| {
+                                    .unwrap_or_else(|_| {
                                         PreferredUserID::unknown()
                                     });
 
                                 Cow::Owned(format!(
                                     "{} {}",
-                                    fpr, userid.display()))
+                                    cert.fingerprint(), userid.display()))
                             })
                             .unwrap_or(Cow::Borrowed("key"));
 
@@ -223,25 +210,52 @@ impl import::Stream for Stream<'_> {
                                           "{}", c);
                             }
                         }
+                    }
+                    error::ImportError::MissingSecretKeyMaterial(
+                        error::MissingSecretKeyMaterial {
+                            ref cert,
+                            ..
+                        }) =>
+                    {
+                        let userid = self.sq.best_userid(cert, true);
+                        let id = format!("{} {}",
+                                         cert.fingerprint(), userid.display());
 
-                        match error {
-                            error::KeyError::MissingSecretKeyMaterial(
-                                error::MissingSecretKeyMaterial {
-                                    cert,
-                                    ..
-                                }) =>
-                            {
-                                if ! cert.is_tsk() {
-                                    self.sq.hint(format_args!(
-                                        "To import certificates, do:"))
-                                        .sq().arg("cert").arg("import")
-                                        .arg(input)
-                                        .done();
-                                }
-                            }
-                            // No special handling for these errors.
-                            _ => (),
+                        let mut chain = Vec::new();
+                        chain.push(error.to_string());
+                        let mut source = error.source();
+                        while let Some(s) = source {
+                            chain.push(s.to_string());
+                            source = s.source();
                         }
+
+                        wwriteln!(&mut self.output,
+                                  "Error importing {} from {}:{}{}",
+                                  id,
+                                  input,
+                                  if chain.len() == 1 {
+                                      " "
+                                  } else {
+                                      ""
+                                  },
+                                  if chain.len() == 1 {
+                                      Cow::Owned(error.to_string())
+                                  } else {
+                                      Cow::Borrowed("")
+                                  });
+                        if chain.len() > 1 {
+                            for c in chain {
+                                wwriteln!(stream = &mut self.output,
+                                          indent = "    ",
+                                          "{}", c);
+                            }
+                        }
+
+                        self.sq.hint(format_args!(
+                            "To import certificates, do:"))
+                            .sq().arg("cert").arg("import")
+                            .arg(input)
+                            .done();
                     }
                     // No special handling for these errors.
                     error => {

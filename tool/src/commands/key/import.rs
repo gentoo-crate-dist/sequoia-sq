@@ -45,5 +45,15 @@ pub fn import(sq: Sq, command: cli::key::import::Command)
 
     stats.print_summary(&mut output, &sq.sequoia)?;
 
+    // Carefully turn result into an anyhow::Error.  Specifically, we
+    // want to be able to downcast the result to a `SystemError`, but
+    // to do this we need to strip the outer `Error`.
+    let result = result.map_err(|e| {
+        match e {
+            sequoia::key::import::Error::SystemError(e) => anyhow::Error::from(e),
+            e => anyhow::Error::from(e),
+        }
+    });
+
     result
 }

@@ -108,22 +108,26 @@
 //! # Ok(()) }
 //! ```
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use sequoia_openpgp as openpgp;
 use openpgp::Cert;
 use openpgp::Fingerprint;
 use openpgp::cert::CertParser;
+use openpgp::cert::raw::RawCert;
 use openpgp::parse::Parse;
 
 use sequoia_cert_store as cert_store;
 use cert_store::LazyCert;
 use cert_store::StoreUpdate;
 
+use sequoia_keystore as keystore;
+use keystore::Backend;
+
 use crate::Result;
 use crate::Sequoia;
-use crate::clone_anyhow;
-use crate::clone_error;
+use crate::SystemError;
 use crate::types::import_stats::ImportStats;
 use crate::types::import_stats::ImportStatus;
 
@@ -138,110 +142,54 @@ stream!{}
 pub mod error {
     use super::*;
 
-    /// An unrecoverable error occurred parsing the input.
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("Error parsing input")]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+
+    /// We failed to parse the input.
+    ///
+    /// Note: If we were unable to parse an individual artifact, then
+    /// we emit [`ImportError::BrokenCert`].
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parse error")]
     pub struct ParseError {
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
-    /// We can't import anything, because we don't have a
-    /// key store.
+    /// Input does not contain any certificates.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("No key store")]
-    pub struct NoKeyStore {
-        /// The related error.
-        #[source]
-        pub error: anyhow::Error,
-    }
-
-    /// We can't import anything, because the key store is not usable.
-    ///
-    /// This error is returned if there is no soft key backend.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("Error using key store")]
-    pub struct KeyStoreUnusable {
-        /// The related error.
-        #[source]
-        pub error: anyhow::Error,
-    }
-
-    /// We can't import the certificate, because we don't have a
-    /// certificate store.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("No certificate store")]
-    pub struct NoCertStore {
-        #[source]
-        pub error: anyhow::Error,
-    }
-
-    /// We didn't find any certificates.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("Input does not contain any certificates")]
     pub struct NoData {
     }
 
-    /// A system-related (as opposed to key- or certificate-related)
-    /// error.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    pub enum SystemError {
-        /// An unrecoverable error occurred parsing the input.
-        #[error(transparent)]
-        ParseError(#[from] ParseError),
-
-        /// We can't import anything, because we don't have a key
-        /// store.
-        #[error(transparent)]
-        NoKeyStore(#[from] NoKeyStore),
-
-        /// We can't import anything, because the key store is not usable.
-        #[error(transparent)]
-        KeyStoreUnusable(#[from] KeyStoreUnusable),
-
-        /// We can't import the certificate, because we don't have a
-        /// certificate store.
-        #[error(transparent)]
-        NoCertStore(#[from] NoCertStore),
-
-        /// We didn't find any certificates.
-        #[error(transparent)]
-        NoData(#[from] NoData),
-    }
-
-    /// An error parsing the low-level repsentation of the
-    /// certificate.
+    /// Information about a broken certificate.
     ///
-    /// This is often recoverable and the parse is able to skip to the
-    /// next certificate.
+    /// If `cert` is `None`, then we expected a certificate and found
+    /// junk.  If `cert` is `Some`, we were able to parse some bytes
+    /// into something that resembles a certificate, but the
+    /// certificate is corrupted.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("Error parsing input")]
-    pub struct CertParseError {
-        #[source]
-        pub error: anyhow::Error,
-    }
-
-    /// A certificate is broken, and can't be imported.
-    ///
-    /// We were able to parse some bytes into something that resembles
-    /// a certificate, but upon closer inspection, the certificate is
-    /// broken.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("Error parsing the certificate {}", .cert.fingerprint())]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("{}",
+            if let Some(cert) = .cert.as_ref() {
+                Cow::Owned(format!(
+                    "Parsing certificate {}", cert.fingerprint()))
+            } else {
+                Cow::Borrowed("Error parsing input")
+            })]
     pub struct BrokenCert {
-        // XXX: Make this a raw cert so that in the future we can
-        // parallelize the parsing.
-        pub cert: Cert, // RawCert<'static>,
+        pub cert: Option<RawCert<'static>>,
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
     /// The certificate does not contain any secret key material.
@@ -249,95 +197,82 @@ pub mod error {
     /// If the certificate does not contain secret key material, then
     /// there is nothing to import.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{} does not contain any secret key material",
             .cert.fingerprint())]
     pub struct MissingSecretKeyMaterial {
-        // XXX: Make this a raw cert so that in the future we can
-        // parallelize the parsing.
-        pub cert: Cert, // RawCert<'static>,
+        pub cert: Cert,
     }
 
-    /// An error occurred importing the key into the key store.
+    /// The certificate store is disabled.
+    ///
+    /// Note: we don't use [`SystemError::CertStoreDisabled`], because
+    /// this is not a fatal error.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("Error importing the certificate {} into the key store",
-            .cert.fingerprint())]
-    pub struct ImportError {
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("No certificate store")]
+    pub struct NoCertStore {
         pub cert: Cert,
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
-    /// An error related to importing a key.
+    /// An error occurred while importing the certificate into the
+    /// certificate store.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Importing {}", cert.fingerprint())]
+    pub struct ImportingCert {
+        pub cert: Cert,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// We failed to import something.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error(transparent)]
-    pub enum KeyError {
-        CertParseError(CertParseError),
-        BrokenCert(BrokenCert),
-        MissingSecretKeyMaterial(MissingSecretKeyMaterial),
-        ImportError(ImportError),
-    }
-
-    impl KeyError {
-        /// Returns the certificate's fingerprint, if known.
-        pub fn fingerprint(&self) -> Option<Fingerprint> {
-            match self {
-                KeyError::CertParseError(CertParseError { .. }) => None,
-                KeyError::BrokenCert(BrokenCert { cert, .. })
-                    | KeyError::MissingSecretKeyMaterial(
-                        MissingSecretKeyMaterial { cert, .. })
-                    | KeyError::ImportError(ImportError { cert, .. })
-                    =>
-                {
-                    Some(cert.fingerprint())
-                }
-            }
-        }
-
-        /// Returns the certificate, if it could be parsed.
-        pub fn cert(&self) -> Option<&Cert> {
-            match self {
-                KeyError::CertParseError(CertParseError { .. }) => None,
-                KeyError::BrokenCert(BrokenCert { cert, .. })
-                    | KeyError::MissingSecretKeyMaterial(
-                        MissingSecretKeyMaterial { cert, .. })
-                    | KeyError::ImportError(ImportError { cert, .. })
-                    =>
-                {
-                    Some(cert)
-                }
-            }
-        }
-    }
-
-    /// We failed to import a certificate into the certificate store.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error("Error importing the certificate {} into the certificate store",
-            .cert.fingerprint())]
-    pub struct CertImportError {
-        /// The certificate that we were trying to import.
+    pub enum ImportError {
+        /// We failed to parse the input.
         ///
-        /// Any secret material has been stripped.
-        pub cert: Cert,
-        /// The underlying error.
-        #[source]
-        pub error: anyhow::Error,
+        /// Note: If we were unable to parse an individual
+        /// certificate, then we emit [`ImportError::BrokenCert`].
+        ParseError(ParseError),
+
+        /// Input does not contain any certificates.
+        NoData(NoData),
+
+        /// An artifact is broken.
+        BrokenCert(BrokenCert),
+
+        /// The certificate does not contain any secret key material.
+        MissingSecretKeyMaterial(MissingSecretKeyMaterial),
+
+        /// The certificate store is disabled.
+        NoCertStore(NoCertStore),
+
+        /// We tried to import an otherwise valid certificate into the
+        /// certificate store, but failed.
+        ImportingCert(ImportingCert),
     }
 
-    /// An error related to importing a certificate to the certificate
-    /// store.
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
-    #[error(transparent)]
-    pub enum CertError {
-        /// We failed to import a certificate into the certificate store.
-        CertImportError(CertImportError),
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        ImportError(ImportError),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
     }
 }
-
 
 /// Errors related to importing keys.
 ///
@@ -347,18 +282,33 @@ pub mod error {
 #[derive(thiserror::Error, Debug)]
 #[error(transparent)]
 pub enum Error {
-    /// A system-related error.
+    /// An error related to the arguments.
     ///
-    /// This is contrast to the other errors, which are related to a
-    /// specific key or certificate.
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
     #[error(transparent)]
-    SystemError(#[from] error::SystemError),
-    /// Errors related to importing a key.
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
     #[error(transparent)]
-    KeyError(#[from] error::KeyError),
-    /// Errors related to importing a certificate.
-    #[error(transparent)]
-    CertError(#[from] error::CertError),
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
 }
 
 /// Data structures related to [`Output`].
@@ -393,20 +343,29 @@ pub mod output {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug)]
     #[error(transparent)]
-    pub struct ImportFailed {
+    pub struct ImportingFailed {
         /// The related error.
-        pub error: Error,
+        pub error: error::ImportError,
     }
 
     /// A report about the operation.
     ///
-    /// This is emitted once after attempting to import all of the
-    /// specified keys.
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether anything is imported or not.
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct Report {
         /// Statistics.
         pub stats: ImportStats,
+    }
+
+    impl Report {
+        pub(super) fn new() -> Self {
+            Self {
+                stats: ImportStats::default(),
+            }
+        }
     }
 }
 
@@ -415,12 +374,36 @@ pub mod output {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
+    /// An operational error occurred.
+    ///
+    /// This may be because the operation requires the certificate
+    /// store, but it is disabled.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    OperationalError(error::OperationalError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// Errors related to incorrectly calling the function.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    ArgumentError(error::ArgumentError),
+
     /// Emitted after the key being imported was successfully imported
     /// to the key store.
     Imported(output::Imported),
 
     /// Emitted when the key can't be imported to the key store.
-    ImportFailed(output::ImportFailed),
+    ImportingFailed(output::ImportingFailed),
 
     /// Emitted at the end.
     ///
@@ -485,182 +468,40 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// This also increments the stats, if appropriate.
     fn report_failure<'a>(params: &Params,
                           params_once: &mut ParamsOnce,
-                          error: Error,
+                          error: error::ImportError,
                           stats: &mut ImportStats)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let ParamsOnce {
             stream,
         } = params_once;
 
-        if matches!(error, Error::KeyError(_)) {
+        if matches!(error,
+                    error::ImportError::BrokenCert(_)
+                    | error::ImportError::MissingSecretKeyMaterial(_)
+                    | error::ImportError::ImportingCert(_))
+        {
             stats.keys.errors += 1;
             stats.certs.inc_errors();
         }
         stream.output(
             params,
-            Output::ImportFailed(output::ImportFailed {
+            Output::ImportingFailed(output::ImportingFailed {
                 error,
             }))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        Ok(())
     }
 
-    /// Imports keys encoded as OpenPGP keyring.
-    ///
-    /// This function imports keys into the key store.  If a key can
-    /// be imported, then the certificate is imported into the
-    /// certificate store.  Whether the latter succeeds can be
-    /// determined by examining
-    /// [`output::Imported::merged`](output::Imported) field.  If the
-    /// key cannot be imported, e.g., because it does not contain any
-    /// secret key material, the certificate is not imported into the
-    /// certificate store.
-    ///
-    /// This function returns an error if the input is not an OpenPGP
-    /// keyring.  If the OpenPGP keyring contains recoverable errors,
-    /// these are reported using [`Output::ImportFailed`], but parsing
-    /// is not aborted.
-    ///
-    /// This function returns an error if the input is not an OpenPGP
-    /// keyring, if there was an issue importing one or more keys, or
-    /// if the input contains no keys.  In other words, if five keys
-    /// are imported and there is a problem with one of them, this
-    /// function conservatively returns an error.  Depending on the
-    /// context, the error may not be fatal, and showing a warning may
-    /// be sufficient.
-    pub fn import_keyring<I>(mut self, input: I) -> Result<()>
-    where
-        I: std::io::Read + Send + Sync,
+    /// Returns the soft keys backend.
+    fn softkeys(params: &Params) -> Result<Backend, Error>
     {
-        let Params {
-            sequoia: _,
-        } = &self.params;
-
-        let mut stats = ImportStats::default();
-
-        // Return the first error.
-        let mut ret: Result<()> = Ok(());
-
-        let parser = match CertParser::from_reader(input) {
-            Ok(parser) => parser,
-            Err(err) => {
-                let err_ = clone_anyhow(&err);
-                Self::report_failure(
-                    &self.params, &mut self.params_once,
-                    Error::SystemError(
-                        error::SystemError::ParseError(
-                            error::ParseError {
-                                error: err,
-                            })),
-                    &mut stats)?;
-                self.params_once.stream.output(
-                    &self.params,
-                    Output::Report(output::Report {
-                        stats,
-                    }))?;
-                return Err(err_);
-            }
-        };
-
-        let mut have_one = false;
-        for r in parser {
-            have_one = true;
-
-            let cert = match r {
-                Ok(cert) => cert,
-                Err(err) => {
-                    // Error parsing a key.
-                    if ret.is_ok() {
-                        ret = Err(anyhow::Error::from(
-                            Error::KeyError(
-                                error::KeyError::CertParseError(
-                                    error::CertParseError {
-                                        error: clone_anyhow(&err),
-                                    }))));
-                    }
-
-                    Self::report_failure(
-                        &self.params, &mut self.params_once,
-                        Error::KeyError(
-                            error::KeyError::CertParseError(
-                                error::CertParseError {
-                                    error: err,
-                                })),
-                        &mut stats)?;
-                    continue;
-                }
-            };
-
-            match self.import_key(cert, &mut stats) {
-                Ok(imported) => {
-                    self.params_once.stream.output(
-                        &self.params,
-                        Output::Imported(imported))?;
-                }
-
-                Err(err) => {
-                    // Error importing the key.
-                    if ret.is_ok() {
-                        ret = Err(clone_error(&err));
-                    }
-
-                    Self::report_failure(
-                        &self.params, &mut self.params_once,
-                        err,
-                        &mut stats)?;
-                }
-            }
-        }
-
-        if ! have_one {
-            Self::report_failure(
-                &self.params, &mut self.params_once,
-                Error::SystemError(
-                    error::SystemError::NoData(
-                        error::NoData {
-                        })),
-                &mut stats)?;
-
-            if ret.is_ok() {
-                ret = Err(Error::SystemError(
-                    error::SystemError::NoData(
-                        error::NoData {
-                        })).into());
-            }
-        }
-
-        self.params_once.stream.output(
-            &self.params,
-            Output::Report(output::Report {
-                stats,
-            }))?;
-
-        Ok(ret?)
-    }
-
-    /// Imports the cert into the key store and the cert store.
-    pub fn import_key(&self, cert: Cert, stats: &mut ImportStats)
-        -> Result<output::Imported, Error>
-    {
-        let Params {
-            sequoia,
-        } = self.params;
-
-        if ! cert.is_tsk() {
-            return Err(Error::KeyError(
-                error::KeyError::MissingSecretKeyMaterial(
-                    error::MissingSecretKeyMaterial {
-                        cert,
-                    })));
-        }
+        let sequoia = params.sequoia;
 
         let keystore = sequoia.key_store_or_else()
-            .map_err(|err| {
-                Error::SystemError(
-                    error::SystemError::NoKeyStore(
-                        error::NoKeyStore {
-                            error: err.into(),
-                        }))
-            })?;
+            .map_err(|err| Error::SystemError(err))?;
+
         let mut keystore = keystore.lock().unwrap();
 
         let softkeys = || {
@@ -681,24 +522,213 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        let mut softkeys = softkeys()
+        softkeys()
             .map_err(|err| {
-                Error::SystemError(
-                    error::SystemError::KeyStoreUnusable(
-                        error::KeyStoreUnusable {
-                            error: err,
-                        }))
-            })?;
+                Error::SystemError(SystemError::KeyStoreError(Arc::new(err)))
+            })
+    }
+
+    /// Imports keys from an OpenPGP keyring into the store.
+    ///
+    /// This function imports keys from an OpenPGP keyring into the
+    /// key store.  If a key can be imported, then the certificate is
+    /// also imported into the certificate store.  Whether the latter
+    /// succeeds can be determined by examining the
+    /// [`output::Imported::merged`](output::Imported) field.  If the
+    /// key cannot be imported, e.g., because it does not contain any
+    /// secret key material, the certificate is not imported into the
+    /// certificate store.
+    ///
+    /// This function returns an error if the input is not an OpenPGP
+    /// keyring.  If the OpenPGP keyring contains recoverable errors,
+    /// these are reported using [`Output::ImportingFailed`], but parsing
+    /// is not aborted.
+    ///
+    /// This function returns an error if the input is not an OpenPGP
+    /// keyring, if there was an issue importing one or more keys, or
+    /// if the input contains no keys.  In other words, if five keys
+    /// are imported and there is a problem with one of them, this
+    /// function conservatively returns an error.  Depending on the
+    /// context, the error may not be fatal, and showing a warning may
+    /// be sufficient.
+    pub fn import_keyring<'a, I>(mut self, mut input: I) -> Result<(), Error>
+    where
+        I: std::io::Read + Send + Sync + 'a,
+    {
+        let mut report = output::Report::new();
+
+        let result = Self::import_keyring_(
+            &self.params, &mut self.params_once, &mut input, &mut report);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
+    }
+
+    fn import_keyring_<'a>(params: &Params, params_once: &mut ParamsOnce,
+                           input: &mut (dyn std::io::Read + Send + Sync + 'a),
+                           report: &mut output::Report)
+        -> Result<(), Error>
+    {
+        // Return the first error.
+        let mut ret: Result<(), Error> = Ok(());
+
+        let parser = match CertParser::from_reader(input) {
+            Ok(parser) => parser,
+            Err(err) => {
+                let err = error::ImportError::ParseError(
+                    error::ParseError {
+                        error: err.into(),
+                    });
+
+                Self::report_failure(
+                    params, params_once, err.clone(), &mut report.stats)?;
+
+                return Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err)));
+            }
+        };
+
+        let mut softkeys = Self::softkeys(params)?;
+
+        let mut have_one = false;
+        for r in parser {
+            have_one = true;
+
+            let cert = match r {
+                Ok(cert) => cert,
+                Err(err) => {
+                    // Error parsing a key.
+                    let err = error::ImportError::BrokenCert(
+                        error::BrokenCert {
+                            cert: None,
+                            error: Arc::new(err),
+                        });
+                    if ret.is_ok() {
+                        ret = Err(Error::OperationalError(
+                            error::OperationalError::ImportError(
+                                err.clone())));
+                    }
+
+                    Self::report_failure(
+                        params, params_once, err, &mut report.stats)?;
+
+                    continue;
+                }
+            };
+
+            match Self::import_key_(params, params_once,
+                                    &mut softkeys, cert, &mut report.stats) {
+                Ok(imported) => {
+                    // As long as we can import to the key store, we
+                    // return Imported.
+                    params_once.stream.output(
+                        params,
+                        Output::Imported(imported))
+                        .map_err(|err| Error::StreamOutputError(err))?;
+                }
+                Err(err) => {
+                    // Error importing the key.
+                    if ret.is_ok() {
+                        ret = Err(err);
+                    }
+                }
+            }
+        }
+
+        if ! have_one {
+            let err = error::ImportError::NoData(
+                error::NoData {
+                });
+
+            Self::report_failure(
+                params, params_once, err.clone(), &mut report.stats)?;
+
+            if ret.is_ok() {
+                ret = Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err.clone())));
+            }
+        }
+
+        Ok(ret?)
+    }
+
+    /// Imports the cert into the key store and the cert store.
+    pub fn import_key(&mut self, cert: Cert, stats: &mut ImportStats)
+        -> Result<output::Imported, Error>
+    {
+        let mut softkeys = Self::softkeys(&self.params)?;
+
+        Self::import_key_(&self.params, &mut self.params_once,
+                          &mut softkeys, cert, stats)
+    }
+
+    fn import_key_(params: &Params, params_once: &mut ParamsOnce,
+                   softkeys: &mut Backend, cert: Cert, stats: &mut ImportStats)
+        -> Result<output::Imported, Error>
+    {
+        let Params {
+            sequoia,
+        } = params;
+
+        if ! cert.is_tsk() {
+            // No secret key material.
+            let err = error::ImportError::MissingSecretKeyMaterial(
+                error::MissingSecretKeyMaterial {
+                    cert,
+                });
+            Self::report_failure(
+                params, params_once, err.clone(), stats)?;
+
+            return Err(Error::OperationalError(
+                error::OperationalError::ImportError(err)));
+        }
+
 
         let result = match softkeys.import(&cert) {
             Ok(result) => result,
             Err(err) => {
-                return Err(Error::KeyError(
-                    error::KeyError::ImportError(
-                        error::ImportError {
-                            cert: cert,
-                            error: err,
-                        })));
+                let err = Arc::new(err);
+
+                params_once.stream.output(
+                    params,
+                    Output::SystemError(
+                        SystemError::KeyStoreError(err.clone())))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+
+                return Err(Error::SystemError(
+                    SystemError::KeyStoreError(err)));
             }
         };
 
@@ -709,8 +739,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
             import_status = import_status.max(s.clone());
 
-            key_import_status.push(
-                (key.fingerprint(), s));
+            key_import_status.push((key.fingerprint(), s));
         }
 
         match import_status {
@@ -748,27 +777,32 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         let cert = Arc::unwrap_or_clone(cert.clone())
                             .into_cert().expect("is a cert");
 
-                        Err(Error::CertError(
-                            error::CertError::CertImportError(
-                                error::CertImportError {
-                                    cert: cert,
-                                    error: err,
-                                })))
+                        let err = error::ImportError::ImportingCert(
+                            error::ImportingCert {
+                                cert,
+                                error: err.into(),
+                            });
+
+                        // We do not call report_failure: the
+                        // certificate import error is returned in the
+                        // `Imported` event.
+
+                        Err(Error::OperationalError(
+                            error::OperationalError::ImportError(err)))
                     }
                 }
             }
             Err(err) => {
                 // No cert store.
                 stats.certs.inc_errors();
-                Err(Error::SystemError(
-                    error::SystemError::NoCertStore(
-                        error::NoCertStore {
-                            error: err.into(),
-                        })))
+
+                // We do not call report_failure: the certificate
+                // import error is returned in the `Imported` event.
+
+                Err(Error::SystemError(err))
             }
         };
 
-        // As long as we can import to the key store, we return Imported.
         Ok(output::Imported {
             cert: Arc::unwrap_or_clone(cert)
                 .into_cert().expect("is a cert"),
@@ -791,6 +825,7 @@ mod tests {
     fn check(output: Vec<Output>,
              imports_expected: usize, errors_expected: usize)
     {
+        let mut saw_error = false;
         let mut saw_report = false;
         let mut imports_count = 0;
         let mut errors_count = 0;
@@ -798,16 +833,42 @@ mod tests {
         eprintln!("Start of import");
         for o in output.iter() {
             match o {
+                Output::ArgumentError(err) => {
+                    // No argument errors.
+                    eprintln!("  - argument error: {}", err);
+                    assert!(! saw_error);
+                    saw_error = true;
+                    assert!(! saw_report);
+                }
+                Output::SystemError(err) => {
+                    eprintln!("  - system error: {}", err);
+                    assert!(! saw_error);
+                    saw_error = true;
+                    assert!(! saw_report);
+                }
+                Output::OperationalError(err) => {
+                    eprintln!("  - operational error: {}", err);
+                    // An operational error can happen at any time.
+                    assert!(! saw_error);
+                    saw_error = true;
+                    assert!(! saw_report);
+                }
+
                 Output::Imported(_) => {
+                    assert!(! saw_error);
                     assert!(! saw_report);
                     eprintln!("- Imported");
                     imports_count += 1;
                 }
-                Output::ImportFailed(failure) => {
+                Output::ImportingFailed(failure) => {
+                    assert!(! saw_error);
                     assert!(! saw_report);
                     eprintln!("- ImportingFailed: {}", failure);
                     match failure.error {
-                        Error::KeyError(_) => {
+                        error::ImportError::BrokenCert(_)
+                            | error::ImportError::MissingSecretKeyMaterial(_)
+                            | error::ImportError::ImportingCert(_)=>
+                        {
                             errors_count += 1;
                         }
                         _ => (),
@@ -854,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn certs() {
+    fn import_keyring() {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 
         // Empty file.
@@ -943,6 +1004,74 @@ mod tests {
 
         check(output, 2, 1);
         // An error is returned if there are any problems.
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn import_keyring_no_cert_store() {
+        // Disable the certificate store.  We should still be able to
+        // import keys.
+        let sq = Sequoia::builder()
+            .ephemeral().unwrap()
+            .cert_store_path(crate::StateDirectory::None)
+            .build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+
+        // Import Alice's key.
+        let mut input = Vec::new();
+        alice.as_tsk().serialize(&mut input).unwrap();
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
+
+        check(output, 1, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn import_keyring_no_key_store() {
+        // Disable the key store.  We shouldn't be able to import
+        // keys.
+        let sq = Sequoia::builder()
+            .ephemeral().unwrap()
+            .key_store_path(crate::StateDirectory::None)
+            .build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+        let (bob, _bob_rev) = CertBuilder::new()
+            .add_userid("<bob@example.org>")
+            .generate()
+            .unwrap();
+
+        // Import Alice's key.
+        let mut input = Vec::new();
+        alice.as_tsk().serialize(&mut input).unwrap();
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
+
+        check(output, 0, 0);
+        assert!(result.is_err());
+
+        // Import Alice's and Bob's keys.
+        let mut input = Vec::new();
+        alice.as_tsk().serialize(&mut input).unwrap();
+        bob.as_tsk().serialize(&mut input).unwrap();
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keyring(std::io::Cursor::new(&input[..]));
+
+        check(output, 0, 0);
         assert!(result.is_err());
     }
 }
