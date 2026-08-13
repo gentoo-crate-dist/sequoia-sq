@@ -1019,6 +1019,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                     .stream(&mut output)
                     .import_key(cert.clone())
                     .map_err(op!())?;
+
                 key_import_status = Some(
                     output.into_iter()
                         .find_map(|o| {

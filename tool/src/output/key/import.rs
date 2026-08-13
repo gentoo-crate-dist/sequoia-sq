@@ -22,6 +22,8 @@ pub struct Stream<'a> {
     output: Box<dyn std::io::Write + Send + Sync + 'a>,
     print_stats: bool,
     pub stats: Option<ImportStats>,
+    saw_error: bool,
+    pub import_error: Option<import::Error>,
 }
 
 impl<'a> Stream<'a> {
@@ -45,6 +47,8 @@ impl<'a> Stream<'a> {
             output: Box::new(output),
             print_stats,
             stats: None,
+            saw_error: false,
+            import_error: None,
         }
     }
 }
@@ -56,6 +60,13 @@ impl import::Stream for Stream<'_> {
         -> Result<()>
     {
         match output {
+            Output::SystemError(_)
+                | Output::ArgumentError(_)
+                | Output::OperationalError(_) =>
+            {
+                self.saw_error = true;
+            }
+
             Output::Imported(
                 Imported {
                     cert,
@@ -128,6 +139,11 @@ impl import::Stream for Stream<'_> {
                     ..
                 }) =>
             {
+                if self.import_error.is_none() {
+                    self.import_error = Some(import::Error::OperationalError(
+                        import::error::OperationalError::ImportError(error.clone())));
+                }
+
                 let input = if let Some(source) = self.source.as_ref() {
                     Cow::Owned(source.display().to_string())
                 } else {
@@ -143,17 +159,6 @@ impl import::Stream for Stream<'_> {
                     {
                         return Err(anyhow::Error::from(error)
                                    .context(format!("Reading {}", input)));
-                    }
-                    error::ImportError::NoData(
-                        error::NoData {
-                            ..
-                        }) =>
-                    {
-                        if ! self.sq.quiet() {
-                            wwriteln!(&mut self.output,
-                                      "Warning: {} does not contain any certificates",
-                                      input);
-                        }
                     }
                     error::ImportError::BrokenCert(
                         error::BrokenCert {
@@ -272,11 +277,37 @@ impl import::Stream for Stream<'_> {
                     ..
                 }) =>
             {
+                let err = if ! self.saw_error
+                    && stats.keys.new == 0
+                    && stats.keys.unchanged == 0
+                    && stats.keys.updated == 0
+                    && stats.keys.errors == 0
+                    && ! self.sq.quiet()
+                {
+                    let input = if let Some(source) = self.source.as_ref() {
+                        Cow::Owned(source.display().to_string())
+                    } else {
+                        Cow::Borrowed("input")
+                    };
+
+                    wwriteln!(&mut self.output,
+                              "Warning: {} does not contain any certificates",
+                              input);
+
+                    Some(anyhow::anyhow!("Input does not contain any certificates"))
+                } else {
+                    None
+                };
+
                 if self.print_stats {
                     wwriteln!(&mut self.output);
                     stats.print_summary(&mut self.output, &self.sq.sequoia)?;
                 }
                 self.stats = Some(stats);
+
+                if let Some(err) = err {
+                    return Err(err);
+                }
             }
 
             _output => {

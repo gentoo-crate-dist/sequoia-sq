@@ -41,6 +41,11 @@ pub fn import(sq: Sq, command: cli::key::import::Command)
         if result.is_ok() && r.is_err() {
             result = r;
         }
+        if result.is_ok() {
+            if let Some(err) = stream.import_error.take() {
+                result = Err(err);
+            }
+        }
     }
 
     stats.print_summary(&mut output, &sq.sequoia)?;

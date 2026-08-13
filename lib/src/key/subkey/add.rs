@@ -275,7 +275,7 @@ impl<'sequoia> Builder<'sequoia>
             let mut output = Vec::new();
             sequoia.key_import()
                 .stream(&mut output)
-                .import_keys(Some(new_cert))?;
+                .import_key(new_cert)?;
             let key_import_status = output.into_iter()
                 .find_map(|o| {
                     if let crate::key::import::Output::Imported(o) = o {

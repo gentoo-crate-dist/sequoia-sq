@@ -32,7 +32,7 @@
 //! # let mut input = std::io::Cursor::new(&input[..]);
 //! #
 //! if let Err(err) = sq.key_import().import_keyring(input) {
-//!     eprintln!("Failed to import at least one key: {}", err);
+//!     eprintln!("Importing keyring: {}", err);
 //! }
 //! # Ok(()) }
 //! ```
@@ -103,7 +103,7 @@
 //!     .stream(&mut stream)
 //!     .import_keyring(input)
 //! {
-//!     eprintln!("Failed to import at least one key: {}", err);
+//!     eprintln!("Importing keyring: {}", err);
 //! }
 //! # Ok(()) }
 //! ```
@@ -162,13 +162,6 @@ pub mod error {
     pub struct ParseError {
         #[source]
         pub error: Arc<anyhow::Error>,
-    }
-
-    /// Input does not contain any certificates.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("Input does not contain any certificates")]
-    pub struct NoData {
     }
 
     /// Information about a broken certificate.
@@ -238,9 +231,6 @@ pub mod error {
         /// Note: If we were unable to parse an individual
         /// certificate, then we emit [`ImportError::BrokenCert`].
         ParseError(ParseError),
-
-        /// Input does not contain any certificates.
-        NoData(NoData),
 
         /// An artifact is broken.
         BrokenCert(BrokenCert),
@@ -545,12 +535,20 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// is not aborted.
     ///
     /// This function returns an error if the input is not an OpenPGP
-    /// keyring, if there was an issue importing one or more keys, or
-    /// if the input contains no keys.  In other words, if five keys
-    /// are imported and there is a problem with one of them, this
-    /// function conservatively returns an error.  Depending on the
-    /// context, the error may not be fatal, and showing a warning may
-    /// be sufficient.
+    /// keyring.  (Note: an empty file is consider a valid keyring.)
+    ///
+    /// Recoverable errors, such as failing to import a key into the
+    /// store, a certificate being corrupted, or a certificate not
+    /// containing any secret key material do not cause this function
+    /// to return an error.  These errors are reported using
+    /// [`Output::ImportingFailed`].  Parsing is not aborted.  An
+    /// example of a recoverable error is a keyring that contains two
+    /// valid certificates and a corrupted certificate.  Unless the
+    /// corrupted certificate is at the start of the file and is so
+    /// corrupted that the input is not recognizable as a keyring,
+    /// this function will not return an error; it will import the
+    /// other two certificates, and emit [`Output::ImportingFailed`]
+    /// for the corrupted certificate.
     pub fn import_keyring<'a, I>(mut self, mut input: I) -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync + 'a,
@@ -601,9 +599,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                            report: &mut output::Report)
         -> Result<(), Error>
     {
-        // Return the first error.
-        let mut ret: Result<(), Error> = Ok(());
-
         let parser = match CertParser::from_reader(input) {
             Ok(parser) => parser,
             Err(err) => {
@@ -622,10 +617,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let mut softkeys = Self::softkeys(params)?;
 
-        let mut have_one = false;
         for r in parser {
-            have_one = true;
-
             let cert = match r {
                 Ok(cert) => cert,
                 Err(err) => {
@@ -635,11 +627,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                             cert: None,
                             error: Arc::new(err),
                         });
-                    if ret.is_ok() {
-                        ret = Err(Error::OperationalError(
-                            error::OperationalError::ImportError(
-                                err.clone())));
-                    }
 
                     Self::report_failure(
                         params, params_once, err, &mut report.stats)?;
@@ -658,30 +645,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         Output::Imported(imported))
                         .map_err(|err| Error::StreamOutputError(err))?;
                 }
-                Err(err) => {
-                    // Error importing the key.
-                    if ret.is_ok() {
-                        ret = Err(err);
-                    }
+                Err(_err) => {
+                    // The error was already emitted.
                 }
             }
         }
 
-        if ! have_one {
-            let err = error::ImportError::NoData(
-                error::NoData {
-                });
-
-            Self::report_failure(
-                params, params_once, err.clone(), &mut report.stats)?;
-
-            if ret.is_ok() {
-                ret = Err(Error::OperationalError(
-                    error::OperationalError::ImportError(err.clone())));
-            }
-        }
-
-        Ok(ret?)
+        Ok(())
     }
 
     /// Imports keys into the store.
@@ -696,15 +666,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// certificate store.
     ///
     /// If importing a key results in a recoverable error, that error
-    /// is reported using [`Output::ImportingFailed`], but importing
-    /// is not aborted.
+    /// is reported using [`Output::ImportingFailed`], but **importing
+    /// is not aborted**, and the function does not return an error.
+    /// If you need to check whether importing a key failed, use a
+    /// [`Stream`](Builder::stream).
     ///
-    /// This function returns an error if there was an issue importing
-    /// one or more keys, or if the input contains no keys.  In other
-    /// words, if five keys are imported and there is a problem with
-    /// one of them, this function conservatively returns an error.
-    /// Depending on the context, the error may not be fatal, and
-    /// showing a warning may be sufficient.
+    /// **Note: these semantics are different from
+    /// [`Builder::import_key`], which directly returns import
+    /// errors.**
     pub fn import_keys<I>(mut self, certs: I)
         -> Result<(), Error>
     where
@@ -714,8 +683,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let mut certs = certs.into_iter();
 
+        let mut import_error = None;
+
         let result = Self::import_keys_(
-            &self.params, &mut self.params_once, &mut certs, &mut report);
+            &self.params, &mut self.params_once, &mut certs, &mut report,
+            &mut import_error);
 
         let mut stream = self.params_once.stream;
 
@@ -764,32 +736,75 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// secret key material, the certificate is not imported into the
     /// certificate store.
     ///
-    /// If importing a key results in a recoverable error, that error
-    /// is reported using [`Output::ImportingFailed`], but importing
-    /// is not aborted.
-    ///
-    /// This function returns an error if there was an issue importing
-    /// the key.
-    pub fn import_key(self, cert: Cert)
+    /// If importing a key results in an error, that error is reported
+    /// using [`Output::ImportingFailed`], and the function returns an
+    /// error.  **Note: these semantics are different from
+    /// [`Builder::import_keys`] and [`Builder::import_keyring`],
+    /// which only return import errors via the stream interface.**
+    pub fn import_key(mut self, cert: Cert)
         -> Result<(), Error>
     {
-        self.import_keys(Some(cert))
+        let mut report = output::Report::new();
+
+        let mut certs = Some(cert).into_iter();
+
+        let mut import_error = None;
+
+        let result = Self::import_keys_(
+            &self.params, &mut self.params_once, &mut certs, &mut report,
+            &mut import_error);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result?;
+
+        if let Some(err) = import_error {
+            Err(err)
+        } else {
+            Ok(())
+        }
     }
 
     fn import_keys_(params: &Params, params_once: &mut ParamsOnce,
                     certs: &mut dyn Iterator<Item=Cert>,
-                    report: &mut output::Report)
+                    report: &mut output::Report,
+                    import_error: &mut Option<Error>)
         -> Result<(), Error>
     {
-        // Return the first error.
-        let mut ret: Result<(), Error> = Ok(());
-
         let mut softkeys = Self::softkeys(params)?;
 
-        let mut have_one = false;
         for cert in certs.into_iter() {
-            have_one = true;
-
             match Self::import_key_(params, params_once,
                                     &mut softkeys, cert, &mut report.stats) {
                 Ok(imported) => {
@@ -802,28 +817,15 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 }
                 Err(err) => {
                     // Error importing the key.
-                    if ret.is_ok() {
-                        ret = Err(err);
+
+                    if import_error.is_none() {
+                        *import_error = Some(err);
                     }
                 }
             }
         }
 
-        if ! have_one {
-            let err = error::ImportError::NoData(
-                error::NoData {
-                });
-
-            Self::report_failure(
-                params, params_once, err.clone(), &mut report.stats)?;
-
-            if ret.is_ok() {
-                ret = Err(Error::OperationalError(
-                    error::OperationalError::ImportError(err.clone())));
-            }
-        }
-
-        Ok(ret?)
+        Ok(())
     }
 
     fn import_key_(params: &Params, params_once: &mut ParamsOnce,
@@ -1057,7 +1059,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(b""));
 
         check(output, 0, 0);
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         // Junk.
         let input = vec![b'!'; 16 * 1024];
@@ -1087,7 +1089,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 0, 1);
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         // Import Alice's key.
         let mut input = Vec::new();
@@ -1122,7 +1124,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 1, 1);
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         // Add some junk in between and try again.
         let mut input = Vec::new();
@@ -1135,8 +1137,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         check(output, 2, 1);
-        // An error is returned if there are any problems.
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1218,7 +1219,7 @@ mod tests {
             .import_keys([]);
 
         check(output, 0, 0);
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -1243,7 +1244,7 @@ mod tests {
             .import_keys([ alice_pub.clone() ]);
 
         check(output, 0, 1);
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         // Import Alice's key.
         let mut output = Vec::new();
@@ -1270,7 +1271,7 @@ mod tests {
             .import_keys([ alice_pub.clone(), bob.clone() ]);
 
         check(output, 1, 1);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1331,6 +1332,87 @@ mod tests {
         let result = sq.key_import()
             .stream(&mut output)
             .import_keys([ alice.clone(), bob.clone() ]);
+
+        check(output, 0, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn import_key() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+        let alice_pub = alice.clone().strip_secret_key_material();
+        assert!(alice.is_tsk());
+        assert!(! alice_pub.is_tsk());
+
+        // Import Alice's certificate (not key!).
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_key(alice_pub.clone());
+
+        check(output, 0, 1);
+        assert!(result.is_err());
+
+        // Import Alice's key.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_key(alice.clone());
+
+        check(output, 1, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn import_key_no_cert_store() {
+        // Disable the certificate store.  We should still be able to
+        // import keys.
+        let sq = Sequoia::builder()
+            .ephemeral().unwrap()
+            .cert_store_path(crate::StateDirectory::None)
+            .build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+
+        // Import Alice's key.
+        let mut input = Vec::new();
+        alice.as_tsk().serialize(&mut input).unwrap();
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_key(alice.clone());
+
+        check(output, 1, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn import_key_no_key_store() {
+        // Disable the key store.  We shouldn't be able to import
+        // keys.
+        let sq = Sequoia::builder()
+            .ephemeral().unwrap()
+            .key_store_path(crate::StateDirectory::None)
+            .build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+
+        // Import Alice's key.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_key(alice.clone());
 
         check(output, 0, 0);
         assert!(result.is_err());
