@@ -684,14 +684,146 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         Ok(ret?)
     }
 
-    /// Imports the cert into the key store and the cert store.
-    pub fn import_key(&mut self, cert: Cert, stats: &mut ImportStats)
-        -> Result<output::Imported, Error>
+    /// Imports keys into the store.
+    ///
+    /// This function imports the specified keys into the key store.
+    /// If a key can be imported, then the certificate is also
+    /// imported into the certificate store.  Whether the latter
+    /// succeeds can be determined by examining the
+    /// [`output::Imported::merged`](output::Imported) field.  If the
+    /// key cannot be imported, e.g., because it does not contain any
+    /// secret key material, the certificate is not imported into the
+    /// certificate store.
+    ///
+    /// If importing a key results in a recoverable error, that error
+    /// is reported using [`Output::ImportingFailed`], but importing
+    /// is not aborted.
+    ///
+    /// This function returns an error if there was an issue importing
+    /// one or more keys, or if the input contains no keys.  In other
+    /// words, if five keys are imported and there is a problem with
+    /// one of them, this function conservatively returns an error.
+    /// Depending on the context, the error may not be fatal, and
+    /// showing a warning may be sufficient.
+    pub fn import_keys<I>(mut self, certs: I)
+        -> Result<(), Error>
+    where
+        I: IntoIterator<Item=Cert>
     {
-        let mut softkeys = Self::softkeys(&self.params)?;
+        let mut report = output::Report::new();
 
-        Self::import_key_(&self.params, &mut self.params_once,
-                          &mut softkeys, cert, stats)
+        let mut certs = certs.into_iter();
+
+        let result = Self::import_keys_(
+            &self.params, &mut self.params_once, &mut certs, &mut report);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
+    }
+
+    /// Imports a key into the store.
+    ///
+    /// This function imports the specified key into the key store.
+    /// If the key can be imported, then the certificate is also
+    /// imported into the certificate store.  Whether the latter
+    /// succeeds can be determined by examining the
+    /// [`output::Imported::merged`](output::Imported) field.  If the
+    /// key cannot be imported, e.g., because it does not contain any
+    /// secret key material, the certificate is not imported into the
+    /// certificate store.
+    ///
+    /// If importing a key results in a recoverable error, that error
+    /// is reported using [`Output::ImportingFailed`], but importing
+    /// is not aborted.
+    ///
+    /// This function returns an error if there was an issue importing
+    /// the key.
+    pub fn import_key(self, cert: Cert)
+        -> Result<(), Error>
+    {
+        self.import_keys(Some(cert))
+    }
+
+    fn import_keys_(params: &Params, params_once: &mut ParamsOnce,
+                    certs: &mut dyn Iterator<Item=Cert>,
+                    report: &mut output::Report)
+        -> Result<(), Error>
+    {
+        // Return the first error.
+        let mut ret: Result<(), Error> = Ok(());
+
+        let mut softkeys = Self::softkeys(params)?;
+
+        let mut have_one = false;
+        for cert in certs.into_iter() {
+            have_one = true;
+
+            match Self::import_key_(params, params_once,
+                                    &mut softkeys, cert, &mut report.stats) {
+                Ok(imported) => {
+                    // As long as we can import to the key store, we
+                    // return Imported.
+                    params_once.stream.output(
+                        params,
+                        Output::Imported(imported))
+                        .map_err(|err| Error::StreamOutputError(err))?;
+                }
+                Err(err) => {
+                    // Error importing the key.
+                    if ret.is_ok() {
+                        ret = Err(err);
+                    }
+                }
+            }
+        }
+
+        if ! have_one {
+            let err = error::ImportError::NoData(
+                error::NoData {
+                });
+
+            Self::report_failure(
+                params, params_once, err.clone(), &mut report.stats)?;
+
+            if ret.is_ok() {
+                ret = Err(Error::OperationalError(
+                    error::OperationalError::ImportError(err.clone())));
+            }
+        }
+
+        Ok(ret?)
     }
 
     fn import_key_(params: &Params, params_once: &mut ParamsOnce,
@@ -1070,6 +1202,135 @@ mod tests {
         let result = sq.key_import()
             .stream(&mut output)
             .import_keyring(std::io::Cursor::new(&input[..]));
+
+        check(output, 0, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn import_keys() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Empty file.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([]);
+
+        check(output, 0, 0);
+        assert!(result.is_err());
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+        let alice_pub = alice.clone().strip_secret_key_material();
+        assert!(alice.is_tsk());
+        assert!(! alice_pub.is_tsk());
+
+        let (bob, _bob_rev) = CertBuilder::new()
+            .add_userid("<bob@example.org>")
+            .generate()
+            .unwrap();
+        let bob_pub = bob.clone().strip_secret_key_material();
+        assert!(bob.is_tsk());
+        assert!(! bob_pub.is_tsk());
+
+        // Import Alice's certificate (not key!).
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice_pub.clone() ]);
+
+        check(output, 0, 1);
+        assert!(result.is_err());
+
+        // Import Alice's key.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice.clone() ]);
+
+        check(output, 1, 0);
+        assert!(result.is_ok());
+
+        // Import Alice's and Bob's keys.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice.clone(), bob.clone() ]);
+
+        check(output, 2, 0);
+        assert!(result.is_ok());
+
+        // Import Alice's cert and Bob's key.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice_pub.clone(), bob.clone() ]);
+
+        check(output, 1, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn import_keys_no_cert_store() {
+        // Disable the certificate store.  We should still be able to
+        // import keys.
+        let sq = Sequoia::builder()
+            .ephemeral().unwrap()
+            .cert_store_path(crate::StateDirectory::None)
+            .build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+
+        // Import Alice's key.
+        let mut input = Vec::new();
+        alice.as_tsk().serialize(&mut input).unwrap();
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice.clone() ]);
+
+        check(output, 1, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn import_keys_no_key_store() {
+        // Disable the key store.  We shouldn't be able to import
+        // keys.
+        let sq = Sequoia::builder()
+            .ephemeral().unwrap()
+            .key_store_path(crate::StateDirectory::None)
+            .build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+        let (bob, _bob_rev) = CertBuilder::new()
+            .add_userid("<bob@example.org>")
+            .generate()
+            .unwrap();
+
+        // Import Alice's key.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice.clone() ]);
+
+        check(output, 0, 0);
+        assert!(result.is_err());
+
+        // Import Alice's and Bob's keys.
+        let mut output = Vec::new();
+        let result = sq.key_import()
+            .stream(&mut output)
+            .import_keys([ alice.clone(), bob.clone() ]);
 
         check(output, 0, 0);
         assert!(result.is_err());

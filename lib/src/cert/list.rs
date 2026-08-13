@@ -1510,9 +1510,8 @@ mod tests {
                 .expect("can generate a key")
                 .into_cert();
 
-            let mut stats = Default::default();
             sq.key_import()
-                .import_key(cert.clone(), &mut stats)
+                .import_key(cert.clone())
                 .expect("can import key");
 
             if let Some((certifier, trust_depth, trust_amount)) = certifier {

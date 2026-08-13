@@ -2062,7 +2062,7 @@ Failed:              {:8}{:8}",
             .into_cert();
         sequoia
             .key_import()
-            .import_key(alice.clone(), &mut Default::default())
+            .import_key(alice.clone())
             .expect("Can import key");
 
         let mut bob_key = Vec::new();
@@ -2076,7 +2076,7 @@ Failed:              {:8}{:8}",
             .expect("Can generate key")
             .into_cert();
         sequoia.key_import()
-            .import_key(bob.clone(), &mut Default::default())
+            .import_key(bob.clone())
             .expect("Can import key");
 
         // Not imported into the key store.

@@ -17,7 +17,6 @@ use crate::key::PasswordPolicy;
 use crate::prompt::check::CheckNewPassword;
 use crate::prompt;
 use crate::types::EncryptPurpose;
-use crate::types::import_stats::ImportStats;
 
 /// The key generation parameters.
 ///
@@ -273,10 +272,20 @@ impl<'sequoia> Builder<'sequoia>
         if let Some(output_writer) = output {
             new_cert.as_tsk().armored().serialize(output_writer)?;
         } else {
-            let mut stats = ImportStats::default();
-            let result = sequoia.key_import()
-                .import_key(new_cert, &mut stats)?;
-            for (fpr, status) in result.key_import_status.iter() {
+            let mut output = Vec::new();
+            sequoia.key_import()
+                .stream(&mut output)
+                .import_keys(Some(new_cert))?;
+            let key_import_status = output.into_iter()
+                .find_map(|o| {
+                    if let crate::key::import::Output::Imported(o) = o {
+                        Some(o.key_import_status)
+                    } else {
+                        None
+                    }
+                })
+                .expect("imported key");
+            for (fpr, status) in key_import_status.into_iter() {
                 sequoia.info(format_args!(
                     "Importing {} into key store: {:?}",
                     fpr, status));

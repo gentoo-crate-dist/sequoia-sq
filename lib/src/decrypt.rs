@@ -1747,9 +1747,8 @@ mod tests {
             .expect("can generate a key")
             .into_cert();
 
-        let mut stats = Default::default();
         sq.key_import()
-            .import_key(bob.clone(), &mut stats)
+            .import_key(bob.clone())
             .expect("can import key");
 
         const MESSAGE: &[u8] = b"message";

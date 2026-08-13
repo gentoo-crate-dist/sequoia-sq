@@ -91,7 +91,6 @@ use crate::prompt::check::CheckNewPassword;
 use crate::prompt;
 use crate::types::EncryptPurpose;
 use crate::types::PartFileWriter;
-use crate::types::import_stats::ImportStats;
 use crate::types::import_stats;
 use crate::userid::UserIDLint;
 use crate::userid::lint_email;
@@ -1015,11 +1014,21 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                         .map_err(op!())?;
                 }
 
-                let mut stats = ImportStats::default();
-                let result = sequoia.key_import()
-                    .import_key(cert.clone(), &mut stats)
+                let mut output = Vec::new();
+                sequoia.key_import()
+                    .stream(&mut output)
+                    .import_key(cert.clone())
                     .map_err(op!())?;
-                key_import_status = Some(result.key_import_status);
+                key_import_status = Some(
+                    output.into_iter()
+                        .find_map(|o| {
+                            if let crate::key::import::Output::Imported(o) = o {
+                                Some(o.key_import_status)
+                            } else {
+                                None
+                            }
+                        })
+                        .expect("imported key"));
 
                 // Now certify the user IDs, and if this is our own
                 // key, mark it as trusted introducer.
