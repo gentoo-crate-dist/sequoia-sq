@@ -321,7 +321,7 @@ pub mod output {
         /// If merging into the key store succeeds, but merging into
         /// the certificate store fails, we emit [`Imported`] and set
         /// this to the error.
-        pub merged: Result<Cert, Error>,
+        pub merged: Result<Cert, error::ImportError>,
 
         pub cert_import_status: ImportStatus,
 
@@ -921,8 +921,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         // certificate import error is returned in the
                         // `Imported` event.
 
-                        Err(Error::OperationalError(
-                            error::OperationalError::ImportError(err)))
+                        Err(err)
                     }
                 }
             }
@@ -933,7 +932,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 // We do not call report_failure: the certificate
                 // import error is returned in the `Imported` event.
 
-                Err(Error::SystemError(err))
+                let cert = Arc::unwrap_or_clone(cert.clone())
+                    .into_cert().expect("is a cert");
+
+                Err(error::ImportError::NoCertStore(
+                    error::NoCertStore {
+                        cert,
+                        error: Arc::new(anyhow::Error::from(err)),
+                    }))
             }
         };
 
