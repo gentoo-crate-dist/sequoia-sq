@@ -39,7 +39,7 @@ pub fn import(sq: Sq, command: cli::key::import::Command)
 
         // Save the first error.
         if result.is_ok() && r.is_err() {
-            result = r;
+            result = r.map(|_| ());
         }
         if result.is_ok() {
             if let Some(err) = stream.import_error.take() {

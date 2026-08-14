@@ -8,7 +8,12 @@
 //!
 //! # Examples
 //!
-//! Import a secret key material from an OpenPGP keyring:
+//! Import keys from an OpenPGP keyring using
+//! [`Builder::import_keyring`].  Note: this function only returns an
+//! error if the file is unreadable or the key store is not available.
+//! To check if an error occurred while importing an individual key,
+//! you need to examine the returned [`Outcome`] (shown here) or the
+//! [`Stream`] output (see next example):
 //!
 //! ```
 //! # use sequoia::openpgp;
@@ -31,8 +36,13 @@
 //! #
 //! # let mut input = std::io::Cursor::new(&input[..]);
 //! #
-//! if let Err(err) = sq.key_import().import_keyring(input) {
-//!     eprintln!("Importing keyring: {}", err);
+//! match sq.key_import().import_keyring(input) {
+//!     Err(err) => eprintln!("Importing keyring: {}", err),
+//!     Ok(outcome) => {
+//!         for failure in outcome.importing_failed {
+//!             eprintln!("Importing key: {}", failure.error);
+//!         }
+//!     }
 //! }
 //! # Ok(()) }
 //! ```
@@ -80,6 +90,9 @@
 //!         match output {
 //!             Output::Imported(Imported { cert, .. }) => {
 //!                 eprintln!("Imported {}", cert.fingerprint());
+//!             }
+//!             Output::ImportingFailed(ImportingFailed { error, .. }) => {
+//!                 eprintln!("Importing key: {}", error);
 //!             }
 //!             Output::Report(Report { stats, ..}) => {
 //!                 eprintln!("New {}, updated: {}, unchanged: {}, errors: {}",
@@ -307,7 +320,7 @@ pub mod output {
 
     /// We imported a key.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Imported {
         /// What we imported.
         pub cert: Cert,
@@ -348,14 +361,6 @@ pub mod output {
     pub struct Report {
         /// Statistics.
         pub stats: ImportStats,
-    }
-
-    impl Report {
-        pub(super) fn new() -> Self {
-            Self {
-                stats: ImportStats::default(),
-            }
-        }
     }
 }
 
@@ -399,6 +404,52 @@ pub enum Output {
     ///
     /// This is always emitted whether anything is imported or not.
     Report(output::Report),
+}
+
+/// The outcome of importing keys.
+///
+/// This is returned by [`Builder::import_keyring`],
+/// [`Builder::import_keys`], and [`Builder::import_key`].  It
+/// contains information about the outcome.  More detailed information
+/// is available via the [`Stream`] interface.
+#[derive(Debug)]
+pub struct Outcome {
+    /// The imported keys.
+    pub imported: Vec<output::Imported>,
+    /// The import failures.
+    pub importing_failed: Vec<output::ImportingFailed>,
+    /// Statistics.
+    pub stats: ImportStats,
+}
+
+impl Outcome {
+    fn new() -> Self {
+        Outcome {
+            imported: Vec::new(),
+            importing_failed: Vec::new(),
+            stats: Default::default(),
+        }
+    }
+
+    fn to_report(&self) -> output::Report {
+        output::Report {
+            stats: self.stats.clone(),
+        }
+    }
+
+    /// Returns whether all keys were imported.
+    ///
+    /// If one or more keys were not imported, returns one of the
+    /// errors.  This does not check if the certificates were also
+    /// imported into the certificate store.
+    pub fn all_imported(&self) -> Result<()> {
+        self.importing_failed
+            .first()
+            .map_or(Ok(()),
+                    |failure| {
+                        Err(failure.error.clone().into())
+                    })
+    }
 }
 
 /// The key import parameters.
@@ -459,20 +510,24 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     fn report_failure<'a>(params: &Params,
                           params_once: &mut ParamsOnce,
                           error: error::ImportError,
-                          stats: &mut ImportStats)
+                          outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let ParamsOnce {
             stream,
         } = params_once;
 
+        outcome.importing_failed.push(output::ImportingFailed {
+            error: error.clone(),
+        });
+
         if matches!(error,
                     error::ImportError::BrokenCert(_)
                     | error::ImportError::MissingSecretKeyMaterial(_)
                     | error::ImportError::ImportingCert(_))
         {
-            stats.keys.errors += 1;
-            stats.certs.inc_errors();
+            outcome.stats.keys.errors += 1;
+            outcome.stats.certs.inc_errors();
         }
         stream.output(
             params,
@@ -549,20 +604,24 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// this function will not return an error; it will import the
     /// other two certificates, and emit [`Output::ImportingFailed`]
     /// for the corrupted certificate.
-    pub fn import_keyring<'a, I>(mut self, mut input: I) -> Result<(), Error>
+    pub fn import_keyring<'a, I>(mut self, mut input: I)
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync + 'a,
     {
-        let mut report = output::Report::new();
+        let mut outcome = Outcome::new();
 
         let result = Self::import_keyring_(
-            &self.params, &mut self.params_once, &mut input, &mut report);
+            &self.params, &mut self.params_once, &mut input,
+            &mut outcome);
+
+        let report = outcome.to_report();
 
         let mut stream = self.params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(outcome)
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(&self.params, Output::ArgumentError(err.clone()))
@@ -596,7 +655,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
     fn import_keyring_<'a>(params: &Params, params_once: &mut ParamsOnce,
                            input: &mut (dyn std::io::Read + Send + Sync + 'a),
-                           report: &mut output::Report)
+                           outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let parser = match CertParser::from_reader(input) {
@@ -608,7 +667,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     });
 
                 Self::report_failure(
-                    params, params_once, err.clone(), &mut report.stats)?;
+                    params, params_once, err.clone(), outcome)?;
 
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
@@ -629,17 +688,19 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         });
 
                     Self::report_failure(
-                        params, params_once, err, &mut report.stats)?;
+                        params, params_once, err, outcome)?;
 
                     continue;
                 }
             };
 
             match Self::import_key_(params, params_once,
-                                    &mut softkeys, cert, &mut report.stats) {
+                                    &mut softkeys, cert, outcome)
+            {
                 Ok(imported) => {
                     // As long as we can import to the key store, we
                     // return Imported.
+
                     params_once.stream.output(
                         params,
                         Output::Imported(imported))
@@ -675,25 +736,27 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// [`Builder::import_key`], which directly returns import
     /// errors.**
     pub fn import_keys<I>(mut self, certs: I)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: IntoIterator<Item=Cert>
     {
-        let mut report = output::Report::new();
+        let mut outcome = Outcome::new();
 
         let mut certs = certs.into_iter();
 
         let mut import_error = None;
 
         let result = Self::import_keys_(
-            &self.params, &mut self.params_once, &mut certs, &mut report,
+            &self.params, &mut self.params_once, &mut certs, &mut outcome,
             &mut import_error);
+
+        let report = outcome.to_report();
 
         let mut stream = self.params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(outcome)
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(&self.params, Output::ArgumentError(err.clone()))
@@ -742,17 +805,19 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// [`Builder::import_keys`] and [`Builder::import_keyring`],
     /// which only return import errors via the stream interface.**
     pub fn import_key(mut self, cert: Cert)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     {
-        let mut report = output::Report::new();
+        let mut outcome = Outcome::new();
 
         let mut certs = Some(cert).into_iter();
 
         let mut import_error = None;
 
         let result = Self::import_keys_(
-            &self.params, &mut self.params_once, &mut certs, &mut report,
-            &mut import_error);
+            &self.params, &mut self.params_once, &mut certs,
+            &mut outcome, &mut import_error);
+
+        let report = outcome.to_report();
 
         let mut stream = self.params_once.stream;
 
@@ -792,13 +857,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         if let Some(err) = import_error {
             Err(err)
         } else {
-            Ok(())
+            Ok(outcome)
         }
     }
 
     fn import_keys_(params: &Params, params_once: &mut ParamsOnce,
                     certs: &mut dyn Iterator<Item=Cert>,
-                    report: &mut output::Report,
+                    outcome: &mut Outcome,
                     import_error: &mut Option<Error>)
         -> Result<(), Error>
     {
@@ -806,7 +871,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         for cert in certs.into_iter() {
             match Self::import_key_(params, params_once,
-                                    &mut softkeys, cert, &mut report.stats) {
+                                    &mut softkeys, cert, outcome)
+            {
                 Ok(imported) => {
                     // As long as we can import to the key store, we
                     // return Imported.
@@ -829,7 +895,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     fn import_key_(params: &Params, params_once: &mut ParamsOnce,
-                   softkeys: &mut Backend, cert: Cert, stats: &mut ImportStats)
+                   softkeys: &mut Backend, cert: Cert, outcome: &mut Outcome)
         -> Result<output::Imported, Error>
     {
         let Params {
@@ -843,7 +909,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     cert,
                 });
             Self::report_failure(
-                params, params_once, err.clone(), stats)?;
+                params, params_once, err.clone(), outcome)?;
 
             return Err(Error::OperationalError(
                 error::OperationalError::ImportError(err)));
@@ -877,9 +943,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         }
 
         match import_status {
-            ImportStatus::New => stats.keys.new += 1,
-            ImportStatus::Unchanged => stats.keys.unchanged += 1,
-            ImportStatus::Updated => stats.keys.updated += 1,
+            ImportStatus::New => outcome.stats.keys.new += 1,
+            ImportStatus::Unchanged => outcome.stats.keys.unchanged += 1,
+            ImportStatus::Updated => outcome.stats.keys.updated += 1,
         }
 
         // Also insert the certificate into the certificate store.
@@ -891,17 +957,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let mut cert_import_status = ImportStatus::Unchanged;
         let merged = match sequoia.cert_store_or_else() {
             Ok(cert_store) => {
-                let new_certs = stats.certs.new_certs();
-                let updated_certs = stats.certs.updated_certs();
+                let new_certs = outcome.stats.certs.new_certs();
+                let updated_certs = outcome.stats.certs.updated_certs();
 
-                match cert_store.update_by(Arc::clone(&cert), stats) {
+                match cert_store.update_by(Arc::clone(&cert), &outcome.stats) {
                     Ok(merged) => {
                         let merged = Arc::unwrap_or_clone(merged)
                             .into_cert().expect("is a cert");
 
-                        if stats.certs.new_certs() > new_certs {
+                        if outcome.stats.certs.new_certs() > new_certs {
                             cert_import_status = ImportStatus::New;
-                        } else if stats.certs.updated_certs() > updated_certs {
+                        } else if outcome.stats.certs.updated_certs() > updated_certs {
                             cert_import_status = ImportStatus::Updated;
                         }
 
@@ -927,7 +993,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
             Err(err) => {
                 // No cert store.
-                stats.certs.inc_errors();
+                outcome.stats.certs.inc_errors();
 
                 // We do not call report_failure: the certificate
                 // import error is returned in the `Imported` event.
@@ -943,13 +1009,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        Ok(output::Imported {
+        let output = output::Imported {
             cert: Arc::unwrap_or_clone(cert)
                 .into_cert().expect("is a cert"),
             merged,
             key_import_status,
             cert_import_status,
-        })
+        };
+
+        outcome.imported.push(output.clone());
+
+        Ok(output)
     }
 }
 
@@ -962,9 +1032,11 @@ mod tests {
     use openpgp::cert::CertBuilder;
     use openpgp::serialize::Serialize;
 
-    fn check(output: Vec<Output>,
+    fn check(output: Vec<Output>, outcome: impl Into<Option<Outcome>>,
              imports_expected: usize, errors_expected: usize)
     {
+        let outcome = outcome.into();
+
         let mut saw_error = false;
         let mut saw_report = false;
         let mut imports_count = 0;
@@ -1052,6 +1124,17 @@ mod tests {
         eprintln!("End of import");
 
         assert!(saw_report);
+
+        if let Some(outcome) = outcome {
+            assert_eq!(imports_expected, outcome.imported.len());
+            assert_eq!(errors_expected, outcome.importing_failed.len());
+        } else {
+            assert_eq!(imports_expected, 0, "expected imports vs returned");
+            assert_eq!(imports_count, 0, "counted imports vs expected");
+            assert_eq!(errors_expected, 0, "expected errors vs returned");
+            assert_eq!(errors_count, 0, "counted errors vs expected");
+            assert!(saw_error, "error should be sent to stream and returned");
+        }
     }
 
     #[test]
@@ -1060,22 +1143,22 @@ mod tests {
 
         // Empty file.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(b""));
+            .import_keyring(std::io::Cursor::new(b""))
+            .expect("success");
 
-        check(output, 0, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 0, 0);
 
         // Junk.
         let input = vec![b'!'; 16 * 1024];
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let _err = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input));
+            .import_keyring(std::io::Cursor::new(&input))
+            .expect_err("failure");
 
-        check(output, 0, 0);
-        assert!(result.is_err());
+        check(output, None, 0, 0);
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -1090,47 +1173,47 @@ mod tests {
         let mut input = Vec::new();
         alice.serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect("success");
 
-        check(output, 0, 1);
-        assert!(result.is_ok());
+        check(output, outcome, 0, 1);
 
         // Import Alice's key.
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect("success");
 
-        check(output, 1, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 0);
 
         // Import Alice's and Bob's keys.
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect("success");
 
-        check(output, 2, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 2, 0);
 
         // Import Alice's cert and Bob's key.
         let mut input = Vec::new();
         alice.serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect("success");
 
-        check(output, 1, 1);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 1);
 
         // Add some junk in between and try again.
         let mut input = Vec::new();
@@ -1138,12 +1221,12 @@ mod tests {
         write!(&mut input, "foobar").unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream( &mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect("success");
 
-        check(output, 2, 1);
-        assert!(result.is_ok());
+        check(output, outcome, 2, 1);
     }
 
     #[test]
@@ -1164,12 +1247,12 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect("success");
 
-        check(output, 1, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 0);
     }
 
     #[test]
@@ -1194,24 +1277,24 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let _err = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect_err("failure");
 
-        check(output, 0, 0);
-        assert!(result.is_err());
+        check(output, None, 0, 0);
 
         // Import Alice's and Bob's keys.
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let _err = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]));
+            .import_keyring(std::io::Cursor::new(&input[..]))
+            .expect_err("failure");
 
-        check(output, 0, 0);
-        assert!(result.is_err());
+        check(output, None, 0, 0);
     }
 
     #[test]
@@ -1220,12 +1303,12 @@ mod tests {
 
         // Empty file.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keys([]);
+            .import_keys([])
+            .expect("success");
 
-        check(output, 0, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 0, 0);
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -1245,39 +1328,39 @@ mod tests {
 
         // Import Alice's certificate (not key!).
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice_pub.clone() ]);
+            .import_keys([ alice_pub.clone() ])
+            .expect("success");
 
-        check(output, 0, 1);
-        assert!(result.is_ok());
+        check(output, outcome, 0, 1);
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone() ]);
+            .import_keys([ alice.clone() ])
+            .expect("success");
 
-        check(output, 1, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 0);
 
         // Import Alice's and Bob's keys.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone(), bob.clone() ]);
+            .import_keys([ alice.clone(), bob.clone() ])
+            .expect("success");
 
-        check(output, 2, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 2, 0);
 
         // Import Alice's cert and Bob's key.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice_pub.clone(), bob.clone() ]);
+            .import_keys([ alice_pub.clone(), bob.clone() ])
+            .expect("success");
 
-        check(output, 1, 1);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 1);
     }
 
     #[test]
@@ -1298,12 +1381,12 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone() ]);
+            .import_keys([ alice.clone() ])
+            .expect("success");
 
-        check(output, 1, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 0);
     }
 
     #[test]
@@ -1326,21 +1409,21 @@ mod tests {
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let _err = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone() ]);
+            .import_keys([ alice.clone() ])
+            .expect_err("failure");
 
-        check(output, 0, 0);
-        assert!(result.is_err());
+        check(output, None, 0, 0);
 
         // Import Alice's and Bob's keys.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let _err = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone(), bob.clone() ]);
+            .import_keys([ alice.clone(), bob.clone() ])
+            .expect_err("failure");
 
-        check(output, 0, 0);
-        assert!(result.is_err());
+        check(output, None, 0, 0);
     }
 
     #[test]
@@ -1357,21 +1440,36 @@ mod tests {
 
         // Import Alice's certificate (not key!).
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let err = sq.key_import()
             .stream(&mut output)
-            .import_key(alice_pub.clone());
+            .import_key(alice_pub.clone())
+            .expect_err("failure");
 
-        check(output, 0, 1);
-        assert!(result.is_err());
+        // We need to fabricate an Outcome as unlike the other
+        // functions `key_import` returns soft errors directly.
+
+        let Error::OperationalError(error::OperationalError::ImportError(err))
+            = err else {
+                panic!("Expect an import error error, got: {:?}", err);
+            };
+
+        let mut outcome = Outcome {
+            imported: Vec::new(),
+            importing_failed: vec![ output::ImportingFailed { error: err } ],
+            stats: Default::default(),
+        };
+        outcome.stats.keys.errors += 1;
+
+        check(output, outcome, 0, 1);
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_key(alice.clone());
+            .import_key(alice.clone())
+            .expect("success");
 
-        check(output, 1, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 0);
     }
 
     #[test]
@@ -1392,12 +1490,12 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let outcome = sq.key_import()
             .stream(&mut output)
-            .import_key(alice.clone());
+            .import_key(alice.clone())
+            .expect("success");
 
-        check(output, 1, 0);
-        assert!(result.is_ok());
+        check(output, outcome, 1, 0);
     }
 
     #[test]
@@ -1416,11 +1514,11 @@ mod tests {
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let result = sq.key_import()
+        let _err = sq.key_import()
             .stream(&mut output)
-            .import_key(alice.clone());
+            .import_key(alice.clone())
+            .expect_err("failure");
 
-        check(output, 0, 0);
-        assert!(result.is_err());
+        check(output, None, 0, 0);
     }
 }

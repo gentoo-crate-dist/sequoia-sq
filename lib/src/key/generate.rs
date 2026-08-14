@@ -1014,22 +1014,17 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                         .map_err(op!())?;
                 }
 
-                let mut output = Vec::new();
-                sequoia.key_import()
-                    .stream(&mut output)
+                let outcome = sequoia.key_import()
                     .import_key(cert.clone())
                     .map_err(op!())?;
 
                 key_import_status = Some(
-                    output.into_iter()
-                        .find_map(|o| {
-                            if let crate::key::import::Output::Imported(o) = o {
-                                Some(o.key_import_status)
-                            } else {
-                                None
-                            }
-                        })
-                        .expect("imported key"));
+                    outcome
+                        .imported
+                        .into_iter()
+                        .next()
+                        .expect("imported key")
+                        .key_import_status);
 
                 // Now certify the user IDs, and if this is our own
                 // key, mark it as trusted introducer.

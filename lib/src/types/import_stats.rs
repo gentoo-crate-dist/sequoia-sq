@@ -21,6 +21,28 @@ pub struct ImportStats {
     pub keys: KeyStats,
 }
 
+impl Clone for ImportStats {
+    fn clone(&self) -> Self {
+        // Arg, does not implement Clone.  Do it manually for now.
+        // Fix this once this has been resolved:
+        // https://gitlab.com/sequoia-pgp/sequoia-cert-store/-/work_items/42
+        let c = MergePublicCollectStats::new();
+        (0..self.certs.new_certs())
+            .for_each(|_| c.inc_new_certs());
+        (0..self.certs.unchanged_certs())
+            .for_each(|_| c.inc_unchanged_certs());
+        (0..self.certs.updated_certs())
+            .for_each(|_| c.inc_updated_certs());
+        (0..self.certs.errors())
+            .for_each(|_| c.inc_errors());
+
+        Self {
+            certs: c,
+            keys: self.keys.clone(),
+        }
+    }
+}
+
 impl Default for ImportStats {
     fn default() -> Self {
         ImportStats {
@@ -79,7 +101,7 @@ impl ImportStats {
 }
 
 /// Key import stats.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct KeyStats {
     /// Number of new keys.
     pub new: usize,
