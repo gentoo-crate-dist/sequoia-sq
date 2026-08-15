@@ -921,12 +921,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             Err(err) => {
                 let err = Arc::new(err);
 
-                params_once.stream.output(
-                    params,
-                    Output::SystemError(
-                        SystemError::KeyStoreError(err.clone())))
-                    .map_err(|err| Error::StreamOutputError(err))?;
-
                 return Err(Error::SystemError(
                     SystemError::KeyStoreError(err)));
             }
@@ -1032,12 +1026,10 @@ mod tests {
     use openpgp::cert::CertBuilder;
     use openpgp::serialize::Serialize;
 
-    fn check(output: Vec<Output>, outcome: impl Into<Option<Outcome>>,
+    fn check(output: Vec<Output>, result: Result<Outcome, Error>,
              imports_expected: usize, errors_expected: usize)
     {
-        let outcome = outcome.into();
-
-        let mut saw_error = false;
+        let mut saw_error = None;
         let mut saw_report = false;
         let mut imports_count = 0;
         let mut errors_count = 0;
@@ -1048,32 +1040,32 @@ mod tests {
                 Output::ArgumentError(err) => {
                     // No argument errors.
                     eprintln!("  - argument error: {}", err);
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                     assert!(! saw_report);
                 }
                 Output::SystemError(err) => {
                     eprintln!("  - system error: {}", err);
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                     assert!(! saw_report);
                 }
                 Output::OperationalError(err) => {
                     eprintln!("  - operational error: {}", err);
                     // An operational error can happen at any time.
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                     assert!(! saw_report);
                 }
 
                 Output::Imported(_) => {
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_report);
                     eprintln!("- Imported");
                     imports_count += 1;
                 }
                 Output::ImportingFailed(failure) => {
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_report);
                     eprintln!("- ImportingFailed: {}", failure);
                     match failure.error {
@@ -1125,15 +1117,40 @@ mod tests {
 
         assert!(saw_report);
 
-        if let Some(outcome) = outcome {
-            assert_eq!(imports_expected, outcome.imported.len());
-            assert_eq!(errors_expected, outcome.importing_failed.len());
-        } else {
-            assert_eq!(imports_expected, 0, "expected imports vs returned");
-            assert_eq!(imports_count, 0, "counted imports vs expected");
-            assert_eq!(errors_expected, 0, "expected errors vs returned");
-            assert_eq!(errors_count, 0, "counted errors vs expected");
-            assert!(saw_error, "error should be sent to stream and returned");
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+
+                assert_eq!(imports_expected, 0, "expected imports vs returned");
+                assert_eq!(imports_count, 0, "counted imports vs expected");
+                assert_eq!(errors_expected, 0, "expected errors vs returned");
+                assert_eq!(errors_count, 0, "counted errors vs expected");
+
+            }
+            (Ok(outcome), None) => {
+                assert_eq!(imports_expected, outcome.imported.len());
+                assert_eq!(errors_expected, outcome.importing_failed.len());
+            }
         }
     }
 
@@ -1143,22 +1160,22 @@ mod tests {
 
         // Empty file.
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(b""))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(b""));
 
-        check(output, outcome, 0, 0);
+        assert!(result.is_ok());
+        check(output, result, 0, 0);
 
         // Junk.
         let input = vec![b'!'; 16 * 1024];
         let mut output = Vec::new();
-        let _err = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input))
-            .expect_err("failure");
+            .import_keyring(std::io::Cursor::new(&input));
 
-        check(output, None, 0, 0);
+        assert!(result.is_err());
+        check(output, result, 0, 0);
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -1173,47 +1190,47 @@ mod tests {
         let mut input = Vec::new();
         alice.serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, outcome, 0, 1);
+        assert!(result.is_ok());
+        check(output, result, 0, 1);
 
         // Import Alice's key.
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, outcome, 1, 0);
+        assert!(result.is_ok());
+        check(output, result, 1, 0);
 
         // Import Alice's and Bob's keys.
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, outcome, 2, 0);
+        assert!(result.is_ok());
+        check(output, result, 2, 0);
 
         // Import Alice's cert and Bob's key.
         let mut input = Vec::new();
         alice.serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, outcome, 1, 1);
+        assert!(result.is_ok());
+        check(output, result, 1, 1);
 
         // Add some junk in between and try again.
         let mut input = Vec::new();
@@ -1221,12 +1238,12 @@ mod tests {
         write!(&mut input, "foobar").unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream( &mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, outcome, 2, 1);
+        assert!(result.is_ok());
+        check(output, result, 2, 1);
     }
 
     #[test]
@@ -1247,12 +1264,12 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect("success");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, outcome, 1, 0);
+        assert!(result.is_ok());
+        check(output, result, 1, 0);
     }
 
     #[test]
@@ -1277,24 +1294,24 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let _err = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect_err("failure");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, None, 0, 0);
+        assert!(result.is_err());
+        check(output, result, 0, 0);
 
         // Import Alice's and Bob's keys.
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         bob.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let _err = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keyring(std::io::Cursor::new(&input[..]))
-            .expect_err("failure");
+            .import_keyring(std::io::Cursor::new(&input[..]));
 
-        check(output, None, 0, 0);
+        assert!(result.is_err());
+        check(output, result, 0, 0);
     }
 
     #[test]
@@ -1303,12 +1320,12 @@ mod tests {
 
         // Empty file.
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([])
-            .expect("success");
+            .import_keys([]);
 
-        check(output, outcome, 0, 0);
+        assert!(result.is_ok());
+        check(output, result, 0, 0);
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -1328,39 +1345,39 @@ mod tests {
 
         // Import Alice's certificate (not key!).
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice_pub.clone() ])
-            .expect("success");
+            .import_keys([ alice_pub.clone() ]);
 
-        check(output, outcome, 0, 1);
+        assert!(result.is_ok());
+        check(output, result, 0, 1);
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone() ])
-            .expect("success");
+            .import_keys([ alice.clone() ]);
 
-        check(output, outcome, 1, 0);
+        assert!(result.is_ok());
+        check(output, result, 1, 0);
 
         // Import Alice's and Bob's keys.
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone(), bob.clone() ])
-            .expect("success");
+            .import_keys([ alice.clone(), bob.clone() ]);
 
-        check(output, outcome, 2, 0);
+        assert!(result.is_ok());
+        check(output, result, 2, 0);
 
         // Import Alice's cert and Bob's key.
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice_pub.clone(), bob.clone() ])
-            .expect("success");
+            .import_keys([ alice_pub.clone(), bob.clone() ]);
 
-        check(output, outcome, 1, 1);
+        assert!(result.is_ok());
+        check(output, result, 1, 1);
     }
 
     #[test]
@@ -1381,12 +1398,12 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone() ])
-            .expect("success");
+            .import_keys([ alice.clone() ]);
 
-        check(output, outcome, 1, 0);
+        assert!(result.is_ok());
+        check(output, result, 1, 0);
     }
 
     #[test]
@@ -1409,21 +1426,21 @@ mod tests {
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let _err = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone() ])
-            .expect_err("failure");
+            .import_keys([ alice.clone() ]);
 
-        check(output, None, 0, 0);
+        assert!(result.is_err());
+        check(output, result, 0, 0);
 
         // Import Alice's and Bob's keys.
         let mut output = Vec::new();
-        let _err = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_keys([ alice.clone(), bob.clone() ])
-            .expect_err("failure");
+            .import_keys([ alice.clone(), bob.clone() ]);
 
-        check(output, None, 0, 0);
+        assert!(result.is_err());
+        check(output, result, 0, 0);
     }
 
     #[test]
@@ -1460,16 +1477,16 @@ mod tests {
         };
         outcome.stats.keys.errors += 1;
 
-        check(output, outcome, 0, 1);
+        check(output, Ok(outcome), 0, 1);
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_key(alice.clone())
-            .expect("success");
+            .import_key(alice.clone());
 
-        check(output, outcome, 1, 0);
+        assert!(result.is_ok());
+        check(output, result, 1, 0);
     }
 
     #[test]
@@ -1490,12 +1507,12 @@ mod tests {
         let mut input = Vec::new();
         alice.as_tsk().serialize(&mut input).unwrap();
         let mut output = Vec::new();
-        let outcome = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_key(alice.clone())
-            .expect("success");
+            .import_key(alice.clone());
 
-        check(output, outcome, 1, 0);
+        assert!(result.is_ok());
+        check(output, result, 1, 0);
     }
 
     #[test]
@@ -1514,11 +1531,11 @@ mod tests {
 
         // Import Alice's key.
         let mut output = Vec::new();
-        let _err = sq.key_import()
+        let result = sq.key_import()
             .stream(&mut output)
-            .import_key(alice.clone())
-            .expect_err("failure");
+            .import_key(alice.clone());
 
-        check(output, None, 0, 0);
+        assert!(result.is_err());
+        check(output, result, 0, 0);
     }
 }
