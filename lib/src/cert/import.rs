@@ -539,6 +539,15 @@ pub mod output {
         Autocrypt,
     }
 
+    /// We failed to import a cert.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug)]
+    #[error(transparent)]
+    pub struct ImportingFailed {
+        /// The related error.
+        pub error: error::ImportError,
+    }
+
     /// A report about the operation.
     ///
     /// Emitted at the end.
@@ -591,7 +600,7 @@ pub enum Output {
     ///
     /// This is not considered an operational error, as processing is
     /// not aborted.
-    ImportingFailed(error::ImportError),
+    ImportingFailed(output::ImportingFailed),
 
     /// Emitted after attempting to decrypt an autocrypt message.
     ///
@@ -836,7 +845,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         }
         stream.output(
             params,
-            Output::ImportingFailed(err))
+            Output::ImportingFailed(
+                output::ImportingFailed {
+                    error: err
+                }))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
@@ -1827,7 +1839,11 @@ mod tests {
                     assert!(saw_error.is_none());
                     import_count += 1;
                 }
-                Output::ImportingFailed(failure) => {
+                Output::ImportingFailed(
+                    output::ImportingFailed {
+                        error: failure
+                    }) =>
+                {
                     eprintln!("- ImportingFailed: {}", failure);
                     assert!(! saw_report);
                     assert!(saw_error.is_none());

@@ -9,9 +9,10 @@ use openpgp::types::KeyFlags;
 use sequoia::cert::import;
 use sequoia::decrypt;
 
+use import::Output;
 use import::error::*;
 use import::output::*;
-use import::Output;
+use import::output;
 
 use sequoia::types::import_stats::ImportStats;
 
@@ -118,13 +119,16 @@ impl import::Stream for Stream<'_> {
             }
 
             Output::ImportingFailed(
-                ImportError::BrokenArtifact(
-                    BrokenArtifact::BrokenCert(
-                        BrokenCert {
-                            cert,
-                            error,
-                            ..
-                        }))) =>
+                output::ImportingFailed {
+                    error: ImportError::BrokenArtifact(
+                        BrokenArtifact::BrokenCert(
+                            BrokenCert {
+                                cert,
+                                error,
+                                ..
+                            })),
+                    ..
+                }) =>
             {
                 if let Some(cert) = cert {
                     emit_cert_key_handle_userid_str(
@@ -150,13 +154,16 @@ impl import::Stream for Stream<'_> {
                 }
             }
             Output::ImportingFailed(
-                ImportError::BrokenArtifact(
-                    BrokenArtifact::BrokenRevocation(
-                        BrokenRevocation {
-                            packet: _,
-                            error,
-                            ..
-                        }))) =>
+                output::ImportingFailed {
+                    error: ImportError::BrokenArtifact(
+                        BrokenArtifact::BrokenRevocation(
+                            BrokenRevocation {
+                                packet: _,
+                                error,
+                                ..
+                            })),
+                    ..
+                }) =>
             {
                 wwriteln!(stream = &mut self.output,
                           initial_indent = "   - ",
@@ -164,21 +171,27 @@ impl import::Stream for Stream<'_> {
                           error);
             }
             Output::ImportingFailed(
-                ImportError::BrokenArtifact(
-                    BrokenArtifact::BrokenAutocrypt(
-                        BrokenAutocrypt {
-                            ..
-                        }))) =>
+                output::ImportingFailed {
+                    error: ImportError::BrokenArtifact(
+                        BrokenArtifact::BrokenAutocrypt(
+                            BrokenAutocrypt {
+                                ..
+                            })),
+                    ..
+                }) =>
             {
             }
             Output::ImportingFailed(
-                ImportError::ImportingError(
-                    ImportingError::CertImportError(
-                        CertImportError {
-                            cert,
-                            error,
-                            ..
-                        }))) =>
+                output::ImportingFailed {
+                    error: ImportError::ImportingError(
+                        ImportingError::CertImportError(
+                            CertImportError {
+                                cert,
+                                error,
+                                ..
+                            })),
+                    ..
+                }) =>
             {
                 emit_cert(&mut self.output, self.sq, &cert)?;
 
@@ -188,13 +201,16 @@ impl import::Stream for Stream<'_> {
                 wwriteln!(&mut self.output);
             }
             Output::ImportingFailed(
-                ImportError::ImportingError(
-                    ImportingError::RevocationImportError(
-                        RevocationImportError {
-                            rev,
-                            error,
-                            ..
-                        }))) =>
+                output::ImportingFailed {
+                    error: ImportError::ImportingError(
+                        ImportingError::RevocationImportError(
+                            RevocationImportError {
+                                rev,
+                                error,
+                                ..
+                            })),
+                    ..
+                }) =>
             {
                 wwriteln!(stream = &mut self.output,
                           initial_indent = "   - ",
@@ -212,13 +228,16 @@ impl import::Stream for Stream<'_> {
                 }
             }
             Output::ImportingFailed(
-                ImportError::ImportingError(
-                    ImportingError::AutocryptImportError(
-                        AutocryptImportError {
-                            sender: _,
-                            sender_attributes: _,
-                            ..
-                        }))) =>
+                output::ImportingFailed {
+                    error: ImportError::ImportingError(
+                        ImportingError::AutocryptImportError(
+                            AutocryptImportError {
+                                sender: _,
+                                sender_attributes: _,
+                                ..
+                            })),
+                    ..
+                }) =>
             {
                 ()
             }
