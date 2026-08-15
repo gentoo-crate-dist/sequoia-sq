@@ -277,7 +277,7 @@ impl import::Stream for Stream<'_> {
                     ..
                 }) =>
             {
-                let err = if ! self.saw_error
+                if ! self.saw_error
                     && stats.keys.new == 0
                     && stats.keys.unchanged == 0
                     && stats.keys.updated == 0
@@ -293,21 +293,13 @@ impl import::Stream for Stream<'_> {
                     wwriteln!(&mut self.output,
                               "Warning: {} does not contain any certificates",
                               input);
-
-                    Some(anyhow::anyhow!("Input does not contain any certificates"))
-                } else {
-                    None
-                };
+                }
 
                 if self.print_stats {
                     wwriteln!(&mut self.output);
                     stats.print_summary(&mut self.output, &self.sq.sequoia)?;
                 }
                 self.stats = Some(stats);
-
-                if let Some(err) = err {
-                    return Err(err);
-                }
             }
 
             _output => {
