@@ -9,6 +9,7 @@ use openpgp::types::KeyFlags;
 use sequoia::cert::import;
 use sequoia::decrypt;
 
+use import::ArtifactType;
 use import::Output;
 use import::error::*;
 use import::output::*;

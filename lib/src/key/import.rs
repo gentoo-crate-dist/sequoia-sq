@@ -1145,7 +1145,6 @@ mod tests {
                 assert_eq!(imports_count, 0, "counted imports vs expected");
                 assert_eq!(errors_expected, 0, "expected errors vs returned");
                 assert_eq!(errors_count, 0, "counted errors vs expected");
-
             }
             (Ok(outcome), None) => {
                 assert_eq!(imports_expected, outcome.imported.len());

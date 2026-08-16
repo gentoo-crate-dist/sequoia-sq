@@ -413,14 +413,14 @@ pub mod output {
 
     /// Information about a certificate.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Cert {
         pub cert: openpgp::Cert,
     }
 
     /// Information about an imported revocation certificate.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Revocation {
         pub rev: Signature,
     }
@@ -428,7 +428,7 @@ pub mod output {
     /// Information about a certificate imported from an autocrypt
     /// message.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Autocrypt {
         /// The sender.
         pub sender: Arc<openpgp::Cert>,
@@ -439,7 +439,7 @@ pub mod output {
     /// Information about a certificate imported from an autocrypt
     /// message.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct AutocryptGossip {
         /// The sender.
         pub sender: Arc<openpgp::Cert>,
@@ -455,7 +455,7 @@ pub mod output {
     ///
     /// Used by [`Imported`].
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Artifact {
         /// Information about a certificate.
         Cert(openpgp::Cert),
@@ -496,7 +496,7 @@ pub mod output {
 
     /// We imported a certificate.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Imported {
         /// We imported the artifact.
         pub artifact: Artifact,
@@ -529,19 +529,9 @@ pub mod output {
         pub decrypted: bool,
     }
 
-    /// The type of artifact that we imported (or tried to import).
-    #[non_exhaustive]
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum ArtifactType {
-        Keyring,
-        Certs,
-        Revocation,
-        Autocrypt,
-    }
-
     /// We failed to import a cert.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error(transparent)]
     pub struct ImportingFailed {
         /// The related error.
@@ -620,6 +610,73 @@ pub enum Output {
     ///
     /// This is always emitted whether anything is imported or not.
     Report(output::Report),
+}
+
+/// The outcome of importing keys.
+///
+/// This is returned by [`Builder::import_keyring`],
+/// [`Builder::import_certs`], [`Builder::import_revocation`], and
+/// [`Builder::import_autocrypt`].  It contains information about the
+/// operation's outcome.  More detailed information is available via
+/// the [`Stream`] interface.
+#[derive(Debug)]
+pub struct Outcome {
+    pub artifact_type: ArtifactType,
+
+    /// Statistics.
+    pub stats: ImportStats,
+
+    /// The imported keys.
+    pub imported: Vec<output::Imported>,
+    /// The import failures.
+    pub importing_failed: Vec<output::ImportingFailed>,
+}
+
+impl Outcome {
+    fn new(artifact_type: ArtifactType) -> Self {
+        Outcome {
+            artifact_type,
+            imported: Vec::new(),
+            importing_failed: Vec::new(),
+            stats: Default::default(),
+        }
+    }
+
+    fn to_report(&self) -> output::Report {
+        output::Report {
+            artifact_type: self.artifact_type.clone(),
+            stats: self.stats.clone(),
+        }
+    }
+
+    /// Returns whether all artifacts were imported.
+    ///
+    /// If one or more artifacts were not imported, returns one of the
+    /// errors.
+    ///
+    /// For instance, when importing a keyring using
+    /// [`Builder::import_keyring`], one of the certificates may be
+    /// corrupted.  In this case, the other certificates are still
+    /// imported, and `import_keyring` returns `Ok`.  This function
+    /// allows you to determine if all certificates were imported.
+    pub fn all_imported(&self) -> Result<()> {
+        self.importing_failed
+            .first()
+            .map_or(Ok(()),
+                    |failure| {
+                        Err(failure.error.clone().into())
+                    })
+    }
+}
+
+/// The type of artifact that we imported (or tried to import).
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactType {
+    Keyring,
+    Certs,
+    Revocation,
+    Autocrypt,
 }
 
 /// The certificate import parameters.
@@ -791,34 +848,30 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         }
 
-        let mut stats = ImportStats::default();
-
         let input = Box::new(input) as Box<dyn BufferedReader<Cookie> + 'a>;
         let prompt = Box::new(prompt) as Box<dyn prompt::Prompt + 'a>;
-        let (artifact_type, result) = match typ {
+        let (outcome, result) = match typ {
             Type::Keyring => {
-                (output::ArtifactType::Keyring,
-                 Self::import_keyring_(
-                     &params, &mut params_once, input, &mut stats))
+                let mut outcome = Outcome::new(ArtifactType::Keyring);
+                let result = Self::import_keyring_(
+                    &params, &mut params_once, input, &mut outcome);
+                (outcome, result)
             }
             Type::Signature => {
-                (output::ArtifactType::Revocation,
-                 Self::import_revocation_(
-                     &params, &mut params_once, input, &mut stats))
+                let mut outcome = Outcome::new(ArtifactType::Revocation);
+                let result = Self::import_revocation_(
+                    &params, &mut params_once, input, &mut outcome);
+                (outcome, result)
             }
             Type::Other => {
-                (output::ArtifactType::Autocrypt,
-                 Self::import_autocrypt_(
-                     &params, &mut params_once, input, &mut stats, prompt))
+                let mut outcome = Outcome::new(ArtifactType::Autocrypt);
+                let result = Self::import_autocrypt_(
+                    &params, &mut params_once, input, &mut outcome, prompt);
+                (outcome, result)
             }
         };
 
-        params_once.stream.output(
-            &params,
-            Output::Report(output::Report {
-                artifact_type,
-                stats,
-            }))
+        params_once.stream.output(&params, Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -828,19 +881,23 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     fn report_failure<'a>(params: &Params,
                           params_once: &mut ParamsOnce,
                           err: error::ImportError,
-                          stats: &mut ImportStats)
-                          -> Result<(), Error>
+                          outcome: &mut Outcome)
+        -> Result<(), Error>
     {
         let ParamsOnce {
             stream,
         } = params_once;
+
+        outcome.importing_failed.push(output::ImportingFailed {
+            error: err.clone(),
+        });
 
         match err {
             error::ImportError::BrokenArtifact(_)
                 | error::ImportError::ImportingError(_)
                 | error::ImportError::NoAutocryptHeader(_) =>
             {
-                stats.certs.inc_errors();
+                outcome.stats.certs.inc_errors();
             },
             _ => (),
         }
@@ -861,7 +918,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                              cert: openpgp::Cert,
                              artifact: output::Artifact,
                              provenance: Vec<Arc<Cert>>,
-                             stats: &mut ImportStats)
+                             outcome: &mut Outcome)
         -> Result<bool, Error>
     {
         let Params {
@@ -881,7 +938,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         };
 
         let cert = Arc::new(LazyCert::from(cert));
-        match cert_store.update_by(cert.clone(), stats) {
+        match cert_store.update_by(cert.clone(), &mut outcome.stats) {
             Err(err) => {
                 Self::report_failure(
                     params, params_once,
@@ -895,7 +952,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                                     .expect("have a cert"),
                                 error: err.into(),
                             })),
-                    &mut *stats)?;
+                    outcome)?;
 
                 Ok(false)
             }
@@ -903,16 +960,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 let merged = Arc::unwrap_or_clone(merged)
                     .into_cert().expect("is a cert");
 
-                stream.output(
-                    params,
-                    Output::Imported(output::Imported {
-                        artifact,
-                        merged,
-                        recorded_provenance: provenance
-                            .iter()
-                            .map(|ca| Arc::clone(&ca))
-                            .collect(),
-                    }))
+                let imported = output::Imported {
+                    artifact,
+                    merged,
+                    recorded_provenance: provenance
+                        .iter()
+                        .map(|ca| Arc::clone(&ca))
+                        .collect(),
+                };
+
+                outcome.imported.push(imported.clone());
+
+                stream.output(params, Output::Imported(imported))
                     .map_err(|err| Error::StreamOutputError(err))?;
 
                 Ok(true)
@@ -948,7 +1007,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// empty.
     pub fn import_keyring<'a>(mut self,
                               source: impl std::io::Read + Send + Sync + 'a)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     {
         let Builder {
             ref params,
@@ -962,16 +1021,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             source, None, Cookie::default());
         let source = Box::new(source) as Box<dyn BufferedReader<Cookie>>;
 
-        let mut stats = ImportStats::default();
+        let mut outcome = Outcome::new(ArtifactType::Keyring);
 
         let result = Self::import_keyring_(
-            params, params_once, source, &mut stats);
+            params, params_once, source, &mut outcome);
+
+        let report = outcome.to_report();
 
         let stream = &mut params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(outcome)
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(params, Output::ArgumentError(err.clone()))
@@ -994,12 +1055,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        stream.output(
-            params,
-            Output::Report(output::Report {
-                artifact_type: output::ArtifactType::Keyring,
-                stats,
-            }))
+        stream.output(params, Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1009,7 +1065,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     fn import_keyring_<'a>(params: &Params,
                            params_once: &mut ParamsOnce,
                            source: Box<dyn BufferedReader<Cookie> + 'a>,
-                           stats: &mut ImportStats)
+                           outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let raw_certs = match RawCertParser::from_buffered_reader(source) {
@@ -1021,7 +1077,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     });
 
                 Self::report_failure(
-                    params, params_once, err.clone(), stats)?;
+                    params, params_once, err.clone(), outcome)?;
 
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
@@ -1039,7 +1095,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                                     cert: None,
                                     error: err.into(),
                                 })),
-                        stats)?;
+                        outcome)?;
                     continue;
                 }
                 Ok(rawcert) => {
@@ -1057,7 +1113,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                                                 .into_owned()),
                                             error: err.into(),
                                         })),
-                                &mut *stats)?;
+                                outcome)?;
                             continue;
                         }
                     }
@@ -1069,7 +1125,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 cert.clone(),
                 output::Artifact::Cert(cert),
                 Vec::new(), // No provenance.
-                &mut *stats)?;
+                outcome)?;
         }
 
         Ok(())
@@ -1084,7 +1140,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// into the certificate store, do not cause this function to
     /// return an error.  These errors are reported using
     /// [`Output::ImportingFailed`].  Parsing is not aborted.
-    pub fn import_certs<I>(mut self, certs: I) -> Result<(), Error>
+    pub fn import_certs<I>(mut self, certs: I) -> Result<Outcome, Error>
     where
         I: IntoIterator<Item=Cert>,
     {
@@ -1095,16 +1151,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let mut certs = certs.into_iter();
 
-        let mut stats = ImportStats::default();
+        let mut outcome = Outcome::new(ArtifactType::Certs);
 
         let result = Self::import_certs_(
-            params, params_once, &mut certs, &mut stats);
+            params, params_once, &mut certs, &mut outcome);
+
+        let report = outcome.to_report();
 
         let stream = &mut params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(outcome)
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(params, Output::ArgumentError(err.clone()))
@@ -1127,12 +1185,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        stream.output(
-            params,
-            Output::Report(output::Report {
-                artifact_type: output::ArtifactType::Certs,
-                stats,
-            }))
+        stream.output(params, Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1140,7 +1193,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
     fn import_certs_(params: &Params, params_once: &mut ParamsOnce,
                      certs: &mut dyn Iterator<Item=Cert>,
-                     stats: &mut ImportStats)
+                     outcome: &mut Outcome)
         -> Result<(), Error>
     {
         for cert in certs.into_iter() {
@@ -1149,7 +1202,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 cert.clone(),
                 output::Artifact::Cert(cert),
                 Vec::new(), // No provenance.
-                stats)?;
+                outcome)?;
         }
 
         Ok(())
@@ -1175,7 +1228,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     pub fn import_revocation(
         mut self,
         source: impl std::io::Read + Send + Sync)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     {
         let Builder {
             ref params,
@@ -1189,16 +1242,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             source, None, Cookie::default());
         let source = Box::new(source) as Box<dyn BufferedReader<Cookie>>;
 
-        let mut stats = ImportStats::default();
+        let mut outcome = Outcome::new(ArtifactType::Revocation);
 
         let result = Self::import_revocation_(
-            params, params_once, source, &mut stats);
+            params, params_once, source, &mut outcome);
+
+        let report = outcome.to_report();
 
         let stream = &mut params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(outcome)
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(params, Output::ArgumentError(err.clone()))
@@ -1223,10 +1278,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         params_once.stream.output(
             &params,
-            Output::Report(output::Report {
-                artifact_type: output::ArtifactType::Revocation,
-                stats,
-            }))
+            Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1237,7 +1289,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         params: &Params,
         params_once: &mut ParamsOnce,
         source: Box<dyn BufferedReader<Cookie> + 'a>,
-        stats: &mut ImportStats)
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let ppr = match PacketParser::from_buffered_reader(source) {
@@ -1249,7 +1301,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
                 Self::report_failure(
                     params, params_once,
-                    err.clone(), &mut *stats)?;
+                    err.clone(), outcome)?;
 
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
@@ -1265,7 +1317,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         });
 
                     Self::report_failure(params, params_once,
-                                         err.clone().into(), &mut *stats)?;
+                                         err.clone().into(), outcome)?;
 
                     return Err(Error::OperationalError(
                         error::OperationalError::ImportError(err)));
@@ -1286,7 +1338,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         }));
 
                 Self::report_failure(
-                    params, params_once, err.clone(), &mut *stats)?;
+                    params, params_once, err.clone(), outcome)?;
 
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
@@ -1303,7 +1355,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         }));
 
                 Self::report_failure(
-                    params, params_once, err.clone(), &mut *stats)?;
+                    params, params_once, err.clone(), outcome)?;
 
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
@@ -1318,7 +1370,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 });
 
             Self::report_failure(
-                params, params_once, err.clone(), &mut *stats)?;
+                params, params_once, err.clone(), outcome)?;
 
             return Err(Error::OperationalError(
                 error::OperationalError::ImportError(err)));
@@ -1336,7 +1388,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     }));
 
             Self::report_failure(
-                params, params_once, err.clone(), &mut *stats)?;
+                params, params_once, err.clone(), outcome)?;
 
             return Err(Error::OperationalError(
                 error::OperationalError::ImportError(err)));
@@ -1385,7 +1437,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         cert,
                         artifact,
                         vec![], // No provenance.
-                        &mut *stats)?;
+                        outcome)?;
 
                     return Ok(());
                 } else {
@@ -1406,7 +1458,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                             bad)),
                     }));
             Self::report_failure(
-                params, params_once, err.clone(), &mut *stats)?;
+                params, params_once, err.clone(), outcome)?;
 
             err
         } else if ! missing.is_empty() {
@@ -1450,7 +1502,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     }));
 
             Self::report_failure(
-                params, params_once, err.clone(), &mut *stats)?;
+                params, params_once, err.clone(), outcome)?;
 
             err
         } else {
@@ -1464,7 +1516,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                     }));
 
             Self::report_failure(
-                params, params_once, err.clone(), &mut *stats)?;
+                params, params_once, err.clone(), outcome)?;
 
             err
         };
@@ -1505,7 +1557,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         mut self,
         source: impl std::io::Read + Send + Sync,
         prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -1523,16 +1575,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         let prompt = Box::new(prompt) as Box<dyn prompt::Prompt>;
 
-        let mut stats = ImportStats::default();
+        let mut outcome = Outcome::new(ArtifactType::Autocrypt);
 
         let result = Self::import_autocrypt_(
-            params, params_once, source, &mut stats, prompt);
+            params, params_once, source, &mut outcome, prompt);
+
+        let report = outcome.to_report();
 
         let stream = &mut params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(outcome)
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(params, Output::ArgumentError(err.clone()))
@@ -1555,12 +1609,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        params_once.stream.output(
-            &params,
-            Output::Report(output::Report {
-                artifact_type: output::ArtifactType::Autocrypt,
-                stats,
-            }))
+        params_once.stream.output(&params, Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1570,7 +1619,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     fn import_autocrypt_<'a>(params: &Params,
                              params_once: &mut ParamsOnce,
                              mut source: Box<dyn BufferedReader<Cookie> + 'a>,
-                             mut stats: &mut ImportStats,
+                             outcome: &mut Outcome,
                              prompt: Box<dyn prompt::Prompt + 'a>)
         -> Result<(), Error>
     {
@@ -1601,7 +1650,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         }));
 
                 Self::report_failure(
-                    params, params_once, err.clone(), &mut *stats)?;
+                    params, params_once, err.clone(), outcome)?;
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
             }
@@ -1683,7 +1732,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         } else {
                             Vec::new()
                         },
-                        &mut stats)?;
+                        outcome)?;
                 }
             }
         }
@@ -1700,7 +1749,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 error::ImportError::NoAutocryptHeader(
                     error::NoAutocryptHeader {
                     }),
-                &mut *stats)?;
+                outcome)?;
             return Ok(());
         };
 
@@ -1748,7 +1797,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         }));
 
                 Self::report_failure(
-                    params, params_once, err.clone(), &mut *stats)?;
+                    params, params_once, err.clone(), outcome)?;
 
                 return Err(Error::OperationalError(
                     error::OperationalError::ImportError(err)));
@@ -1783,7 +1832,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                                 gossip_attributes: Arc::new(h.attributes),
                             }),
                         vec![], // No provenance information.
-                        &mut stats)?;
+                        outcome)?;
                 }
             }
         }
@@ -1801,13 +1850,14 @@ mod tests {
     use openpgp::cert::CertBuilder;
     use openpgp::serialize::Serialize;
 
-    fn check(output: Vec<Output>, result: Result<(), Error>,
+    fn check(artifact_type: ArtifactType,
+             output: Vec<Output>, result: Result<Outcome, Error>,
              imports_expected: usize, errors_expected: usize)
     {
         let mut saw_error = None;
         let mut saw_report = false;
-        let mut import_count = 0;
-        let mut import_error_count = 0;
+        let mut imports_count = 0;
+        let mut errors_count = 0;
 
         eprintln!("Start of import");
         for o in output.iter() {
@@ -1838,7 +1888,7 @@ mod tests {
                     eprintln!("- Imported");
                     assert!(! saw_report);
                     assert!(saw_error.is_none());
-                    import_count += 1;
+                    imports_count += 1;
                 }
                 Output::ImportingFailed(
                     output::ImportingFailed {
@@ -1853,7 +1903,7 @@ mod tests {
                             | error::ImportError::ImportingError(_)
                             | error::ImportError::NoAutocryptHeader(_) =>
                         {
-                            import_error_count += 1;
+                            errors_count += 1;
                         }
                         _ => (),
                     }
@@ -1879,21 +1929,21 @@ mod tests {
                         + report.stats.certs.unchanged_certs()
                         + report.stats.certs.updated_certs();
                     assert_eq!(stats_imported,
-                               import_count,
+                               imports_count,
                                "imports: stats: {}; count: {}",
-                               stats_imported, import_count);
+                               stats_imported, imports_count);
                     assert_eq!(report.stats.certs.errors(),
-                               import_error_count,
+                               errors_count,
                                "errors: stats {}; count: {}",
-                               report.stats.certs.errors(), import_error_count);
+                               report.stats.certs.errors(), errors_count);
 
-                    if imports_expected != import_count
-                        || errors_expected != import_error_count
+                    if imports_expected != imports_count
+                        || errors_expected != errors_count
                     {
                         panic!("Imported {}, expected {}; \
                                 {} errors, expected: {}",
-                               import_count, imports_expected,
-                               import_error_count, errors_expected);
+                               imports_count, imports_expected,
+                               errors_count, errors_expected);
                     }
                 }
             }
@@ -1925,8 +1975,24 @@ mod tests {
                             \nFunction: {:?}\n  Stream: {:?}",
                            f_err, s_err);
                 }
+
+                assert_eq!(imports_expected, 0, "expected imports vs returned");
+                assert_eq!(imports_count, 0, "counted imports vs expected");
+                if artifact_type == ArtifactType::Keyring
+                    || artifact_type == ArtifactType::Certs
+                {
+                    assert_eq!(errors_expected, 0, "expected errors vs returned");
+                    assert_eq!(errors_count, 0, "counted errors vs expected");
+                }
+
             }
-            (Ok(_), None) => {
+            (Ok(outcome), None) => {
+                assert_eq!(imports_expected, outcome.imported.len(),
+                           "imports expected vs outcome imported");
+                assert_eq!(errors_expected, outcome.importing_failed.len(),
+                           "errors expected vs outcome errors");
+
+                assert_eq!(artifact_type, outcome.artifact_type);
             }
         }
     }
@@ -1942,7 +2008,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(b""));
 
         assert!(result.is_ok());
-        check(output, result, 0, 0);
+        check(ArtifactType::Keyring, output, result, 0, 0);
 
         // Junk.
         let input = vec![b'!'; 16 * 1024];
@@ -1952,7 +2018,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input));
 
         assert!(result.is_err());
-        check(output, result, 0, 0);
+        check(ArtifactType::Keyring, output, result, 0, 0);
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -1972,7 +2038,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_ok());
-        check(output, result, 1, 0);
+        check(ArtifactType::Keyring, output, result, 1, 0);
 
         // Import Alice's and Bob's certificates.
         let mut input = Vec::new();
@@ -1984,7 +2050,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_ok());
-        check(output, result, 2, 0);
+        check(ArtifactType::Keyring, output, result, 2, 0);
 
         // Add some junk in between and try again.
         let mut input = Vec::new();
@@ -1997,7 +2063,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_ok());
-        check(output, result, 2, 1);
+        check(ArtifactType::Keyring, output, result, 2, 1);
     }
 
     #[test]
@@ -2022,7 +2088,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_err());
-        check(output, result, 0, 0);
+        check(ArtifactType::Keyring, output, result, 0, 0);
     }
 
     #[test]
@@ -2036,7 +2102,7 @@ mod tests {
         if let Err(err) = result.as_ref() {
             panic!("Can import zero certificates: {}", err);
         }
-        check(output, result, 0, 0);
+        check(ArtifactType::Certs, output, result, 0, 0);
 
         let mut output = Vec::new();
         let result = sq.cert_import()
@@ -2045,7 +2111,7 @@ mod tests {
         if let Err(err) = result.as_ref() {
             panic!("Can import zero certificates: {}", err);
         }
-        check(output, result, 0, 0);
+        check(ArtifactType::Certs, output, result, 0, 0);
 
         let mut output = Vec::new();
         let result = sq.cert_import()
@@ -2054,7 +2120,7 @@ mod tests {
         if let Err(err) = result.as_ref() {
             panic!("Can import zero certificates: {}", err);
         }
-        check(output, result, 0, 0);
+        check(ArtifactType::Certs, output, result, 0, 0);
 
         let (alice, _alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -2072,7 +2138,7 @@ mod tests {
         if let Err(err) = result.as_ref() {
             panic!("Can import two certificates: {}", err);
         }
-        check(output, result, 2, 0);
+        check(ArtifactType::Certs, output, result, 2, 0);
 
         let mut output = Vec::new();
         let result = sq.cert_import()
@@ -2081,7 +2147,7 @@ mod tests {
         if let Err(err) = result.as_ref() {
             panic!("Can import two certificates: {}", err);
         }
-        check(output, result, 2, 0);
+        check(ArtifactType::Certs, output, result, 2, 0);
 
         let mut output = Vec::new();
         let result = sq.cert_import()
@@ -2090,7 +2156,7 @@ mod tests {
         if let Err(err) = result.as_ref() {
             panic!("Can import two certificates: {}", err);
         }
-        check(output, result, 2, 0);
+        check(ArtifactType::Certs, output, result, 2, 0);
     }
 
     #[test]
@@ -2104,7 +2170,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(b""));
 
         assert!(result.is_err());
-        check(output, result, 0, 0);
+        check(ArtifactType::Revocation, output, result, 0, 0);
 
         // Junk.
         let input = vec![b'!'; 16 * 1024];
@@ -2114,7 +2180,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(&input));
 
         assert!(result.is_err());
-        check(output, result, 0, 0);
+        check(ArtifactType::Revocation, output, result, 0, 0);
 
         let (alice, alice_rev) = CertBuilder::new()
             .add_userid("<alice@example.org>")
@@ -2137,7 +2203,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_err());
-        check(output, result, 0, 1);
+        check(ArtifactType::Revocation, output, result, 0, 1);
 
         // Try to import two bare revocation certificates, which is
         // not allowed.
@@ -2150,7 +2216,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_err());
-        check(output, result, 0, 1);
+        check(ArtifactType::Revocation, output, result, 0, 1);
 
         // Import Alice's certificate as a revocation certificate.
         let mut input = Vec::new();
@@ -2161,7 +2227,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_err());
-        check(output, result, 0, 1);
+        check(ArtifactType::Revocation, output, result, 0, 1);
 
         // Import Alice's certificate.
         let mut input = Vec::new();
@@ -2172,7 +2238,7 @@ mod tests {
             .import_keyring(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_ok());
-        check(output, result, 1, 0);
+        check(ArtifactType::Keyring, output, result, 1, 0);
 
         // Import Alice's bare revocation certificate.
         let mut input = Vec::new();
@@ -2183,7 +2249,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_ok());
-        check(output, result, 1, 0);
+        check(ArtifactType::Revocation, output, result, 1, 0);
 
         // Import it a second time.
         let mut output = Vec::new();
@@ -2192,7 +2258,7 @@ mod tests {
             .import_revocation(std::io::Cursor::new(&input[..]));
 
         assert!(result.is_ok());
-        check(output, result, 1, 0);
+        check(ArtifactType::Revocation, output, result, 1, 0);
     }
 
     #[test]
@@ -2208,7 +2274,7 @@ mod tests {
                 prompt::Cancel::new());
 
         assert!(result.is_err());
-        check(output, result, 0, 1);
+        check(ArtifactType::Autocrypt, output, result, 0, 1);
 
         // Not an email.
         let mut output = Vec::new();
@@ -2219,7 +2285,7 @@ mod tests {
                 prompt::Cancel::new());
 
         assert!(result.is_err());
-        check(output, result, 0, 1);
+        check(ArtifactType::Autocrypt, output, result, 0, 1);
 
         // Looks a bit like an email, but no autocrypt header.
         let mut output = Vec::new();
@@ -2237,7 +2303,7 @@ Hi!
         if let Err(err) = result.as_ref() {
             panic!("Failed to import certificates: {:?}", err);
         }
-        check(output, result, 0, 1);
+        check(ArtifactType::Autocrypt, output, result, 0, 1);
 
         // Autocrypt header.
         let mut output = Vec::new();
@@ -2264,6 +2330,6 @@ Hi!
         if let Err(err) = result.as_ref() {
             panic!("Failed to import certificates: {:?}", err);
         }
-        check(output, result, 1, 0);
+        check(ArtifactType::Autocrypt, output, result, 1, 0);
     }
 }
