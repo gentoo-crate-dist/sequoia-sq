@@ -1460,11 +1460,9 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     where
         P: prompt::Prompt,
     {
-        let prompt = Box::new(prompt) as Box<dyn prompt::Prompt>;
-
         let result = Self::certify_(
             &self.params, &mut self.params_once,
-            certifier, cert, userids, prompt);
+            certifier, cert, userids, &prompt);
 
         let (result, certifications) = match result {
             Ok(outcome) => {
@@ -1495,7 +1493,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
                     certifier: &Cert,
                     cert: &Cert,
                     userids: &[UserID],
-                    prompt: Box<dyn prompt::Prompt + 'a>)
+                    prompt: &(dyn prompt::Prompt + 'a))
         -> Result<Outcome, Error>
     {
         tracer!(false, "certify");

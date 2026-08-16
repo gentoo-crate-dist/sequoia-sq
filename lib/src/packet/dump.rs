@@ -71,7 +71,7 @@ where
     let mut is_keyring = true;
     let mut report = crate::verify::output::Report::new();
     let mut helper = crate::decrypt::Helper::new(
-        &sq, 0, None, secrets, session_keys.clone(), prompt,
+        &sq, 0, None, secrets, session_keys.clone(), &prompt,
         &mut report);
 
   loop {

@@ -189,7 +189,6 @@ use crate::OptionalWriter;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
-use crate::prompt::Prompt as _;
 use crate::prompt::check::CheckRemoteKey;
 use crate::prompt::check::CheckSkesks;
 use crate::prompt;
@@ -478,7 +477,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let mut helper = Helper::new(
             sequoia, signatures, designated_signers.clone(),
-            secret_keys.clone(), session_keys.clone(), prompt,
+            secret_keys.clone(), session_keys.clone(), &prompt,
             report);
 
         helper.stream = Some((Rc::clone(&proxy), params));
@@ -605,7 +604,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let mut helper = Helper::new(
             sequoia, 0, None,
-            secret_keys.clone(), session_keys.clone(), prompt,
+            secret_keys.clone(), session_keys.clone(), &prompt,
             report);
 
         helper.stream = Some((Rc::clone(&proxy), params));
@@ -1038,7 +1037,7 @@ pub(crate) struct Helper<'c>
     /// decrypted it in some other way.
     decryptor: RefCell<Option<Fingerprint>>,
 
-    prompt: Box<dyn prompt::Prompt + 'c>,
+    prompt: &'c (dyn prompt::Prompt + 'c),
 }
 
 impl<'c> std::ops::Deref for Helper<'c> {
@@ -1056,16 +1055,14 @@ impl<'c> std::ops::DerefMut for Helper<'c> {
 }
 
 impl<'c> Helper<'c> {
-    pub fn new<P>(sequoia: &'c Sequoia,
-                  signatures: usize,
-                  certs: Option<Vec<Cert>>,
-                  secret_keys: Vec<Cert>,
-                  session_keys: Vec<SessionKey>,
-                  prompt: P,
-                  report: &'c mut verify::output::Report)
+    pub fn new(sequoia: &'c Sequoia,
+               signatures: usize,
+               certs: Option<Vec<Cert>>,
+               secret_keys: Vec<Cert>,
+               session_keys: Vec<SessionKey>,
+               prompt: &'c (dyn prompt::Prompt + 'c),
+               report: &'c mut verify::output::Report)
         -> Self
-    where
-        P: prompt::Prompt + 'c
     {
         let mut keys: HashMap<KeyID, (Cert, Key<key::SecretParts, key::UnspecifiedRole>)>
             = HashMap::new();
@@ -1092,7 +1089,7 @@ impl<'c> Helper<'c> {
             key_identities: identities,
             session_keys,
             decryptor: RefCell::new(None),
-            prompt: Box::new(prompt),
+            prompt,
         }
     }
 
@@ -1224,10 +1221,10 @@ impl<'c> DecryptionHelper for Helper<'c> {
         // The outer Result is the error returned by the output callback.
         let mut decrypt_key = |slf: &Self, pkesk, cert, key: &Key<_, _>, may_prompt: bool| {
             let cancel_;
-            let prompt: &Box<dyn prompt::Prompt> = if may_prompt {
+            let prompt: &dyn prompt::Prompt = if may_prompt {
                 &slf.prompt
             } else {
-                cancel_ = Box::new(prompt::Cancel::new()) as Box<dyn prompt::Prompt>;
+                cancel_ = prompt::Cancel::new();
                 &cancel_
             };
 

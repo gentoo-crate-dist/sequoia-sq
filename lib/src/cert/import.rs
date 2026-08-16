@@ -849,7 +849,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         }
 
         let input = Box::new(input) as Box<dyn BufferedReader<Cookie> + 'a>;
-        let prompt = Box::new(prompt) as Box<dyn prompt::Prompt + 'a>;
         let (outcome, result) = match typ {
             Type::Keyring => {
                 let mut outcome = Outcome::new(ArtifactType::Keyring);
@@ -866,7 +865,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             Type::Other => {
                 let mut outcome = Outcome::new(ArtifactType::Autocrypt);
                 let result = Self::import_autocrypt_(
-                    &params, &mut params_once, input, &mut outcome, prompt);
+                    &params, &mut params_once, input, &mut outcome, &prompt);
                 (outcome, result)
             }
         };
@@ -1573,12 +1572,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             source, None, Cookie::default());
         let source = Box::new(source) as Box<dyn BufferedReader<Cookie>>;
 
-        let prompt = Box::new(prompt) as Box<dyn prompt::Prompt>;
-
         let mut outcome = Outcome::new(ArtifactType::Autocrypt);
 
         let result = Self::import_autocrypt_(
-            params, params_once, source, &mut outcome, prompt);
+            params, params_once, source, &mut outcome, &prompt);
 
         let report = outcome.to_report();
 
@@ -1620,7 +1617,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                              params_once: &mut ParamsOnce,
                              mut source: Box<dyn BufferedReader<Cookie> + 'a>,
                              outcome: &mut Outcome,
-                             prompt: Box<dyn prompt::Prompt + 'a>)
+                             prompt: &(dyn prompt::Prompt + 'a))
         -> Result<(), Error>
     {
         let Params {
@@ -1700,7 +1697,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         let cert = certify_downloads(
                             sequoia, false, ca.clone(),
                             vec![cert], Some(&addr[..]),
-                            &prompt);
+                            prompt);
                         (cert.into_iter().next().expect("have cert"),
                          Some(ca))
                     } else {
@@ -1766,7 +1763,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             .decrypt(
                 dup,
                 &mut plaintext,
-                &prompt);
+                prompt);
 
         let decrypted = decryption_output.iter().any(|o| {
             matches!(o, decrypt::Output::Decrypted(_))
