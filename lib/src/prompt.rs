@@ -808,7 +808,7 @@ impl<'b, T> Prompt<T> for Box<dyn Prompt<T> + 'b> {
 
 impl<'b, T, P> Prompt<T> for &P
 where
-    P: Prompt<T> + 'b
+    P: Prompt<T> + 'b + ?Sized
 {
     fn prompt<'a>(&self, context: &mut Context<'a, T>, check: &mut dyn Check<'a, T>)
         -> std::result::Result<Response, Error>
