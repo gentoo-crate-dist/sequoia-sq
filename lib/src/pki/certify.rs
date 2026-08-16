@@ -149,7 +149,6 @@ use cert_store::store::UserIDQueryParams;
 use crate::Result;
 use crate::Sequoia;
 use crate::Writer;
-use crate::clone_anyhow;
 use crate::config::Expiration;
 use crate::consts::SECONDS_IN_YEAR;
 use crate::destination::Destination;
@@ -468,10 +467,10 @@ pub mod error {
     /// An example of an operational error is that a key store is not
     /// available, but needed to complete the operation.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
         #[error(transparent)]
-        Other(anyhow::Error),
+        Other(Arc<anyhow::Error>),
     }
 
     /// The certifier is the same as the certificate to certify.
@@ -479,7 +478,7 @@ pub mod error {
     /// To create a third-party certifications, the certifier must be
     /// different from the certificate being certified.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("The certifier is the same as the certificate to certify")]
     pub struct CertifierSameAsCertificate {
         pub cert: Cert,
@@ -488,7 +487,7 @@ pub mod error {
     /// A regular expression was used with a certification with a
     /// trust depth of 0.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("A regex constraint only makes sense \
              if the trust depth is greater than 0")]
     pub struct NoRegularExpressions {
@@ -499,7 +498,7 @@ pub mod error {
     /// Argument errors are fatal and cause processing to abort.  The
     /// [`Report`](output::Report) event is still emitted.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum ArgumentError {
         #[error(transparent)]
         CertifierSameAsCertificate(CertifierSameAsCertificate),
@@ -510,7 +509,7 @@ pub mod error {
     /// The certificate or the user ID is revoked and can't be
     /// certified.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("Can't certify {} for {}, it's revoked",
             .fingerprint, Safe(.userid))]
     pub struct Revoked {
@@ -529,18 +528,18 @@ pub mod error {
     /// catching them in your [`Stream`] implementation and returning
     /// an error.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum CertificationError {
         #[error(transparent)]
         Revoked(#[from] Revoked),
         #[error(transparent)]
-        Other(#[from] anyhow::Error),
+        Other(#[from] Arc<anyhow::Error>),
     }
 
     /// The caller attempted to create a retraction, but there is
     /// nothing to retract.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("You never certified {} for {}, there is nothing to retract.",
             Safe(.userid), .fingerprint)]
     pub struct NothingToRetract {
@@ -550,7 +549,7 @@ pub mod error {
 
     /// The binding was previous certified.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{}, {} is already certified with the same parameters",
             .fingerprint, Safe(.userid))]
     pub struct PreviouslyCertified {
@@ -566,7 +565,7 @@ pub mod error {
     /// You can turn this into an error by returning an error from
     /// your stream implementation.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum CertificationSkippedReason {
         #[error(transparent)]
         NothingToRetract(#[from] NothingToRetract),
@@ -1527,12 +1526,12 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         macro_rules! op {
             () => {
                 |err| {
-                    let err = anyhow::Error::from(err);
+                    let err = Arc::new(anyhow::Error::from(err));
 
                     if let Err(err) = stream.output(
                         params,
                         Output::OperationalError(
-                            error::OperationalError::Other(clone_anyhow(&err))))
+                            error::OperationalError::Other(Arc::clone(&err))))
                     {
                         Error::StreamOutputError(err)
                     } else {
@@ -1575,7 +1574,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
                     })));
         }
 
-        let prep = || {
+        let prep = ||  -> Result<_, anyhow::Error> {
             // Get the signer to certify with.
             let signer = sequoia.get_certification_key(
                 certifier, None, prompt)?;
@@ -1865,20 +1864,21 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
                     sigs
                 }
                 Err(err) => {
-                    let err_ = clone_anyhow(&err);
+                    let err = Arc::new(err);
                     stream.output(
                         params,
                         Output::CertificationFailed(
                             output::CertificationFailed {
                                 cert: cert.clone(),
                                 userid: userid.clone(),
-                                error: error::CertificationError::Other(err),
+                                error: error::CertificationError::Other(
+                                    Arc::clone(&err)),
                             }))
                         .map_err(|err| Error::StreamOutputError(err))?;
 
                     if ! ignore_certification_errors {
                         return Err(Error::CertificationError(
-                            error::CertificationError::Other(err_)));
+                            error::CertificationError::Other(err)));
                     }
 
                     // Return a signature packet to indicate that we

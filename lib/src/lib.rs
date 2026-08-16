@@ -985,25 +985,3 @@ type WotStore
 pub fn ca_creation_time() -> SystemTime {
     SystemTime::UNIX_EPOCH + std::time::Duration::new(1014235320, 0)
 }
-
-/// `anyhow::Error` does not implement clone.
-///
-/// This does a best effort clone.
-fn clone_anyhow(err: &anyhow::Error) -> anyhow::Error
-{
-    let mut chain = err.chain().rev().collect::<Vec<_>>().into_iter();
-    let e = chain.next().expect("have an error");
-    // Try to clone error.
-    let mut e = if let Some(e) = e.downcast_ref::<openpgp::Error>() {
-        e.clone().into()
-    } else {
-        // Best effort.
-        anyhow::anyhow!(e.to_string())
-    };
-
-    for cause in chain {
-        e = e.context(cause.to_string());
-    }
-
-    e
-}
