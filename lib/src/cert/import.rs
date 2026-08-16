@@ -837,7 +837,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         match err {
             error::ImportError::BrokenArtifact(_)
-                | error::ImportError::ImportingError(_) =>
+                | error::ImportError::ImportingError(_)
+                | error::ImportError::NoAutocryptHeader(_) =>
             {
                 stats.certs.inc_errors();
             },
@@ -1849,7 +1850,8 @@ mod tests {
                     assert!(saw_error.is_none());
                     match failure {
                         error::ImportError::BrokenArtifact(_)
-                            | error::ImportError::ImportingError(_) =>
+                            | error::ImportError::ImportingError(_)
+                            | error::ImportError::NoAutocryptHeader(_) =>
                         {
                             import_error_count += 1;
                         }
@@ -2235,7 +2237,7 @@ Hi!
         if let Err(err) = result.as_ref() {
             panic!("Failed to import certificates: {:?}", err);
         }
-        check(output, result, 0, 0);
+        check(output, result, 0, 1);
 
         // Autocrypt header.
         let mut output = Vec::new();
