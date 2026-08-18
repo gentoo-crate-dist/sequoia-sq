@@ -390,3 +390,28 @@ fn sq_key_generate_signing_algorithm() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn sq_key_generate_disabled_algorithms() -> Result<()> {
+    let mut sq = common::Sq::new();
+
+    // Disable all asymmetric algorithms.  We won't be able to create
+    // a trust root or sign the generated certificate.
+    let policy = sq.scratch_file("policy");
+
+    std::fs::write(&policy, "\
+[asymmetric_algorithms]
+default_disposition = \"never\"
+")
+        .expect("Can write to temporary file");
+
+    sq.policy(&policy);
+
+    // Even though we can't create the trust root, we should still be
+    // able to generate a key.
+    let mut cmd = sq.command();
+    cmd.args([ "key", "generate", "--own-key", "--email", "alice@example.org", "--without-password" ]);
+    sq.run(cmd, Some(true));
+
+    Ok(())
+}

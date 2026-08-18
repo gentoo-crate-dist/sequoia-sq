@@ -860,6 +860,11 @@ impl Sq {
         self.now -= std::time::Duration::new(secs, 0);
     }
 
+    /// Overrides the policy.
+    pub fn policy(&mut self, path: &Path) {
+        self.policy = path.to_path_buf();
+    }
+
     /// Returns a command that is set to run `sq`.  The home directory
     /// and time are already set.
     pub fn command(&self) -> Command {

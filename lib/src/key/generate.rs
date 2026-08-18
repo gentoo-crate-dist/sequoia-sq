@@ -709,6 +709,15 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// By default, the key is saved to the key store.  Use
     /// [`Builder::to_writer`] or [`Builder::ephemeral`] to override
     /// it.
+    ///
+    /// When the certificate is saved to the certificate store, it is
+    /// also certified by the local trust root (if [own
+    /// key][Builder::own_key] is set, it is authorized to be a
+    /// trusted introducer, otherwise the user IDs are simply marked
+    /// as authenticated).  The certificate is also certified by the
+    /// "Generated on $HOST" shadow CA.  These are opportunistic and
+    /// if either fails, e.g., because the certificate is not usable,
+    /// the error is silently ignored.
     pub fn generate<'a, P>(self, prompt: P)
         -> Result<Artifact, Error>
     where
@@ -1010,8 +1019,11 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                 // are any user IDs to certify.
                 let have_userids = cert.userids().next().is_some();
                 if have_userids {
-                    cert = certify_generated(&sequoia, &cert, &prompt)
-                        .map_err(op!())?;
+                    if let Ok(c) = certify_generated(
+                        &sequoia, &cert, &prompt)
+                    {
+                        cert = c;
+                    }
                 }
 
                 let outcome = sequoia.key_import()
@@ -1026,45 +1038,49 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                         .expect("imported key")
                         .key_import_status);
 
-                // Now certify the user IDs, and if this is our own
-                // key, mark it as trusted introducer.
-                let trust_root = sequoia.local_trust_root()
-                    .map_err(sys!())?;
-                let trust_root = trust_root.to_cert()
-                    .map_err(sys!())?;
+                let certify = || -> Result<(), anyhow::Error> {
+                    // Now certify the user IDs, and if this is our own
+                    // key, mark it as trusted introducer.
+                    let trust_root = sequoia.local_trust_root()?;
+                    let trust_root = trust_root.to_cert()?;
 
-                if own_key && have_userids {
-                    // Mark all user IDs as authenticated, and mark
-                    // the key as a trusted introducer.
-                    sequoia.pki_certify()
-                        .recreate(false)
-                        .trust_amount(FULLY_TRUSTED as u8)
-                        .trust_depth(u8::MAX)
-                        .expiration(Expiration::Never)
-                        .exportable(false)
-                        .certify(
-                            &trust_root,
-                            &cert,
-                            &userids,
-                            prompt,
-                        )
-                        .map_err(op!())?;
-                } else if ! own_key /* shared key */ && have_userids {
-                    // Mark all user IDs as authenticated.
-                    sequoia.pki_certify()
-                        .recreate(false)
-                        .trust_amount(FULLY_TRUSTED as u8)
-                    // Not a trusted introducer.
-                        .trust_depth(0)
-                        .expiration(Expiration::Never)
-                        .exportable(false)
-                        .certify(
-                            &trust_root,
-                            &cert,
-                            &userids,
-                            prompt)
-                        .map_err(op!())?;
-                }
+                    if own_key && have_userids {
+                        // Mark all user IDs as authenticated, and mark
+                        // the key as a trusted introducer.
+                        sequoia.pki_certify()
+                            .recreate(false)
+                            .trust_amount(FULLY_TRUSTED as u8)
+                            .trust_depth(u8::MAX)
+                            .expiration(Expiration::Never)
+                            .exportable(false)
+                            .certify(
+                                &trust_root,
+                                &cert,
+                                &userids,
+                                prompt,
+                            )?;
+                    } else if ! own_key /* shared key */ && have_userids {
+                        // Mark all user IDs as authenticated.
+                        sequoia.pki_certify()
+                            .recreate(false)
+                            .trust_amount(FULLY_TRUSTED as u8)
+                            // Not a trusted introducer.
+                            .trust_depth(0)
+                            .expiration(Expiration::Never)
+                            .exportable(false)
+                            .certify(
+                                &trust_root,
+                                &cert,
+                                &userids,
+                                prompt)?;
+                    }
+
+                    Ok(())
+                };
+
+                // Don't fail if we can't certify the new certificate
+                // using the trust root.
+                let _ = certify();
             } else {
                 // Must be ephemeral.
             }
