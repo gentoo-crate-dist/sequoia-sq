@@ -348,6 +348,8 @@ fn merge(sq: &Sq, inputs: Vec<PathBuf>, output: FileOrStdout,
          -> Result<()>
 {
     let mut certs: BTreeMap<Fingerprint, Option<Cert>> = BTreeMap::new();
+    // Preserve the order of certificates.
+    let mut certs_order = Vec::new();
     let mut revocations: Vec<(Signature, String)> = Vec::new();
 
     let inputs: Box<dyn Iterator<Item = _>> = if inputs.is_empty() {
@@ -411,6 +413,7 @@ fn merge(sq: &Sq, inputs: Vec<PathBuf>, output: FileOrStdout,
                 format!("Read a malformed certificate from {:?}", name))?;
             match certs.entry(cert.fingerprint()) {
                 e @ Entry::Vacant(_) => {
+                    certs_order.push(cert.fingerprint());
                     e.or_insert(Some(cert));
                 }
                 Entry::Occupied(mut e) => {
@@ -520,8 +523,10 @@ fn merge(sq: &Sq, inputs: Vec<PathBuf>, output: FileOrStdout,
         &[],
     )?;
 
-    for cert in certs.values().filter_map(|v| v.as_ref()) {
-        cert.as_tsk().serialize(&mut output)?;
+    for fpr in certs_order.into_iter() {
+        if let Some(cert) = certs.get(&fpr).expect("have cert") {
+            cert.as_tsk().serialize(&mut output)?;
+        }
     }
     output.finalize()?;
 
