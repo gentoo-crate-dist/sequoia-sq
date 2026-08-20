@@ -31,8 +31,8 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
 
             let queries = cert.binding_query(userid);
 
-            let list = sq.sequoia.cert_list(
-                    queries.iter().map(|q| q.to_inner().clone()))
+            let list = sq.sequoia.cert_list()
+                .queries(queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -57,8 +57,8 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
 
             let queries = Vec::<Query>::from(userid);
 
-            let list = sq.sequoia.cert_list(
-                    queries.iter().map(|q| q.to_inner().clone()))
+            let list = sq.sequoia.cert_list()
+                .queries(queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)
@@ -83,8 +83,8 @@ pub fn dispatch(sq: Sq, cli: cli::pki::Command, matches: &ArgMatches)
 
             let queries = Vec::<Query>::from(cert);
 
-            let list = sq.sequoia.cert_list(
-                    queries.iter().map(|q| q.to_inner().clone()))
+            let list = sq.sequoia.cert_list()
+                .queries(queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)

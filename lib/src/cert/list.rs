@@ -43,7 +43,8 @@
 //! #     .into_cert();
 //! #
 //! let mut output = Vec::new();
-//! sq.cert_list(Some(Query::domain("example.org")))
+//! sq.cert_list()
+//!     .query(Query::domain("example.org"))
 //!     .list(&mut output)?;
 //! # let mut bindings = 0;
 //! for o in output {
@@ -116,7 +117,8 @@
 //! #   bindings: 0,
 //! };
 //!
-//! sq.cert_list(Some(Query::domain("example.org")))
+//! sq.cert_list()
+//!     .query(Query::domain("example.org"))
 //!     .list(&mut my_stream)?;
 //! # assert_eq!(my_stream.bindings, 1);
 //! # Ok(()) }
@@ -496,24 +498,45 @@ impl<'a> Builder<'a> {
     /// List bindings.
     ///
     /// See [`Builder`] for details.
-    pub(crate) fn new<I>(sequoia: &Sequoia, queries: I) -> Builder<'_>
-    where
-        I: IntoIterator<Item=Query>,
+    pub(crate) fn new(sequoia: &Sequoia) -> Builder<'_>
     {
-        let queries: Vec<Query>
-            = queries.into_iter().map(|q| q.into()).collect();
-
         Builder {
             params: Params {
                 sequoia,
-                queries,
                 gossip: false,
                 unusable: false,
                 certification_network: false,
+                queries: Vec::new(),
                 trust_amount: None,
-            }
+            },
         }
     }
+
+    /// Sets the query.
+    ///
+    /// A binding is considered if it matches at the query.
+    ///
+    /// Note: this clears any previously set queries.
+    pub fn query(mut self, query: Query) -> Self
+    {
+        self.params.queries = vec![ query ];
+        self
+    }
+
+    /// Sets the queries.
+    ///
+    /// A binding is considered if it matches at least one of the
+    /// queries.
+    ///
+    /// Note: this clears any previously set queries.
+    pub fn queries<I>(mut self, queries: I) -> Self
+    where
+        I: IntoIterator<Item=Query>
+    {
+        self.params.queries = queries.into_iter().collect();
+        self
+    }
+
 
     /// Sets gossip mode.
     ///
@@ -1442,13 +1465,13 @@ mod tests {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 
         let mut output = Vec::new();
-        sq.cert_list(std::iter::empty())
+        sq.cert_list()
             .list(&mut output)
             .expect("ok");
         check(&sq, output, &[]);
 
         let mut output = Vec::new();
-        sq.cert_list(std::iter::empty())
+        sq.cert_list()
             .gossip(true)
             .list(&mut output)
             .expect("ok");
@@ -1469,7 +1492,7 @@ mod tests {
             .into_cert();
 
         let mut output = Vec::new();
-        sq.cert_list(std::iter::empty())
+        sq.cert_list()
             .list(&mut output)
             .expect("ok");
         check(&sq, output,
@@ -1479,7 +1502,7 @@ mod tests {
         // point of trust amount from the "Generated on host" shadow
         // CA.
         let mut output = Vec::new();
-        sq.cert_list(std::iter::empty())
+        sq.cert_list()
             .gossip(true)
             .list(&mut output)
             .expect("ok");
@@ -1546,7 +1569,7 @@ mod tests {
 
         // List authenticated bindings.
         let mut output = Vec::new();
-        sq.cert_list(std::iter::empty())
+        sq.cert_list()
             .list(&mut output)
             .expect("ok");
         check(&sq, output,
@@ -1557,7 +1580,7 @@ mod tests {
 
         // List all bindings.
         let mut output = Vec::new();
-        sq.cert_list(std::iter::empty())
+        sq.cert_list()
             .gossip(true)
             .list(&mut output)
             .expect("ok");
@@ -1578,8 +1601,8 @@ mod tests {
         ] {
             // By unauthenticated certificate.
             let mut output = Vec::new();
-            sq.cert_list(
-                Some(Query::unauthenticated_cert(binding.0.clone().into())))
+            sq.cert_list()
+                .query(Query::unauthenticated_cert(binding.0.clone().into()))
                 .list(&mut output)
                 .expect("ok");
             if binding.2 >= 120 {
@@ -1589,8 +1612,8 @@ mod tests {
             }
 
             let mut output = Vec::new();
-            sq.cert_list(
-                Some(Query::unauthenticated_cert(binding.0.clone().into())))
+            sq.cert_list()
+                .query(Query::unauthenticated_cert(binding.0.clone().into()))
                 .gossip(true)
                 .list(&mut output)
                 .expect("ok");
@@ -1598,15 +1621,15 @@ mod tests {
 
             // By authenticated certificate.
             let mut output = Vec::new();
-            sq.cert_list(
-                Some(Query::authenticated_cert(binding.0.clone().into())))
+            sq.cert_list()
+                .query(Query::authenticated_cert(binding.0.clone().into()))
                 .list(&mut output)
                 .expect("ok");
             check(&sq, output, &[ binding.clone(), ]);
 
             let mut output = Vec::new();
-            sq.cert_list(
-                Some(Query::authenticated_cert(binding.0.clone().into())))
+            sq.cert_list()
+                .query(Query::authenticated_cert(binding.0.clone().into()))
                 .gossip(true)
                 .list(&mut output)
                 .expect("ok");
@@ -1615,8 +1638,8 @@ mod tests {
             // By user ID.
             if let Some(userid) = binding.1 {
                 let mut output = Vec::new();
-                sq.cert_list(
-                    Some(Query::userid(userid)))
+                sq.cert_list()
+                    .query(Query::userid(userid))
                     .list(&mut output)
                     .expect("ok");
                 if binding.2 >= 120 {
@@ -1626,8 +1649,8 @@ mod tests {
                 }
 
                 let mut output = Vec::new();
-                sq.cert_list(
-                    Some(Query::userid(userid)))
+                sq.cert_list()
+                    .query(Query::userid(userid))
                     .gossip(true)
                     .list(&mut output)
                     .expect("ok");
@@ -1637,24 +1660,24 @@ mod tests {
 
         // And queries that don't match anything.
         let mut output = Vec::new();
-        sq.cert_list(
-            Some(Query::unauthenticated_cert(
-                "012345678901234567890123456789".parse().expect("valid"))))
+        sq.cert_list()
+            .query(Query::unauthenticated_cert(
+                "012345678901234567890123456789".parse().expect("valid")))
             .list(&mut output)
             .expect("ok");
         check(&sq, output, &[ ]);
 
         let mut output = Vec::new();
-        sq.cert_list(
-            Some(Query::authenticated_cert(
-                "012345678901234567890123456789".parse().expect("valid"))))
+        sq.cert_list()
+            .query(Query::authenticated_cert(
+                "012345678901234567890123456789".parse().expect("valid")))
             .list(&mut output)
             .expect("ok");
         check(&sq, output, &[ ]);
 
         let mut output = Vec::new();
-        sq.cert_list(
-            Some(Query::userid("not present")))
+        sq.cert_list()
+            .query(Query::userid("not present"))
             .list(&mut output)
             .expect("ok");
         check(&sq, output, &[ ]);
@@ -1665,7 +1688,8 @@ mod tests {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 
         let mut output = Vec::new();
-        let result = sq.cert_list(Some(Query::email("invalid@email@domain.com")))
+        let result = sq.cert_list()
+            .query(Query::email("invalid@email@domain.com"))
             .list(&mut output);
 
         // Check the function's return value.
@@ -1696,7 +1720,8 @@ mod tests {
         let sq = Sequoia::builder().ephemeral().unwrap().stateless().build().unwrap();
 
         let mut output = Vec::new();
-        let result = sq.cert_list(Some(Query::email("email@domain.com")))
+        let result = sq.cert_list()
+            .query(Query::email("email@domain.com"))
             .list(&mut output);
 
         // Check the function's return value.

@@ -353,11 +353,9 @@ impl Sequoia {
     /// List bindings.
     ///
     /// See [`cert::list::Builder`] for details.
-    pub fn cert_list<I>(&self, queries: I) -> cert::list::Builder<'_>
-    where
-        I: IntoIterator<Item=crate::types::Query>,
+    pub fn cert_list(&self) -> cert::list::Builder<'_>
     {
-        cert::list::Builder::new(self, queries)
+        cert::list::Builder::new(self)
     }
 
     /// Returns a builder for decrypting and verifying messages.

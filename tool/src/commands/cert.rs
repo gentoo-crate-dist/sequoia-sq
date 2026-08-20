@@ -64,7 +64,8 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
                     query_kind));
             }
 
-            let list = sq.sequoia.cert_list(queries.iter().map(|q| q.to_inner().clone()))
+            let list = sq.sequoia.cert_list()
+                .queries(queries.iter().map(|q| q.to_inner().clone()))
                 .gossip(*gossip)
                 .unusable(*unusable)
                 .certification_network(*certification_network)

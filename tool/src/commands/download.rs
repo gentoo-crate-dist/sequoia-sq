@@ -421,8 +421,8 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                         Query::for_key_handle(
                                             None, cert.key_handle())
                                     ];
-                                    let list = sq.sequoia.cert_list(
-                                        queries.iter().map(|q| q.to_inner().clone()))
+                                    let list = sq.sequoia.cert_list()
+                                        .queries(queries.iter().map(|q| q.to_inner().clone()))
                                         .gossip(false)
                                         .unusable(false)
                                         .certification_network(false)
