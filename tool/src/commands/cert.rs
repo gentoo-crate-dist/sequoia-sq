@@ -6,7 +6,7 @@ use openpgp::{
     KeyHandle,
 };
 
-use sequoia::types::QueryKind;
+use sequoia::cert::list::QueryKind;
 
 use crate::{
     Result,

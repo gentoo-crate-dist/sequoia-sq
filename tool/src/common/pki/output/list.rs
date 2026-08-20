@@ -1,8 +1,8 @@
 use sequoia::cert_store::Store;
 
-use sequoia::cert::list;
+use sequoia::cert::list::QueryKind;
 use sequoia::cert::list::required_trust_amount;
-use sequoia::types::QueryKind;
+use sequoia::cert::list;
 
 use crate::Result;
 use crate::Sq;

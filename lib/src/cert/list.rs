@@ -24,8 +24,8 @@
 //!
 //! ```
 //! use sequoia::Sequoia;
-//! use sequoia::types::Query;
 //! use sequoia::cert::list::Output;
+//! use sequoia::cert::list::Query;
 //! # use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
@@ -74,8 +74,8 @@
 //! use sequoia::Sequoia;
 //! use sequoia::cert::list::Output;
 //! use sequoia::cert::list::Params;
+//! use sequoia::cert::list::Query;
 //! use sequoia::cert::list::Stream;
-//! use sequoia::types::Query;
 //! # use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
@@ -150,13 +150,15 @@ use cert_store::store::UserIDQueryParams;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
-use crate::types::Query;
-use crate::types::QueryKind;
 use crate::types::Safe;
 use crate::types::TrustAmount;
 
 #[cfg(doc)]
 use crate::SequoiaBuilder;
+
+mod query;
+pub use query::Query;
+pub use query::QueryKind;
 
 const TRACE: bool = false;
 
