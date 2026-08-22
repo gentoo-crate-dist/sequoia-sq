@@ -480,16 +480,13 @@ impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
 where
     T: builder::SignatureType
 {
-    fn sign_<'a, 'w, I, P>(params: &Params, params_once: &mut ParamsOnce,
-                           mut input: I,
-                           output: Writer<'w>,
-                           prompt: P,
-                           detached_signature: bool,
-                           preexisting_signatures: Vec<Signature>)
+    fn sign_<'a, 'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
+                         mut input: &mut (dyn std::io::Read + Send + Sync + 'a),
+                         output: Writer<'w>,
+                         prompt: &(dyn prompt::Prompt + 'p),
+                         detached_signature: bool,
+                         preexisting_signatures: Vec<Signature>)
         -> Result<()>
-    where
-        I: std::io::Read + Send + Sync,
-        P: prompt::Prompt,
     {
         let Params {
             sequoia,
@@ -625,7 +622,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'w, I, O, P>(mut self, input: I, output: O, prompt: P)
+    pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
@@ -633,7 +630,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         P: prompt::Prompt,
     {
         Self::sign_(&self.params, &mut self.params_once,
-                    input, output.into(), prompt, true, Vec::new())
+                    &mut input, output.into(), &prompt,
+                    true, Vec::new())
     }
 
     /// Adds signatures to a detached signature file.
@@ -653,7 +651,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn append<'a, 'w, I, D, O, P>(
-        mut self, input: I,
+        mut self, mut input: I,
         detached_signatures: D,
         output: O,
         prompt: P)
@@ -663,6 +661,26 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         D: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
+    {
+        Self::append_(
+            &self.params, &mut self.params_once,
+            &mut input, Box::new(detached_signatures),
+            output.into(), &prompt)
+    }
+
+    // Note: we box `detached_signatures` instead of passing a
+    // reference so that we can drop it.  This way if `output` is a
+    // `PartFileWriter` referring to the same file, the file will not
+    // exist when `PartFileWriter` persists it.  This is only relevant
+    // on Windows where it is not possible to replace a file that is
+    // open.
+    fn append_<'a, 'w, 'p>(
+        params: &Params, params_once: &mut ParamsOnce,
+        mut input: &mut (dyn std::io::Read + Send + Sync),
+        detached_signatures: Box<dyn std::io::Read + Send + Sync + 'a>,
+        output: Writer<'w>,
+        prompt: &(dyn prompt::Prompt + 'p))
+        -> Result<()>
     {
         // First, read the existing signatures.
         let mut sigs = Vec::new();
@@ -689,8 +707,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         // not possible to replace a file that is open.
         drop(ppr);
 
-        Self::sign_(&self.params, &mut self.params_once,
-                    input, output.into(), prompt, true, sigs)
+        Self::sign_(params, params_once,
+                    &mut input, output.into(), &prompt, true, sigs)
     }
 }
 
@@ -706,7 +724,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'w, I, O, P>(mut self, input: I, output: O, prompt: P)
+    pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
@@ -714,7 +732,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         P: prompt::Prompt,
     {
         Self::sign_(&self.params, &mut self.params_once,
-                    input, output.into(), prompt, false, Vec::new())
+                    &mut input, output.into(), &prompt,
+                    false, Vec::new())
     }
 
     /// Adds signatures to an inline signed message.
@@ -743,12 +762,28 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn append<I, O, P>(mut self, input: I, output: O, prompt: P)
+    pub fn append<I, O, P>(mut self, input: I, mut output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
         P: prompt::Prompt,
+    {
+        Self::append_(
+            &self.params, &mut self.params_once,
+            Box::new(input), &mut output, &prompt)
+    }
+
+    // Note: we box `input` instead of passing a reference so that we
+    // can drop it.  This way if `output` is a `PartFileWriter`
+    // referring to the same file, the file will not exist when
+    // `PartFileWriter` persists it.  This is only relevant on Windows
+    // where it is not possible to replace a file that is open.
+    fn append_<'a, 'p>(params: &Params, params_once: &mut ParamsOnce,
+                       input: Box<dyn std::io::Read + Send + Sync + 'a>,
+                       output: &mut (dyn std::io::Write + Send + Sync),
+                       prompt: &(dyn prompt::Prompt + 'p))
+        -> Result<()>
     {
         let Params {
             sequoia,
@@ -758,10 +793,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
             ref notations,
 
             ref armor_headers,
-        } = self.params;
+        } = params;
         let ParamsOnce {
             stream,
-        } = &mut self.params_once;
+        } = params_once;
 
         if signers.is_empty() {
             return Err(anyhow::anyhow!("No signing keys specified"));
@@ -781,7 +816,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                           });
 
                 stream.output(
-                    &self.params,
+                    params,
                     Output::Signing(output::Signing {
                         signers: output,
                     }))?;
@@ -794,7 +829,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                 let err2 = anyhow::anyhow!("{}", err);
 
                 stream.output(
-                    &self.params,
+                    params,
                     Output::SigningFailed(
                         output::SigningFailed {
                             unusable_certs: vec![ err ],
@@ -1010,7 +1045,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         }
 
         stream.output(
-            &self.params,
+            params,
             Output::Signed(output::Signed {
             }))?;
 
@@ -1042,6 +1077,18 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         O: std::io::Write + Send + Sync,
         P: prompt::Prompt,
     {
+        Self::clear_sign_(
+            &self.params, &mut self.params_once,
+            &mut input, &mut output, &prompt)
+    }
+
+    fn clear_sign_<'p>(
+        params: &Params, params_once: &mut ParamsOnce,
+        mut input: &mut (dyn std::io::Read + Send + Sync),
+        mut output: &mut (dyn std::io::Write + Send + Sync),
+        prompt: &(dyn prompt::Prompt + 'p))
+        -> Result<()>
+    {
         let Params {
             sequoia,
             ref signers,
@@ -1050,10 +1097,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
             ref notations,
 
             armor_headers: _,
-        } = &self.params;
+        } = params;
         let ParamsOnce {
             stream
-        } = &mut self.params_once;
+        } = params_once;
 
         if signers.is_empty() {
             return Err(anyhow::anyhow!("No signing keys specified"));
@@ -1075,7 +1122,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
                           });
 
                 stream.output(
-                    &self.params,
+                    params,
                     Output::Signing(output::Signing {
                         signers: output,
                     }))?;
@@ -1088,7 +1135,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
                 let err2 = anyhow::anyhow!("{}", err);
 
                 stream.output(
-                    &self.params,
+                    params,
                     Output::SigningFailed(
                         output::SigningFailed {
                             unusable_certs: vec![ err ],
@@ -1126,7 +1173,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
             .context("Failed to sign")?;
 
         stream.output(
-            &self.params,
+            params,
             Output::Signed(output::Signed {
             }))?;
 
