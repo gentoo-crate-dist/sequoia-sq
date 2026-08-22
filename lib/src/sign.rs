@@ -79,6 +79,7 @@ pub mod output {
     /// Emitted when signing fails.
     ///
     /// Provides some information about why signing was not possible.
+    #[non_exhaustive]
     #[derive(Debug)]
     pub struct SigningFailed {
         /// The certificates that could not be used to generate a
