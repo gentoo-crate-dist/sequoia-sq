@@ -383,10 +383,10 @@ where
     /// Signs the message with the specified certificates.
     ///
     /// See [`Builder::add_signer`] for details.
-    pub fn add_signers(mut self, signers: impl Iterator<Item=Cert>)
-                       -> Self
+    pub fn add_signers(mut self, signers: impl IntoIterator<Item=Cert>)
+        -> Self
     {
-        self.params.signers.extend(signers);
+        self.params.signers.extend(signers.into_iter());
         self
     }
 
@@ -410,10 +410,10 @@ where
     ///
     ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
     pub fn add_notations(mut self,
-                         notations: impl Iterator<Item=(bool, NotationData)>)
-                         -> Self
+                         notations: impl IntoIterator<Item=(bool, NotationData)>)
+        -> Self
     {
-        self.params.notations.extend(notations);
+        self.params.notations.extend(notations.into_iter());
         self
     }
 }
@@ -459,14 +459,15 @@ where
     /// Note: the headers are informative and are neither encrypted
     /// nor protected by any signature.
     pub fn ascii_armor_headers<K, V>(mut self,
-                                     headers: impl Iterator<Item=(K, V)>)
-                                     -> Self
+                                     headers: impl IntoIterator<Item=(K, V)>)
+        -> Self
     where
         K: Into<String>,
         V: Into<String>,
     {
         self.params.armor_headers = Some(
             headers
+                .into_iter()
                 .map(|(k, v)| {
                     (k.into(), v.into())
                 })
