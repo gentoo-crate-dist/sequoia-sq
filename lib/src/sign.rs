@@ -257,6 +257,30 @@ pub mod output {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
+    /// An operational error occurred.
+    ///
+    /// This may be because the operation requires the certificate
+    /// store, but it is disabled.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    OperationalError(error::OperationalError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// Errors related to incorrectly calling the function.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    ArgumentError(error::ArgumentError),
+
     /// Emitted when signing fails.
     ///
     /// Provides some information about why signing was not possible.
@@ -754,12 +778,6 @@ where
             .context("Failed to sign")
             .map_err(op!())?;
 
-        stream.output(
-            params,
-            Output::Signed(output::Signed {
-            }))
-            .map_err(|err| Error::StreamOutputError(err))?;
-
         Ok(())
     }
 }
@@ -783,9 +801,45 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
-        Self::sign_(&self.params, &mut self.params_once,
-                    &mut input, output.into(), &prompt,
-                    true, Vec::new())
+        let result = Self::sign_(
+            &self.params, &mut self.params_once,
+            &mut input, output.into(), &prompt,
+            true, Vec::new());
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Signed(output::Signed {}))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     /// Adds signatures to a detached signature file.
@@ -816,10 +870,45 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
-        Self::append_(
+        let result = Self::append_(
             &self.params, &mut self.params_once,
             &mut input, Box::new(detached_signatures),
-            output.into(), &prompt)
+            output.into(), &prompt);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Signed(output::Signed {}))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     // Note: we box `detached_signatures` instead of passing a
@@ -888,9 +977,45 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
-        Self::sign_(&self.params, &mut self.params_once,
-                    &mut input, output.into(), &prompt,
-                    false, Vec::new())
+        let result = Self::sign_(
+            &self.params, &mut self.params_once,
+            &mut input, output.into(), &prompt,
+            false, Vec::new());
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Signed(output::Signed {}))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     /// Adds signatures to an inline signed message.
@@ -926,9 +1051,44 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         O: std::io::Write + Send + Sync,
         P: prompt::Prompt,
     {
-        Self::append_(
+        let result = Self::append_(
             &self.params, &mut self.params_once,
-            Box::new(input), &mut output, &prompt)
+            Box::new(input), &mut output, &prompt);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Signed(output::Signed {}))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     // Note: we box `input` instead of passing a reference so that we
@@ -1228,12 +1388,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
             _ => panic!("Unexpected state: {:?}", state),
         }
 
-        stream.output(
-            params,
-            Output::Signed(output::Signed {
-            }))
-            .map_err(|err| Error::StreamOutputError(err))?;
-
         Ok(())
     }
 }
@@ -1262,9 +1416,44 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         O: std::io::Write + Send + Sync,
         P: prompt::Prompt,
     {
-        Self::clear_sign_(
+        let result = Self::clear_sign_(
             &self.params, &mut self.params_once,
-            &mut input, &mut output, &prompt)
+            &mut input, &mut output, &prompt);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Signed(output::Signed {}))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     fn clear_sign_<'p>(
@@ -1365,12 +1554,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         message.finalize()
             .context("Failed to sign")
             .map_err(op!())?;
-
-        stream.output(
-            params,
-            Output::Signed(output::Signed {
-            }))
-            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }
