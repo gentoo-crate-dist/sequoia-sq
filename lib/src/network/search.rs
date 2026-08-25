@@ -514,7 +514,7 @@ pub mod error {
     }
 }
 
-/// Errors related to generating a searching the network for certificates.
+/// Errors related to searching the network for certificates.
 ///
 /// Errors are divided into categories and each category contains more
 /// precise errors.
