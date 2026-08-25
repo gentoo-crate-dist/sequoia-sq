@@ -43,6 +43,9 @@
 //! #     .expect("Valid signature");
 //! # Ok(()) }
 //! ```
+use std::borrow::Cow;
+use std::sync::Arc;
+
 use anyhow::Context as _;
 
 use sequoia_openpgp as openpgp;
@@ -64,6 +67,7 @@ use openpgp::types::SignatureType;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::Writer;
 use crate::cert::CertError;
 use crate::prompt;
@@ -71,6 +75,145 @@ use crate::types::HashMode;
 
 // Stream trait.
 stream!{}
+
+pub mod error {
+    use super::*;
+
+    /// No signing keys were specified
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("No signing keys specified")]
+    pub struct NoSigningKeysSpecified {
+    }
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        NoSigningKeysSpecified(NoSigningKeysSpecified),
+    }
+
+    /// The detached signature is invalid.
+    ///
+    /// If the reason is because an unexpected packet was encountered,
+    /// then `unexpected_tag` contains the packet's tag.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Invalid detached signature{}",
+            if let Some(tag) = .unexpected_tag {
+                Cow::Owned(
+                    format!(": {} in detached signature", tag))
+            } else {
+                Cow::Borrowed("")
+            })]
+    pub struct InvalidDetachedSignature {
+        pub unexpected_tag: Option<Tag>
+    }
+
+    /// The OpenPGP message is malformed.
+    ///
+    /// Returned by [`Builder::append`] when the message is malformed,
+    /// e.g., it encounters packets that do not belong in an [OpenPGP
+    /// Message].
+    ///
+    ///   [OpenPGP Message]: https://www.rfc-editor.org/rfc/rfc9580.html#name-openpgp-messages
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Malformed OpenPGP message")]
+    pub struct MalformedOpenPGPMessage {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// Can't append a signature to encrypted data.
+    ///
+    /// Returned by [`Builder::append`] when trying to append a
+    /// signature to encrypted data.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Signing encrypted data is not implemented")]
+    pub struct EncryptedData {
+    }
+
+    /// Can't append a signature to compressed data.
+    ///
+    /// Returned by [`Builder::append`] when trying to append a
+    /// signature to compressed data.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Signing a compress-then-sign message is not implemented")]
+    pub struct CompressedData {
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        CertError(CertError),
+
+        #[error(transparent)]
+        InvalidDetachedSignature(InvalidDetachedSignature),
+
+        #[error(transparent)]
+        MalformedOpenPGPMessage(MalformedOpenPGPMessage),
+
+        #[error(transparent)]
+        EncryptedData(EncryptedData),
+
+        #[error(transparent)]
+        CompressedData(CompressedData),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to signing.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
+}
 
 /// Data structures related to [`Output`].
 pub mod output {
@@ -486,7 +629,7 @@ where
                          prompt: &(dyn prompt::Prompt + 'p),
                          detached_signature: bool,
                          preexisting_signatures: Vec<Signature>)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let Params {
             sequoia,
@@ -502,7 +645,10 @@ where
         } = params_once;
 
         if signers.is_empty() {
-            return Err(anyhow::anyhow!("No signing keys specified"));
+            return Err(Error::ArgumentError(
+                error::ArgumentError::NoSigningKeysSpecified(
+                    error::NoSigningKeysSpecified {
+                    })));
         }
 
         let mut signers = match sequoia.get_signing_keys(
@@ -517,23 +663,23 @@ where
                                 (cert.clone(), signer.public().fingerprint())
                             })
                             .collect(),
-                    }))?;
+                    }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
                 signers
             }
             Err(err) => {
-                // XXX: We want to clone err, but it doesn't implement
-                // clone so we do a shallow copy.
-                let err2 = anyhow::anyhow!("{}", err);
-
                 stream.output(
                     params,
                     Output::SigningFailed(
                         output::SigningFailed {
-                            unusable_certs: vec![ err ],
-                        }))?;
+                            unusable_certs: vec![ err.clone() ],
+                        }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
-                return Err(err2);
+                return Err(Error::OperationalError(
+                    error::OperationalError::CertError(
+                        err)));
             }
         };
 
@@ -548,13 +694,14 @@ where
             for (k, v) in armor_headers {
                 armorer = armorer.add_header(k, v);
             }
-            message = armorer.build()?;
+            message = armorer.build().map_err(op!())?;
         }
 
         // Prepend any existing signatures.
         if detached_signature {
             for sig in preexisting_signatures.into_iter() {
-                Packet::Signature(sig).serialize(&mut message)?;
+                Packet::Signature(sig).serialize(&mut message)
+                    .map_err(op!())?;
             }
         } else if ! preexisting_signatures.is_empty() {
             panic!(
@@ -568,21 +715,24 @@ where
                 n.name(),
                 n.value(),
                 Some(n.flags().clone()),
-                *critical)?;
+                *critical)
+                .map_err(op!())?;
         }
 
         let mut signer = Signer::with_template(
             message,
             signers.pop().unwrap().1,
-            builder)?;
+            builder)
+            .map_err(op!())?;
         signer = signer.creation_time(sequoia.time());
         for s in signers {
-            signer = signer.add_signer(s.1)?;
+            signer = signer.add_signer(s.1).map_err(op!())?;
         }
         if detached_signature {
             signer = signer.detached();
         }
-        let signer = signer.build().context("Failed to create signer")?;
+        let signer = signer.build().context("Failed to create signer")
+            .map_err(op!())?;
 
         let mut writer = if detached_signature {
             // Detached signatures do not need a literal data packet, just
@@ -591,20 +741,24 @@ where
         } else {
             // We want to wrap the data in a literal data packet.
             LiteralWriter::new(signer).build()
-                .context("Failed to create literal writer")?
+                .context("Failed to create literal writer")
+                .map_err(op!())?
         };
 
         // Finally, copy stdin to our writer stack to sign the data.
         std::io::copy(&mut input, &mut writer)
-            .context("Failed to sign")?;
+            .context("Failed to sign")
+            .map_err(op!())?;
 
         writer.finalize()
-            .context("Failed to sign")?;
+            .context("Failed to sign")
+            .map_err(op!())?;
 
         stream.output(
             params,
             Output::Signed(output::Signed {
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }
@@ -623,7 +777,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
@@ -655,7 +809,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         detached_signatures: D,
         output: O,
         prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
@@ -680,23 +834,26 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         detached_signatures: Box<dyn std::io::Read + Send + Sync + 'a>,
         output: Writer<'w>,
         prompt: &(dyn prompt::Prompt + 'p))
-        -> Result<()>
+        -> Result<(), Error>
     {
         // First, read the existing signatures.
         let mut sigs = Vec::new();
         let mut ppr =
-            openpgp::parse::PacketParser::from_reader(detached_signatures)?;
+            openpgp::parse::PacketParser::from_reader(detached_signatures)
+            .map_err(op!())?;
 
         while let PacketParserResult::Some(pp) = ppr {
-            let (packet, ppr_tmp) = pp.recurse()?;
+            let (packet, ppr_tmp) = pp.recurse()
+                .map_err(op!())?;
             ppr = ppr_tmp;
 
             match packet {
                 Packet::Signature(sig) => sigs.push(sig),
-                p => return Err(
-                    anyhow::anyhow!(
-                        "{} in detached signature", p.tag())
-                        .context("Invalid detached signature")),
+                p => return Err(Error::OperationalError(
+                    error::OperationalError::InvalidDetachedSignature(
+                        error::InvalidDetachedSignature {
+                            unexpected_tag: Some(p.tag()),
+                        }))),
             }
         }
 
@@ -725,7 +882,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
@@ -763,7 +920,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn append<I, O, P>(mut self, input: I, mut output: O, prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -783,7 +940,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                        input: Box<dyn std::io::Read + Send + Sync + 'a>,
                        output: &mut (dyn std::io::Write + Send + Sync),
                        prompt: &(dyn prompt::Prompt + 'p))
-        -> Result<()>
+        -> Result<(), Error>
     {
         let Params {
             sequoia,
@@ -799,7 +956,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         } = params_once;
 
         if signers.is_empty() {
-            return Err(anyhow::anyhow!("No signing keys specified"));
+            return Err(Error::ArgumentError(
+                error::ArgumentError::NoSigningKeysSpecified(
+                    error::NoSigningKeysSpecified {
+                    })));
         }
 
         let mut signers = match sequoia.get_signing_keys(
@@ -819,23 +979,23 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                     params,
                     Output::Signing(output::Signing {
                         signers: output,
-                    }))?;
+                    }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
                 signers
             }
             Err(err) => {
-                // XXX: We want to clone err, but it doesn't implement
-                // clone so we do a shallow copy.
-                let err2 = anyhow::anyhow!("{}", err);
-
                 stream.output(
                     params,
                     Output::SigningFailed(
                         output::SigningFailed {
-                            unusable_certs: vec![ err ],
-                        }))?;
+                            unusable_certs: vec![ err.clone() ],
+                        }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
-                return Err(err2);
+                return Err(Error::OperationalError(
+                    error::OperationalError::CertError(
+                        err)));
             }
         };
 
@@ -846,13 +1006,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
             for (k, v) in armor_headers {
                 armorer = armorer.add_header(k, v);
             }
-            message = armorer.build()?;
+            message = armorer.build().map_err(op!())?;
         }
 
         // Create a parser for the message to be notarized.
         let mut ppr
             = openpgp::parse::PacketParser::from_reader(input)
-            .context("Failed to build parser")?;
+            .context("Failed to build parser")
+            .map_err(op!())?;
 
         // Once we see a signature, we can no longer strip compression.
         let mut seen_signature = false;
@@ -878,13 +1039,19 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
 
         while let PacketParserResult::Some(mut pp) = ppr {
             if let Err(err) = pp.possible_message() {
-                return Err(err.context("Malformed OpenPGP message"));
+                return Err(Error::OperationalError(
+                    error::OperationalError::MalformedOpenPGPMessage(
+                        error::MalformedOpenPGPMessage {
+                            error: err.into(),
+                        })));
             }
 
             match pp.packet {
                 Packet::PKESK(_) | Packet::SKESK(_) =>
-                    return Err(anyhow::anyhow!(
-                        "Signing encrypted data is not implemented")),
+                    return Err(Error::OperationalError(
+                        error::OperationalError::EncryptedData(
+                            error::EncryptedData {
+                            }))),
 
                 Packet::Literal(_) =>
                     if let State::InFirstSigGroup = state {
@@ -901,8 +1068,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                 // If you do implement this, there is a half-disabled test
                 // in tests/sq-sign.rs.
                 Packet::CompressedData(_) if seen_signature =>
-                    return Err(anyhow::anyhow!(
-                        "Signing a compress-then-sign message is not implemented")),
+                    return Err(Error::OperationalError(
+                        error::OperationalError::CompressedData(
+                            error::CompressedData {
+                            }))),
 
                 _ => (),
             }
@@ -917,16 +1086,20 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                             n.name(),
                             n.value(),
                             Some(n.flags().clone()),
-                            *critical)?;
+                            *critical)
+                            .map_err(op!())?;
                     }
 
                     let mut signer = Signer::with_template(
-                        message, signers.pop().unwrap(), builder)?;
+                        message, signers.pop().unwrap(), builder)
+                        .map_err(op!())?;
                     signer = signer.creation_time(sequoia.time());
                     for s in signers.drain(..) {
-                        signer = signer.add_signer(s)?;
+                        signer = signer.add_signer(s)
+                            .map_err(op!())?;
                     }
-                    message = signer.build().context("Failed to create signer")?;
+                    message = signer.build().context("Failed to create signer")
+                        .map_err(op!())?;
                     state = State::Signing { signature_count: 0, };
                 },
 
@@ -934,7 +1107,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                     // All signatures that are being notarized are
                     // written, pop the signer from the writer stack.
                     message = message.finalize_one()
-                        .context("Failed to sign data")?
+                        .context("Failed to sign data")
+                        .map_err(op!())?
                         .unwrap();
                     state = State::Done;
                 },
@@ -952,22 +1126,24 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                 // message packet.
                 let mut literal = LiteralWriter::new(message).format(l.format());
                 if let Some(f) = l.filename() {
-                    literal = literal.filename(f)?;
+                    literal = literal.filename(f).map_err(op!())?;
                 }
                 if let Some(d) = l.date() {
-                    literal = literal.date(d)?;
+                    literal = literal.date(d).map_err(op!())?;
                 }
 
                 let mut literal = literal.build()
-                    .context("Failed to create literal writer")?;
+                    .context("Failed to create literal writer").map_err(op!())?;
 
                 // Finally, just copy all the data.
                 pp.copy(&mut literal)
-                    .context("Failed to sign data")?;
+                    .context("Failed to sign data")
+                    .map_err(op!())?;
 
                 // Pop the literal writer.
                 message = literal.finalize_one()
-                    .context("Failed to sign data")?
+                    .context("Failed to sign data")
+                    .map_err(op!())?
                     .unwrap();
             }
 
@@ -977,7 +1153,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                 pp.next()
             } else {
                 pp.recurse()
-            }.context("Parsing failed")?;
+            }.context("Parsing failed").map_err(op!())?;
             ppr = ppr_tmp;
 
             match packet {
@@ -1001,13 +1177,15 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                         _ => (),
                     }
 
-                    Packet::OnePassSig(ops).serialize(&mut message)?;
+                    Packet::OnePassSig(ops).serialize(&mut message)
+                        .map_err(op!())?;
                     seen_signature = true;
                 },
 
                 Packet::Signature(sig) => {
                     Packet::Signature(sig).serialize(&mut message)
-                        .context("Failed to serialize")?;
+                        .context("Failed to serialize")
+                        .map_err(op!())?;
                     if let State::Signing { ref mut signature_count } = state {
                         *signature_count -= 1;
                     }
@@ -1018,7 +1196,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
 
         if let PacketParserResult::EOF(ref eof) = ppr {
             if let Err(err) = eof.is_message() {
-                return Err(err.context("Malformed OpenPGP message"));
+                return Err(Error::OperationalError(
+                    error::OperationalError::MalformedOpenPGPMessage(
+                        error::MalformedOpenPGPMessage {
+                            error: err.into(),
+                        })));
             }
         } else {
             unreachable!()
@@ -1035,11 +1217,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
             State::Signing { signature_count } => {
                 assert_eq!(signature_count, 0);
                 message.finalize()
-                    .context("Failed to sign data")?;
+                    .context("Failed to sign data")
+                    .map_err(op!())?;
             },
             State::Done => {
                 message.finalize()
-                    .context("Failed to sign data")?;
+                    .context("Failed to sign data")
+                    .map_err(op!())?;
             },
             _ => panic!("Unexpected state: {:?}", state),
         }
@@ -1047,7 +1231,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         stream.output(
             params,
             Output::Signed(output::Signed {
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }
@@ -1071,7 +1256,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn sign<I, O, P>(mut self, mut input: I, mut output: O, prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
@@ -1087,7 +1272,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         mut input: &mut (dyn std::io::Read + Send + Sync),
         mut output: &mut (dyn std::io::Write + Send + Sync),
         prompt: &(dyn prompt::Prompt + 'p))
-        -> Result<()>
+        -> Result<(), Error>
     {
         let Params {
             sequoia,
@@ -1103,7 +1288,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         } = params_once;
 
         if signers.is_empty() {
-            return Err(anyhow::anyhow!("No signing keys specified"));
+            return Err(Error::ArgumentError(
+                error::ArgumentError::NoSigningKeysSpecified(
+                    error::NoSigningKeysSpecified {
+                    })));
         }
 
         let mut signers = match sequoia.get_signing_keys(
@@ -1125,23 +1313,23 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
                     params,
                     Output::Signing(output::Signing {
                         signers: output,
-                    }))?;
+                    }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
                 signers
             }
             Err(err) => {
-                // XXX: We want to clone err, but it doesn't implement
-                // clone so we do a shallow copy.
-                let err2 = anyhow::anyhow!("{}", err);
-
                 stream.output(
                     params,
                     Output::SigningFailed(
                         output::SigningFailed {
-                            unusable_certs: vec![ err ],
-                        }))?;
+                            unusable_certs: vec![ err.clone() ],
+                        }))
+                    .map_err(|err| Error::StreamOutputError(err))?;
 
-                return Err(err2);
+                return Err(Error::OperationalError(
+                    error::OperationalError::CertError(
+                        err)));
             }
         };
 
@@ -1152,30 +1340,37 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
                 n.name(),
                 n.value(),
                 Some(n.flags().clone()),
-                *critical)?;
+                *critical)
+                .map_err(op!())?
         }
 
         let message = Message::new(&mut output);
         let mut signer = Signer::with_template(
-            message, signers.pop().unwrap(), builder)?
+            message, signers.pop().unwrap(), builder)
+            .map_err(op!())?
             .cleartext();
         signer = signer.creation_time(sequoia.time());
         for s in signers {
-            signer = signer.add_signer(s)?;
+            signer = signer.add_signer(s)
+                .map_err(op!())?
         }
-        let mut message = signer.build().context("Failed to create signer")?;
+        let mut message = signer.build().context("Failed to create signer")
+            .map_err(op!())?;
 
         // Finally, copy stdin to our writer stack to sign the data.
         std::io::copy(&mut input, &mut message)
-            .context("Failed to sign")?;
+            .context("Failed to sign")
+            .map_err(op!())?;
 
         message.finalize()
-            .context("Failed to sign")?;
+            .context("Failed to sign")
+            .map_err(op!())?;
 
         stream.output(
             params,
             Output::Signed(output::Signed {
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }

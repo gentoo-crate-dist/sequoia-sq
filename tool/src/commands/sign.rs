@@ -61,7 +61,7 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
         .add_signers(signers.into_iter())
         .add_notations(notations.into_iter());
 
-    if command.cleartext {
+    let result = if command.cleartext {
         signer.stream(stream).clear().sign(input, output, prompt)
     } else if append {
         if let Some(detached) = detached {
@@ -106,5 +106,7 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
                 .ascii_armor(! binary)
                 .sign(input, output, prompt)
         }
-    }
+    };
+
+    Ok(result?)
 }
