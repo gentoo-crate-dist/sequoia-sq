@@ -1,6 +1,7 @@
 //! Functionality related to certificate management.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use sequoia_openpgp as openpgp;
@@ -34,12 +35,12 @@ pub mod problem {
     /// The error is the error returned by
     /// [`Cert::with_policy`](sequoia_openpgp::Cert::with_policy).
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{} is invalid", .cert)]
     pub struct CertInvalid {
         pub cert: Fingerprint,
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
     /// The certificate does not contain any usable keys with the
@@ -88,7 +89,7 @@ pub mod problem {
     /// The error is the error returned by
     /// [`KeyAmalgamation::with_policy`](openpgp::cert::amalgamation::ValidateAmalgamation::with_policy).
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{} is not valid",
             if .cert == .key {
                 format!("{}", .cert)
@@ -99,7 +100,7 @@ pub mod problem {
         pub cert: Fingerprint,
         pub key: Fingerprint,
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
     /// The key is not usable, because the public key algorithm is
@@ -142,7 +143,7 @@ pub mod problem {
     /// time is now or earlier) or its creation time is the
     /// future.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("{} {}",
             if .cert == .key {
                 format!("{}", .cert)
@@ -168,7 +169,7 @@ pub mod problem {
         pub expiration_time: Option<SystemTime>,
         pub reference_time: SystemTime,
         #[source]
-        pub error: anyhow::Error,
+        pub error: Arc<anyhow::Error>,
     }
 
     impl NotLive {
@@ -201,7 +202,7 @@ pub mod problem {
 }
 
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum CertProblem {
     /// The certificate is revoked.
     ///
@@ -265,7 +266,7 @@ pub enum CertProblem {
 /// is not necessarily exhaustive, but it will normally include at
 /// least one reason.
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 #[error("The certificate {} is unusable{}",
         .cert.fingerprint(),
         if .problems.is_empty() {

@@ -612,7 +612,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                             creation_time,
                             expiration_time,
                             reference_time: sequoia.time(),
-                            error: err,
+                            error: err.into(),
                         }));
 
                     if ! have_problem {
@@ -649,7 +649,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                             cert::problem::KeyInvalid {
                                 cert: vc.fingerprint(),
                                 key: ka.key().fingerprint(),
-                                error: err,
+                                error: err.into(),
                             }));
                     }
                 }
@@ -703,7 +703,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                                 cert::CertProblem::CertInvalid(
                                     cert::problem::CertInvalid {
                                         cert: cert.fingerprint(),
-                                        error: err
+                                        error: err.into()
                                     }),
                             ],
                         });

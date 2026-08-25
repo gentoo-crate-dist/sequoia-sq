@@ -424,7 +424,7 @@ impl Sequoia {
                             cert::CertProblem::CertInvalid(
                                 cert::problem::CertInvalid {
                                     cert: cert.fingerprint(),
-                                    error
+                                    error: error.into()
                                 })
                         ]
                     });
@@ -463,7 +463,7 @@ impl Sequoia {
                                 creation_time: ka.key().creation_time(),
                                 expiration_time: ka.key_expiration_time(),
                                 reference_time: self.time(),
-                                error: err,
+                                error: err.into(),
                             }));
                     }
                 }
