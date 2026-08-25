@@ -78,8 +78,8 @@ impl sign::Stream for Stream<'_> {
                 qprintln!();
             }
 
-            sign::Output::Signed(
-                sign::output::Signed {
+            sign::Output::Report(
+                sign::output::Report {
                     ..
                 }) =>
             {

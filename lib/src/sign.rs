@@ -244,11 +244,12 @@ pub mod output {
         pub signers: Vec<(Cert, Fingerprint)>,
     }
 
-    /// Information about how we signed the message after we create
-    /// the actual signatures.
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether signing was successful or not.
     #[non_exhaustive]
     #[derive(Debug)]
-    pub struct Signed {
+    pub struct Report {
     }
 }
 
@@ -290,9 +291,10 @@ pub enum Output {
     /// we create the actual signatures.
     Signing(output::Signing),
 
-    /// Information about how we signed the message after we create
-    /// the actual signatures.
-    Signed(output::Signed),
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether signing was successful or not.
+    Report(output::Report),
 }
 
 /// The signing parameters.
@@ -836,7 +838,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Signed(output::Signed {}))
+            Output::Report(output::Report {}))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -905,7 +907,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Signed(output::Signed {}))
+            Output::Report(output::Report {}))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1012,7 +1014,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Signed(output::Signed {}))
+            Output::Report(output::Report {}))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1085,7 +1087,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Signed(output::Signed {}))
+            Output::Report(output::Report {}))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -1450,7 +1452,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Signed(output::Signed {}))
+            Output::Report(output::Report {}))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
