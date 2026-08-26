@@ -1575,3 +1575,490 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::io::Write;
+
+    use sequoia_openpgp as openpgp;
+    use openpgp::PacketPile;
+    use openpgp::cert::CertBuilder;
+
+    use crate::prompt::Cancel;
+
+    const MESSAGE: &[u8] = b"message";
+
+    fn check(output: Vec<Output>, result: Result<Outcome, Error>,
+             signers: usize)
+    {
+        let mut saw_error = None;
+        let mut saw_report = false;
+        let mut saw_signing = false;
+
+        eprintln!("Start: expecting {} signers, result: {:?}",
+                  signers,
+                  result.as_ref().map(|_| ()).map_err(|err| err.to_string()));
+        for o in output.iter() {
+            match o {
+                Output::OperationalError(err) => {
+                    eprintln!("- Operational Error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
+                }
+                Output::SystemError(err) => {
+                    eprintln!("- System Error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
+                }
+                Output::ArgumentError(err) => {
+                    eprintln!("- Argument Error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
+                }
+
+                Output::Signing(signing) => {
+                    eprintln!("- Signing");
+                    assert!(! saw_report);
+                    assert!(saw_error.is_none());
+                    saw_signing = true;
+                    assert_eq!(signers, signing.signers.len(),
+                               "expected vs. got");
+                }
+
+                Output::Report(_report) => {
+                    eprintln!("- Report");
+                    assert!(! saw_report);
+                    saw_report = true;
+                }
+            }
+        }
+        eprintln!("End");
+
+        assert!(saw_report);
+
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+            }
+            (Ok(_outcome), None) => {
+                assert!(saw_signing);
+            }
+        }
+    }
+
+    macro_rules! sign_test {
+        ($typ:ident) => {
+            #[test]
+            fn $typ() {
+                let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+                // Generate a certificate and import it to the key store.
+                let keystore = sq.key_generate()
+                    .email("keystore@example.org")
+                    .without_password()
+                    .generate(Cancel::new())
+                    .expect("can generate a key")
+                    .into_cert();
+
+                // Generate a certificate and don't import it to the
+                // key store.
+                let ephemeral = sq.key_generate()
+                    .email("ephemeral@example.org")
+                    .without_password()
+                    .ephemeral()
+                    .generate(Cancel::new())
+                    .expect("can generate a key")
+                    .into_cert();
+
+                // The cert contains secret key material and the key
+                // material is stored on the key store.
+                let mut output = Vec::new();
+                let mut sig = Vec::new();
+                let result = sq.sign()
+                    .stream(&mut output)
+                    .$typ()
+                    .add_signer(keystore.clone())
+                    .sign(
+                        std::io::Cursor::new(MESSAGE),
+                        &mut sig,
+                        crate::prompt::Cancel::new());
+
+                assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+                check(output, result, 1);
+
+                // The cert does not contain secret key material, but
+                // the key material is on the key store.
+                let mut output = Vec::new();
+                let mut sig = Vec::new();
+                let result = sq.sign()
+                    .stream(&mut output)
+                    .$typ()
+                    .add_signer(keystore.clone().strip_secret_key_material())
+                    .sign(
+                        std::io::Cursor::new(MESSAGE),
+                        &mut sig,
+                        crate::prompt::Cancel::new());
+
+                assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+                check(output, result, 1);
+
+                // The cert does not contain secret key material, and the
+                // secret key material is not stored on the key store.
+                let mut output = Vec::new();
+                let mut sig = Vec::new();
+                let result = sq.sign()
+                    .stream(&mut output)
+                    .$typ()
+                    .add_signer(ephemeral.clone().strip_secret_key_material())
+                    .sign(
+                        std::io::Cursor::new(MESSAGE),
+                        &mut sig,
+                        crate::prompt::Cancel::new());
+
+                assert!(result.is_err());
+                check(output, result, 0);
+
+                // No signers.
+                let mut output = Vec::new();
+                let mut sig = Vec::new();
+                let result = sq.sign()
+                    .stream(&mut output)
+                    .$typ()
+                    .sign(
+                        std::io::Cursor::new(MESSAGE),
+                        &mut sig,
+                        crate::prompt::Cancel::new());
+
+                assert!(result.is_err());
+                check(output, result, 0);
+
+                // Two signers.  Secret key material for both.
+                let mut output = Vec::new();
+                let mut sig = Vec::new();
+                let result = sq.sign()
+                    .stream(&mut output)
+                    .$typ()
+                    .add_signer(keystore.clone())
+                    .add_signer(ephemeral.clone())
+                    .sign(
+                        std::io::Cursor::new(MESSAGE),
+                        &mut sig,
+                        crate::prompt::Cancel::new());
+
+                assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+                check(output, result, 2);
+
+                // Two signers.  Secret key material for just one.
+                let mut output = Vec::new();
+                let mut sig = Vec::new();
+                let result = sq.sign()
+                    .stream(&mut output)
+                    .$typ()
+                    .add_signer(keystore.clone())
+                    .add_signer(ephemeral.clone().strip_secret_key_material())
+                    .sign(
+                        std::io::Cursor::new(MESSAGE),
+                        &mut sig,
+                        crate::prompt::Cancel::new());
+
+                assert!(result.is_err());
+                check(output, result, 0);
+            }
+        }
+    }
+    sign_test!(detached);
+    sign_test!(inline);
+    sign_test!(clear);
+
+    #[test]
+    fn detached_append() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate a certificate and import it to the key store.
+        let keystore = sq.key_generate()
+            .email("keystore@example.org")
+            .without_password()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+
+        // Generate a certificate and don't import it to the key
+        // store.
+        let ephemeral = sq.key_generate()
+            .email("ephemeral@example.org")
+            .without_password()
+            .ephemeral()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+
+        // Sign a message.
+        let mut output = Vec::new();
+        let mut sig = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .detached()
+            .add_signer(keystore.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut sig,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1);
+
+        // Append a signature.
+        let mut output = Vec::new();
+        let mut sig2 = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .detached()
+            .add_signer(ephemeral.clone())
+            .append(
+                std::io::Cursor::new(MESSAGE),
+                std::io::Cursor::new(&sig),
+                &mut sig2,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1);
+
+        // Append two signatures including from a certificate that
+        // already signed the message.
+        let mut output = Vec::new();
+        let mut sig2 = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .detached()
+            .add_signer(ephemeral.clone())
+            .add_signer(keystore.clone())
+            .append(
+                std::io::Cursor::new(MESSAGE),
+                std::io::Cursor::new(&sig),
+                &mut sig2,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 2);
+
+        // Make sure we got three signature packets in all.
+        let pp = PacketPile::from_bytes(&sig2)
+            .expect("valid output");
+        assert_eq!(pp.children().count(), 3);
+        pp.children().for_each(|p| {
+            assert!(matches!(p, Packet::Signature(_)),
+                    "Not a signature: {}", p.tag());
+        });
+
+        // Append a signature to invalid input.
+        let mut output = Vec::new();
+        let mut sig2 = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .detached()
+            .add_signer(ephemeral.clone())
+            .append(
+                std::io::Cursor::new(MESSAGE),
+                std::io::Cursor::new("junk"),
+                &mut sig2,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_err());
+        check(output, result, 0);
+    }
+
+    #[test]
+    fn inline_append() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate a certificate and import it to the key store.
+        let keystore = sq.key_generate()
+            .email("keystore@example.org")
+            .without_password()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+
+        // Generate a certificate and don't import it to the key
+        // store.
+        let ephemeral = sq.key_generate()
+            .email("ephemeral@example.org")
+            .without_password()
+            .ephemeral()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+
+        // Sign a message.
+        let mut output = Vec::new();
+        let mut sig = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .inline()
+            .add_signer(keystore.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut sig,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1);
+
+        // Append a signature.
+        let mut output = Vec::new();
+        let mut sig2 = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .inline()
+            .add_signer(ephemeral.clone())
+            .append(
+                std::io::Cursor::new(&sig),
+                &mut sig2,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1);
+
+        // Append two signatures including from a certificate that
+        // already signed the message.
+        let mut output = Vec::new();
+        let mut sig2 = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .inline()
+            .add_signer(ephemeral.clone())
+            .add_signer(keystore.clone())
+            .append(
+                std::io::Cursor::new(&sig),
+                &mut sig2,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 2);
+
+        // Make sure we got three signature packets.
+        let pp = PacketPile::from_bytes(&sig2)
+            .expect("valid output");
+        let sigs = pp.children()
+            .map(|p| {
+                if matches!(p, Packet::Signature(_)) {
+                    1
+                } else {
+                    assert!(
+                        matches!(p, Packet::OnePassSig(_) | Packet::Literal(_)),
+                        "Unexpected packet in inline signed message: {}",
+                        p.tag());
+
+                    0
+                }
+            })
+            .sum::<usize>();
+        assert_eq!(sigs, 3);
+
+        // Append a signature to invalid input.
+        let mut output = Vec::new();
+        let mut sig2 = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .inline()
+            .add_signer(ephemeral.clone())
+            .append(
+                std::io::Cursor::new("junk"),
+                &mut sig2,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_err());
+        check(output, result, 1);
+    }
+
+    /// Check that we can use secret key material from a keyring.
+    #[test]
+    fn keyring() {
+        let (cert, _) = CertBuilder::general_purpose(Some("alice@example.org"))
+            .generate().expect("can generate certificate");
+
+        let mut keyring = tempfile::NamedTempFile::new()
+            .expect("can create temporary file");
+
+        cert.as_tsk()
+            .serialize(&mut keyring)
+            .expect("can serialize certificate");
+
+        keyring.flush().expect("can flush");
+
+        let sq = Sequoia::builder().ephemeral().unwrap()
+            .add_keyring(keyring.path())
+            .build().unwrap();
+
+        // The cert contains secret key material and the key
+        // material is stored on the key store.
+        let mut output = Vec::new();
+        let mut sig = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .detached()
+            .add_signer(cert.clone().strip_secret_key_material())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut sig,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1);
+    }
+
+    /// Check that we fail when given a certificate without a signing
+    /// subkey.
+    #[test]
+    fn no_signing_key() {
+        let (cert, _) = CertBuilder::new()
+            .generate().expect("can generate certificate");
+
+        assert_eq!(cert.keys().count(), 1);
+
+        let sq = Sequoia::builder().ephemeral().unwrap()
+            .build().unwrap();
+
+        let mut output = Vec::new();
+        let mut sig = Vec::new();
+        let result = sq.sign()
+            .stream(&mut output)
+            .detached()
+            .add_signer(cert.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut sig,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_err());
+        check(output, result, 0);
+    }
+}
