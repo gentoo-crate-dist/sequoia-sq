@@ -34,6 +34,8 @@ impl encrypt::Stream for Stream<'_> {
                     ..
                 }) =>
             {
+                let unusable_cert = unusable_certs[0].clone();
+
                 for unusable_cert in unusable_certs {
                     let cert::CertError {
                         cert,
@@ -73,6 +75,37 @@ impl encrypt::Stream for Stream<'_> {
                              --use-expired-subkey"));
                     }
                 }
+
+                let err = if let cert::CertProblem::CertInvalid(_)
+                    = unusable_cert.problems[0]
+                {
+                    anyhow::anyhow!(
+                        "{}, {} is not valid according to the current policy",
+                        unusable_cert.cert.fingerprint(),
+                        self.sq.sequoia.best_userid(&unusable_cert.cert, true).display())
+                } else if let cert::CertProblem::CertRevoked(_)
+                    = unusable_cert.problems[0]
+                {
+                    anyhow::anyhow!(
+                        "Can't encrypt to {}, {}: it is revoked",
+                        unusable_cert.cert.fingerprint(),
+                        self.sq.sequoia.best_userid(&unusable_cert.cert, true).display())
+                } else if unusable_cert.no_usable_keys()
+                    .map(|p| p.unusable == 0)
+                    .unwrap_or(false)
+                {
+                    anyhow::anyhow!(
+                        "Cert {}, {} has no encryption-capable keys",
+                        unusable_cert.cert.fingerprint(),
+                        self.sq.sequoia.best_userid(&unusable_cert.cert, true).display())
+                } else {
+                    anyhow::anyhow!(
+                        "Cert {}, {} has no suitable encryption key",
+                        unusable_cert.cert.fingerprint(),
+                        self.sq.sequoia.best_userid(&unusable_cert.cert, true).display())
+                };
+
+                return Err(err);
             }
 
             encrypt::Output::Encrypting(

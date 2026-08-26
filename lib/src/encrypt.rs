@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 
 use sequoia_openpgp as openpgp;
@@ -27,6 +29,7 @@ use openpgp::types::SignatureType;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::Writer;
 use crate::cert::CertError;
 use crate::cert;
@@ -37,6 +40,84 @@ use crate::types::EncryptPurpose;
 
 // Stream trait.
 stream!{}
+
+pub mod error {
+    use super::*;
+
+    /// Neither recipient nor password were given.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Neither recipient nor password given")]
+    pub struct NoRecipientsOrPasswords {
+    }
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        NoRecipientsOrPasswords(NoRecipientsOrPasswords),
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        CertError(CertError),
+
+        #[error(transparent)]
+        PromptError(prompt::Error),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to encryption.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
+
+    /// If [`Stream::output`] returns an error, it is propagated here.
+    StreamOutputError(anyhow::Error),
+}
 
 /// Data structures related to [`Output`].
 pub mod output {
@@ -490,7 +571,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// On failure some of the encrypted data may have been written to
     /// the output writer.  This should be ignored.
     pub fn encrypt<'w, I, O, P>(self, mut input: I, output: O, prompt: P)
-        -> Result<()>
+        -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
@@ -503,7 +584,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                         mut input: &mut (dyn std::io::Read + Send + Sync),
                         output: Writer<'w>,
                         prompt: Box<dyn prompt::Prompt + 'p>)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let &Params {
             sequoia,
@@ -526,7 +607,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             stream,
         } = &mut self.params_once;
 
-        let mut signers = sequoia.get_signing_keys(&signers, None, &prompt)?;
+        let mut signers = sequoia.get_signing_keys(&signers, None, &prompt)
+            .map_err(|err| {
+                Error::OperationalError(
+                    error::OperationalError::CertError(err))
+            })?;
 
         let mut passwords = passwords.to_vec();
         for _ in 0..prompt_for_passwords {
@@ -537,22 +622,29 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                 .sequoia(sequoia)
                 .build();
 
-            match prompt.prompt(&mut context, &mut checker)? {
+            match prompt.prompt(&mut context, &mut checker)
+                .map_err(|err| {
+                    Error::OperationalError(
+                        error::OperationalError::PromptError(err))
+                })?
+            {
                 prompt::Response::Password(password) => {
                     passwords.push(password);
                 }
                 prompt::Response::NoPassword => {
-                    // This is technically unreachable, but let's not
-                    // panic.
-                    return Err(anyhow::anyhow!(
-                        "Internal error: failed to prompt for a password"));
+                    // `CheckNewPasswordRequired` will not return
+                    // `NoPassword`.
+                    panic!("CheckNewPasswordRequired::required \
+                            returned NoPassword");
                 }
             }
         }
 
         if recipients.len() + passwords.len() == 0 {
-            return Err(anyhow::anyhow!(
-                "Neither recipient nor password given"));
+            return Err(Error::ArgumentError(
+                error::ArgumentError::NoRecipientsOrPasswords(
+                    error::NoRecipientsOrPasswords {
+                    })));
         }
 
         // Returns the encryption capable keys for the given
@@ -743,43 +835,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         }
 
         if ! unusable_certs.is_empty() {
-            let unusable_cert = &unusable_certs[0];
-            let err = if let cert::CertProblem::CertInvalid(_)
-                = unusable_cert.problems[0]
-            {
-                anyhow::anyhow!(
-                    "{}, {} is not valid according to the current policy",
-                    unusable_cert.cert.fingerprint(),
-                    sequoia.best_userid(&unusable_cert.cert, true).display())
-            } else if let cert::CertProblem::CertRevoked(_)
-                = unusable_cert.problems[0]
-            {
-                anyhow::anyhow!(
-                    "Can't encrypt to {}, {}: it is revoked",
-                    unusable_cert.cert.fingerprint(),
-                    sequoia.best_userid(&unusable_cert.cert, true).display())
-            } else if unusable_cert.no_usable_keys()
-                .map(|p| p.unusable == 0)
-                .unwrap_or(false)
-            {
-                anyhow::anyhow!(
-                    "Cert {}, {} has no encryption-capable keys",
-                    unusable_cert.cert.fingerprint(),
-                    sequoia.best_userid(&unusable_cert.cert, true).display())
-            } else {
-                anyhow::anyhow!(
-                    "Cert {}, {} has no suitable encryption key",
-                    unusable_cert.cert.fingerprint(),
-                    sequoia.best_userid(&unusable_cert.cert, true).display())
-            };
+            let err = unusable_certs[0].clone();
 
             stream.output(
                 &self.params,
                 Output::EncryptionFailed(output::EncryptionFailed {
                     unusable_certs
-                }))?;
+                }))
+                .map_err(|err| Error::StreamOutputError(err))?;
 
-            return Err(err);
+            return Err(Error::OperationalError(
+                error::OperationalError::CertError(err)));
         } else {
             let mut recipients = recipient_subkeys
                 .iter()
@@ -815,7 +881,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                             (cert.clone(), signer.public().fingerprint())
                         })
                         .collect(),
-                }))?;
+                }))
+                .map_err(|err| Error::StreamOutputError(err))?;
         }
 
         let mut message = Message::new(output);
@@ -824,7 +891,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             for (k, v) in armor_headers {
                 armorer = armorer.add_header(k, v);
             }
-            message = armorer.build()?;
+            message = armorer.build().map_err(op!())?;
         }
 
         // We want to encrypt a literal data packet.
@@ -833,17 +900,26 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             .add_passwords(passwords);
 
         let mut sink = encryptor.build()
-            .context("Failed to create encryptor")?;
+            .context("Failed to create encryptor")
+            .map_err(op!())?;
 
         match compression_mode {
             CompressionMode::None => (),
-            CompressionMode::Pad => sink = Padder::new(sink).build()?,
-            CompressionMode::Zip => sink =
-                Compressor::new(sink).algo(CompressionAlgorithm::Zip).build()?,
-            CompressionMode::Zlib => sink =
-                Compressor::new(sink).algo(CompressionAlgorithm::Zlib).build()?,
-            CompressionMode::Bzip2 => sink =
-                Compressor::new(sink).algo(CompressionAlgorithm::BZip2).build()?,
+            CompressionMode::Pad => {
+                sink = Padder::new(sink).build().map_err(op!())?;
+            }
+            CompressionMode::Zip => {
+                sink = Compressor::new(sink).algo(CompressionAlgorithm::Zip)
+                    .build().map_err(op!())?;
+            }
+            CompressionMode::Zlib => {
+                sink = Compressor::new(sink).algo(CompressionAlgorithm::Zlib)
+                    .build().map_err(op!())?;
+            }
+            CompressionMode::Bzip2 => {
+                sink = Compressor::new(sink).algo(CompressionAlgorithm::BZip2)
+                    .build().map_err(op!())?;
+            }
         }
 
         // Optionally sign message.
@@ -855,36 +931,45 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                     n.name(),
                     n.value(),
                     Some(n.flags().clone()),
-                    *critical)?;
+                    *critical)
+                    .map_err(op!())?;
             }
 
-            let mut signer = Signer::with_template(sink, first.1, builder)?;
+            let mut signer = Signer::with_template(sink, first.1, builder)
+                .map_err(op!())?;
 
             for s in signers {
-                signer = signer.add_signer(s.1)?;
+                signer = signer.add_signer(s.1)
+                    .map_err(op!())?;
             }
             for r in recipients.iter() {
                 signer = signer.add_intended_recipient(r);
             }
-            sink = signer.build()?;
+            sink = signer.build()
+                .map_err(op!())?;
         }
 
-        let literal_writer = LiteralWriter::new(sink).filename(filename)?;
+        let literal_writer = LiteralWriter::new(sink).filename(filename)
+            .map_err(op!())?;
 
         let mut writer_stack = literal_writer
             .build()
-            .context("Failed to create literal writer")?;
+            .context("Failed to create literal writer")
+            .map_err(op!())?;
 
         // Finally, copy stdin to our writer stack to encrypt the data.
         std::io::copy(&mut input, &mut writer_stack)
-            .context("Failed to encrypt")?;
+            .context("Failed to encrypt")
+            .map_err(op!())?;
 
-        writer_stack.finalize().context("Failed to encrypt")?;
+        writer_stack.finalize().context("Failed to encrypt")
+            .map_err(op!())?;
 
         stream.output(
             &self.params,
             Output::Encrypted(output::Encrypted {
-            }))?;
+            }))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }
