@@ -207,6 +207,28 @@ pub enum Output {
     Report(output::Report),
 }
 
+/// The outcome.
+///
+/// This is returned by [`Builder::encrypt`].  It contains information
+/// about the operation's outcome.  More detailed information is
+/// available via the [`Stream`] interface.
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct Outcome {
+}
+
+impl Outcome {
+    fn new() -> Self {
+        Outcome {
+        }
+    }
+
+    fn to_report(&self) -> output::Report {
+        output::Report {
+        }
+    }
+}
+
 /// The encryption parameters.
 ///
 /// These parameters are used by [`encrypt`](Builder::encrypt).
@@ -597,12 +619,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// On failure some of the encrypted data may have been written to
     /// the output writer.  This should be ignored.
     pub fn encrypt<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
+        let outcome = Outcome::new();
+
         let result = Self::encrypt_(
             &self.params, &mut self.params_once,
             &mut input, output.into(), &prompt);
@@ -637,10 +661,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Report(output::Report {}))
+            Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     fn encrypt_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
