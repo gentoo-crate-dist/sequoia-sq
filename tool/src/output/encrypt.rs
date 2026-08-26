@@ -166,8 +166,8 @@ impl encrypt::Stream for Stream<'_> {
                 qprintln!();
             }
 
-            encrypt::Output::Encrypted(
-                encrypt::output::Encrypted {
+            encrypt::Output::Report(
+                encrypt::output::Report {
                     ..
                 }) =>
             {

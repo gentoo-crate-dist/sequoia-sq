@@ -153,11 +153,12 @@ pub mod output {
         pub signers: Vec<(Cert, Fingerprint)>,
     }
 
-    /// Information about how we encrypted and signed the message
-    /// after we do the actual encryption.
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether signing was successful or not.
     #[non_exhaustive]
     #[derive(Debug)]
-    pub struct Encrypted {
+    pub struct Report {
     }
 }
 
@@ -200,9 +201,10 @@ pub enum Output {
     /// message before we do the actual encryption.
     Encrypting(output::Encrypting),
 
-    /// Information about how we encrypted and signed the message
-    /// after we do the actual encryption.
-    Encrypted(output::Encrypted),
+    /// Emitted at the end.
+    ///
+    /// This is always emitted whether signing was successful or not.
+    Report(output::Report),
 }
 
 /// The encryption parameters.
@@ -635,7 +637,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Encrypted(output::Encrypted {}))
+            Output::Report(output::Report {}))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
