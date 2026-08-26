@@ -108,5 +108,6 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
         }
     };
 
-    Ok(result?)
+    let _outcome = result?;
+    Ok(())
 }

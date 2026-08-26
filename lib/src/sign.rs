@@ -297,6 +297,28 @@ pub enum Output {
     Report(output::Report),
 }
 
+/// The outcome.
+///
+/// This is returned by [`Builder::sign`] and [`Builder::append`].  It
+/// contains information about the operation's outcome.  More detailed
+/// information is available via the [`Stream`] interface.
+#[non_exhaustive]
+#[derive(Debug)]
+pub struct Outcome {
+}
+
+impl Outcome {
+    fn new() -> Self {
+        Outcome {
+        }
+    }
+
+    fn to_report(&self) -> output::Report {
+        output::Report {
+        }
+    }
+}
+
 /// The signing parameters.
 ///
 /// These parameters are used by [`sign`](Builder::sign) and
@@ -797,12 +819,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
+        let outcome = Outcome::new();
+
         let result = Self::sign_(
             &self.params, &mut self.params_once,
             &mut input, output.into(), &prompt,
@@ -838,10 +862,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Report(output::Report {}))
+            Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     /// Adds signatures to a detached signature file.
@@ -865,13 +889,15 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         detached_signatures: D,
         output: O,
         prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
+        let outcome = Outcome::new();
+
         let result = Self::append_(
             &self.params, &mut self.params_once,
             &mut input, Box::new(detached_signatures),
@@ -907,10 +933,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Report(output::Report {}))
+            Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     // Note: we box `detached_signatures` instead of passing a
@@ -973,12 +999,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
+        let outcome = Outcome::new();
+
         let result = Self::sign_(
             &self.params, &mut self.params_once,
             &mut input, output.into(), &prompt,
@@ -1014,10 +1042,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Report(output::Report {}))
+            Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     /// Adds signatures to an inline signed message.
@@ -1047,12 +1075,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn append<I, O, P>(mut self, input: I, mut output: O, prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
         P: prompt::Prompt,
     {
+        let outcome = Outcome::new();
+
         let result = Self::append_(
             &self.params, &mut self.params_once,
             Box::new(input), &mut output, &prompt);
@@ -1087,10 +1117,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Report(output::Report {}))
+            Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     // Note: we box `input` instead of passing a reference so that we
@@ -1412,12 +1442,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
     pub fn sign<I, O, P>(mut self, mut input: I, mut output: O, prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
         P: prompt::Prompt,
     {
+        let outcome = Outcome::new();
+
         let result = Self::clear_sign_(
             &self.params, &mut self.params_once,
             &mut input, &mut output, &prompt);
@@ -1452,10 +1484,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         // Emit the report.
         stream.output(
             &self.params,
-            Output::Report(output::Report {}))
+            Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     fn clear_sign_<'p>(
