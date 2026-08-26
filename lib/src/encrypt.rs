@@ -61,6 +61,22 @@ pub mod error {
         NoRecipientsOrPasswords(NoRecipientsOrPasswords),
     }
 
+    /// Signing failed.
+    ///
+    /// Provides some information about why signing was not
+    /// possible.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("{}",
+            if let Some(err) = .unusable_certs.first() {
+                err.to_string()
+            } else {
+                format!("Certificate can't be used for signing")
+            })]
+    pub struct SigningFailed {
+        pub unusable_certs: Vec<CertError>,
+    }
+
     /// Encryption failed.
     ///
     /// Provides some information about why encryption was not
@@ -83,10 +99,10 @@ pub mod error {
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
         #[error(transparent)]
-        CertError(CertError),
+        PromptError(prompt::Error),
 
         #[error(transparent)]
-        PromptError(prompt::Error),
+        SigningFailed(SigningFailed),
 
         #[error(transparent)]
         EncryptionFailed(EncryptionFailed),
@@ -695,7 +711,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         let mut signers = sequoia.get_signing_keys(&signers, None, &prompt)
             .map_err(|err| {
                 Error::OperationalError(
-                    error::OperationalError::CertError(err))
+                    error::OperationalError::SigningFailed(
+                        error::SigningFailed {
+                            unusable_certs: vec![ err ],
+                        }))
             })?;
 
         let mut passwords = passwords.to_vec();
