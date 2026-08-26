@@ -1,11 +1,58 @@
-//! Functionality for creating digital signature over data.
+//! Create digital signature over data.
 //!
 //! This module contains functionality related to creating digital
-//! signatures.
+//! signatures over data.  For signing certificates, see
+//! [`Sequoia::pki_certify`](crate::pki::certify).  To verify a
+//! signature, see [`Sequoia::verify`](crate::verify).
+//!
+//! # Signature Types
+//!
+//! OpenPGP specifies three signature types: inline signatures,
+//! detached signatures, and cleartext signatures.
+//!
+//! An inline signature combines the signed data and the signature in
+//! a single artifact.  This signature type is the most robust, but
+//! the consumer needs to extract the original data to use it, which
+//! can be inconvenient.
+//!
+//! A detached signature stores the signature data in a separate
+//! artifact.  To verify a detached signature, the consumer needs the
+//! signed data.  Having two artifacts can be annoying, but it allows
+//! the consumer to use the signed data without having to extract it,
+//! or even check the signature.
+//!
+//! A cleartext signature is a special type of inline signature that
+//! is appropriate for human-readable data.  A cleartext signature
+//! combines the signed data and the signature in a single file, but
+//! the signed data is not encoded, and the signature is base64
+//! encoded and wraps the signed data.  This means that the signed
+//! data can be inspected using any tool that can display text.
+//!
+//! Unless you have to use a cleartext signature for compatibility
+//! purposes, you should avoid it, as it is possible for an attacker
+//! to trick less careful users.  Specifically, an attacker can add
+//! data to a message that is ignored when verifying the cleartext
+//! signature.  If the consumer verifies the signature and then uses
+//! the cleartext file as is, then they will consume data that hasn't
+//! been verified.  (The correct way to use a cleartext signature is
+//! for the verification tool to output the verified data, and to feed
+//! the verified data to the consuming tool.  That is often less
+//! convenient, and not all verification tools output the verified
+//! data.)
 //!
 //! # Examples
 //!
-//! Create an inline-signed message:
+//! The following example shows how to create an inline-signed message
+//! given a `Cert`.  If you have a `Fingerprint` or `KeyID`, use
+//! [`Sequoia::lookup`](crate::lookup) to find the corresponding
+//! certificate.  If you have an email address, use
+//! [`Sequoia::cert_list`](crate::cert::list) to find an authenticated
+//! certificate.
+//!
+//! The signing function looks for secret key material in the
+//! certificate itself, in any [specified
+//! keyrings](crate::SequoiaBuilder::add_keyring), and on the key
+//! store.
 //!
 //! ```
 //! use sequoia::Sequoia;
@@ -28,6 +75,70 @@
 //!     // Create an inline-signed message where the signature and the
 //!     // data are combined in the output.
 //!     .inline()
+//!     .add_signer(cert.clone())
+//!     .sign(
+//!         std::io::Cursor::new(message),
+//!         &mut signed_message,
+//!         // Fail if the signing key is password protected.
+//!         sequoia::prompt::Cancel::new())?;
+//! #
+//! # sequoia.verify()
+//! #     .add_designated_signers(vec![ cert ])
+//! #     .inline_signature(
+//! #         std::io::Cursor::new(signed_message),
+//! #         std::io::empty())
+//! #     .expect("Valid signature");
+//! # Ok(()) }
+//! ```
+//!
+//! To get more information about the signing process, you can provide
+//! an implementation of [`Stream`]:
+//!
+//! ```
+//! use sequoia::Result;
+//! use sequoia::Sequoia;
+//! use sequoia::sign::Output;
+//! use sequoia::sign::Params;
+//! use sequoia::sign::Stream;
+//! use sequoia::sign;
+//! # use sequoia::openpgp::cert::CertBuilder;
+//!
+//! struct MyStream {
+//! }
+//!
+//! impl Stream for MyStream {
+//!    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+//!        match output {
+//!            Output::Signing(signing) => {
+//!                eprintln!("Will sign message with {} keys",
+//!                          signing.signers.len());
+//!            }
+//!            _ => (),
+//!        }
+//!
+//!        Ok(())
+//!    }
+//! }
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let (cert, _) =
+//! #     CertBuilder::general_purpose(Some("alice@example.org"))
+//! #         .generate()?;
+//! #
+//! // A stateless Sequoia instance.
+//! let sequoia = Sequoia::builder().stateless().build()?;
+//!
+//! // The message to sign.
+//! let message = b"I owe you";
+//!
+//! let mut stream = MyStream {};
+//!
+//! let mut signed_message = Vec::new();
+//! sequoia.sign()
+//!     // Create an inline-signed message where the signature and the
+//!     // data are combined in the output.
+//!     .inline()
+//!     .stream(&mut stream)
 //!     .add_signer(cert.clone())
 //!     .sign(
 //!         std::io::Cursor::new(message),
@@ -76,6 +187,12 @@ use crate::types::HashMode;
 // Stream trait.
 stream!{}
 
+/// Errors related to signing.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+///
+/// These errors are usually wrapped in an [`Error`].
 pub mod error {
     use super::*;
 
@@ -259,8 +376,11 @@ pub mod output {
     }
 }
 
+/// The [`Stream`] output.
+///
 /// The variants of this enum are the different types of output that
-/// [`sign`](Builder::sign) and [`append`](Builder::append) emit.
+/// [`sign`](Builder::sign) and [`append`](Builder::append) emit.  See
+/// [`Stream`].
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
@@ -298,7 +418,7 @@ pub enum Output {
     Report(output::Report),
 }
 
-/// The outcome.
+/// The signing operation's outcome.
 ///
 /// This is returned by [`Builder::sign`] and [`Builder::append`].  It
 /// contains information about the operation's outcome.  More detailed
