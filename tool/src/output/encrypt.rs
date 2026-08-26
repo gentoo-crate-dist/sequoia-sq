@@ -28,11 +28,12 @@ impl encrypt::Stream for Stream<'_> {
         make_qprintln!(self.sq.quiet());
 
         match output {
-            encrypt::Output::EncryptionFailed(
-                encrypt::output::EncryptionFailed {
-                    unusable_certs,
-                    ..
-                }) =>
+            encrypt::Output::OperationalError(
+                encrypt::error::OperationalError::EncryptionFailed(
+                    encrypt::error::EncryptionFailed {
+                        unusable_certs,
+                        ..
+                    })) =>
             {
                 let unusable_cert = unusable_certs[0].clone();
 

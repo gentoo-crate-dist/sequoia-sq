@@ -61,6 +61,17 @@ pub mod error {
         NoRecipientsOrPasswords(NoRecipientsOrPasswords),
     }
 
+    /// Encryption failed.
+    ///
+    /// Provides some information about why encryption was not
+    /// possible.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Encryption failed")]
+    pub struct EncryptionFailed {
+        pub unusable_certs: Vec<CertError>,
+    }
+
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -76,6 +87,9 @@ pub mod error {
 
         #[error(transparent)]
         PromptError(prompt::Error),
+
+        #[error(transparent)]
+        EncryptionFailed(EncryptionFailed),
 
         #[error(transparent)]
         Other(Arc<anyhow::Error>),
@@ -122,16 +136,6 @@ pub enum Error {
 /// Data structures related to [`Output`].
 pub mod output {
     use super::*;
-
-    /// Emitted when encryption fails.
-    ///
-    /// Provides some information about why encryption was not
-    /// possible.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct EncryptionFailed {
-        pub unusable_certs: Vec<CertError>,
-    }
 
     /// Information about how we're going to encrypt and sign the
     /// message before we do the actual encryption.
@@ -190,12 +194,6 @@ pub enum Output {
     /// This error is unrecoverable, and the rest of the operation
     /// will be aborted.
     ArgumentError(error::ArgumentError),
-
-    /// Emitted when encryption fails.
-    ///
-    /// Provides some information about why encryption was not
-    /// possible.
-    EncryptionFailed(output::EncryptionFailed),
 
     /// Information about how we're going to encrypt and sign the
     /// message before we do the actual encryption.
@@ -922,17 +920,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         }
 
         if ! unusable_certs.is_empty() {
-            let err = unusable_certs[0].clone();
-
-            stream.output(
-                params,
-                Output::EncryptionFailed(output::EncryptionFailed {
-                    unusable_certs
-                }))
-                .map_err(|err| Error::StreamOutputError(err))?;
-
             return Err(Error::OperationalError(
-                error::OperationalError::CertError(err)));
+                error::OperationalError::EncryptionFailed(
+                    error::EncryptionFailed {
+                        unusable_certs
+                    })));
         } else {
             let mut recipients = recipient_subkeys
                 .iter()
