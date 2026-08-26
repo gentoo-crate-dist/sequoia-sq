@@ -268,10 +268,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Signs the message with the specified certificates.
     ///
     /// See [`Builder::add_signer`] for details.
-    pub fn add_signers(mut self, signers: impl Iterator<Item=Cert>)
+    pub fn add_signers(mut self, signers: impl IntoIterator<Item=Cert>)
         -> Self
     {
-        self.params.signers.extend(signers);
+        self.params.signers.extend(signers.into_iter());
         self
     }
 
@@ -294,10 +294,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     ///
     ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
     pub fn add_notations(mut self,
-                         notations: impl Iterator<Item=(bool, NotationData)>)
+                         notations: impl IntoIterator<Item=(bool, NotationData)>)
         -> Self
     {
-        self.params.notations.extend(notations);
+        self.params.notations.extend(notations.into_iter());
         self
     }
 
@@ -337,10 +337,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     ///
     /// A recipient only needs to know one of the passwords to decrypt
     /// the message.
-    pub fn add_passwords(mut self, passwords: impl Iterator<Item=Password>)
+    pub fn add_passwords(mut self, passwords: impl IntoIterator<Item=Password>)
         -> Self
     {
-        self.params.passwords.extend(passwords);
+        self.params.passwords.extend(passwords.into_iter());
         self
     }
 
@@ -363,10 +363,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Encrypts the message for the specified certificates.
     ///
     /// See [`Builder::add_recipient`] for details.
-    pub fn add_recipients(mut self, recipients: impl Iterator<Item=Cert>)
+    pub fn add_recipients(mut self, recipients: impl IntoIterator<Item=Cert>)
         -> Self
     {
-        self.params.recipients.extend(recipients);
+        self.params.recipients.extend(recipients.into_iter());
         self
     }
 
@@ -430,7 +430,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Note: the headers are informative and are neither encrypted
     /// nor protected by any signature.
     pub fn ascii_armor_headers<K, V>(mut self,
-                                     headers: impl Iterator<Item=(K, V)>)
+                                     headers: impl IntoIterator<Item=(K, V)>)
         -> Self
     where
         K: Into<String>,
@@ -438,6 +438,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     {
         self.params.armor_headers = Some(
             headers
+                .into_iter()
                 .map(|(k, v)| {
                     (k.into(), v.into())
                 })
