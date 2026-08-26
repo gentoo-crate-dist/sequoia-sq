@@ -1,6 +1,7 @@
 //! User prompting.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use sequoia_openpgp as openpgp;
@@ -18,7 +19,7 @@ pub(crate) mod check;
 
 /// Prompt-specific errors.
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
     /// Password prompting has been disabled.
     ///
@@ -45,7 +46,7 @@ pub enum Error {
     ///
     /// This allows the caller to return arbitrary errors.
     #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    Other(#[from] Arc<anyhow::Error>),
 }
 
 impl Error {
@@ -67,7 +68,7 @@ impl Error {
 
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Error {
-        Error::Other(anyhow::Error::from(err))
+        Error::Other(Arc::new(anyhow::Error::from(err)))
     }
 }
 
