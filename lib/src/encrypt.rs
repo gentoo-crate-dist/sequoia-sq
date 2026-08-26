@@ -488,15 +488,22 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     ///
     /// On failure some of the encrypted data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn encrypt<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
+    pub fn encrypt<'w, I, O, P>(self, mut input: I, output: O, prompt: P)
         -> Result<()>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
-        let output = output.into();
+        self.encrypt_(&mut input, output.into(), Box::new(prompt))
+    }
 
+    fn encrypt_<'w, 'p>(mut self,
+                        mut input: &mut (dyn std::io::Read + Send + Sync),
+                        output: Writer<'w>,
+                        prompt: Box<dyn prompt::Prompt + 'p>)
+        -> Result<()>
+    {
         let &Params {
             sequoia,
             ref signers,
