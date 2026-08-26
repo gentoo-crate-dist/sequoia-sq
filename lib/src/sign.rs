@@ -148,6 +148,28 @@ pub mod error {
     pub struct CompressedData {
     }
 
+    /// Signing failed.
+    ///
+    /// Provides some information about why signing was not possible.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("{}",
+            if let Some(err) = .unusable_certs.first() {
+                err.to_string()
+            } else {
+                format!("Certificate can't be used for signing")
+            })]
+    pub struct SigningFailed {
+        /// The certificates that could not be used to generate a
+        /// signature.
+        ///
+        /// This list is not necessarily exhaustive.  That is, if you
+        /// want to sign with two certificates and both of them are
+        /// problematic, the following is not guaranteed to mention
+        /// both certificates.
+        pub unusable_certs: Vec<CertError>,
+    }
+
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -159,9 +181,6 @@ pub mod error {
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
         #[error(transparent)]
-        CertError(CertError),
-
-        #[error(transparent)]
         InvalidDetachedSignature(InvalidDetachedSignature),
 
         #[error(transparent)]
@@ -172,6 +191,9 @@ pub mod error {
 
         #[error(transparent)]
         CompressedData(CompressedData),
+
+        #[error(transparent)]
+        SigningFailed(SigningFailed),
 
         #[error(transparent)]
         Other(Arc<anyhow::Error>),
@@ -219,22 +241,6 @@ pub enum Error {
 pub mod output {
     use super::*;
 
-    /// Emitted when signing fails.
-    ///
-    /// Provides some information about why signing was not possible.
-    #[non_exhaustive]
-    #[derive(Debug)]
-    pub struct SigningFailed {
-        /// The certificates that could not be used to generate a
-        /// signature.
-        ///
-        /// This list is not necessarily exhaustive.  That is, if you
-        /// want to sign with two certificates and both of them are
-        /// problematic, the following is not guaranteed to mention
-        /// both certificates.
-        pub unusable_certs: Vec<CertError>,
-    }
-
     /// Information about how we are going to sign the message before
     /// we create the actual signatures.
     #[non_exhaustive]
@@ -281,11 +287,6 @@ pub enum Output {
     /// This error is unrecoverable, and the rest of the operation
     /// will be aborted.
     ArgumentError(error::ArgumentError),
-
-    /// Emitted when signing fails.
-    ///
-    /// Provides some information about why signing was not possible.
-    SigningFailed(output::SigningFailed),
 
     /// Information about how we are going to sign the message before
     /// we create the actual signatures.
@@ -717,17 +718,11 @@ where
                 signers
             }
             Err(err) => {
-                stream.output(
-                    params,
-                    Output::SigningFailed(
-                        output::SigningFailed {
-                            unusable_certs: vec![ err.clone() ],
-                        }))
-                    .map_err(|err| Error::StreamOutputError(err))?;
-
                 return Err(Error::OperationalError(
-                    error::OperationalError::CertError(
-                        err)));
+                    error::OperationalError::SigningFailed(
+                        error::SigningFailed {
+                            unusable_certs: vec![ err.clone() ],
+                        })));
             }
         };
 
@@ -1177,17 +1172,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
                 signers
             }
             Err(err) => {
-                stream.output(
-                    params,
-                    Output::SigningFailed(
-                        output::SigningFailed {
-                            unusable_certs: vec![ err.clone() ],
-                        }))
-                    .map_err(|err| Error::StreamOutputError(err))?;
-
                 return Err(Error::OperationalError(
-                    error::OperationalError::CertError(
-                        err)));
+                    error::OperationalError::SigningFailed(
+                        error::SigningFailed {
+                            unusable_certs: vec![ err.clone() ],
+                        })));
             }
         };
 
@@ -1542,17 +1531,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
                 signers
             }
             Err(err) => {
-                stream.output(
-                    params,
-                    Output::SigningFailed(
-                        output::SigningFailed {
-                            unusable_certs: vec![ err.clone() ],
-                        }))
-                    .map_err(|err| Error::StreamOutputError(err))?;
-
                 return Err(Error::OperationalError(
-                    error::OperationalError::CertError(
-                        err)));
+                    error::OperationalError::SigningFailed(
+                        error::SigningFailed {
+                            unusable_certs: vec![ err.clone() ],
+                        })));
             }
         };
 

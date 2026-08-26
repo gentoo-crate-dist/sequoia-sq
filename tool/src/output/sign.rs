@@ -26,11 +26,12 @@ impl sign::Stream for Stream<'_> {
         make_qprintln!(self.sq.quiet());
 
         match output {
-            sign::Output::SigningFailed(
-                sign::output::SigningFailed {
-                    unusable_certs,
-                    ..
-                }) =>
+            sign::Output::OperationalError(
+                sign::error::OperationalError::SigningFailed(
+                    sign::error::SigningFailed {
+                        unusable_certs,
+                        ..
+                    })) =>
             {
                 for unusable_cert in unusable_certs {
                     let cert::CertError {
