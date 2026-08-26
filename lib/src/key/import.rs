@@ -412,6 +412,7 @@ pub enum Output {
 /// [`Builder::import_keys`], and [`Builder::import_key`].  It
 /// contains information about the outcome.  More detailed information
 /// is available via the [`Stream`] interface.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct Outcome {
     /// The imported keys.

@@ -619,6 +619,7 @@ pub enum Output {
 /// [`Builder::import_autocrypt`].  It contains information about the
 /// operation's outcome.  More detailed information is available via
 /// the [`Stream`] interface.
+#[non_exhaustive]
 #[derive(Debug)]
 pub struct Outcome {
     pub artifact_type: ArtifactType,
