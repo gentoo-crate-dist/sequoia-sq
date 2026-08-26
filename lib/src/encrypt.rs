@@ -166,6 +166,30 @@ pub mod output {
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
+    /// An operational error occurred.
+    ///
+    /// This may be because the operation requires the certificate
+    /// store, but it is disabled.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    OperationalError(error::OperationalError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
+
+    /// Errors related to incorrectly calling the function.
+    ///
+    /// This error is unrecoverable, and the rest of the operation
+    /// will be aborted.
+    ArgumentError(error::ArgumentError),
+
     /// Emitted when encryption fails.
     ///
     /// Provides some information about why encryption was not
@@ -570,20 +594,57 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     ///
     /// On failure some of the encrypted data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn encrypt<'w, I, O, P>(self, mut input: I, output: O, prompt: P)
+    pub fn encrypt<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
         P: prompt::Prompt,
     {
-        self.encrypt_(&mut input, output.into(), Box::new(prompt))
+        let result = Self::encrypt_(
+            &self.params, &mut self.params_once,
+            &mut input, output.into(), &prompt);
+
+        let mut stream = self.params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Encrypted(output::Encrypted {}))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
-    fn encrypt_<'w, 'p>(mut self,
+    fn encrypt_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
                         mut input: &mut (dyn std::io::Read + Send + Sync),
                         output: Writer<'w>,
-                        prompt: Box<dyn prompt::Prompt + 'p>)
+                        prompt: &(dyn prompt::Prompt + 'p))
         -> Result<(), Error>
     {
         let &Params {
@@ -602,10 +663,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             ref armor_headers,
 
             ref filename,
-        } = &self.params;
+        } = params;
         let ParamsOnce {
             stream,
-        } = &mut self.params_once;
+        } = params_once;
 
         let mut signers = sequoia.get_signing_keys(&signers, None, &prompt)
             .map_err(|err| {
@@ -838,7 +899,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             let err = unusable_certs[0].clone();
 
             stream.output(
-                &self.params,
+                params,
                 Output::EncryptionFailed(output::EncryptionFailed {
                     unusable_certs
                 }))
@@ -871,7 +932,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                 .collect::<Vec<_>>();
 
             stream.output(
-                &self.params,
+                params,
                 Output::Encrypting(output::Encrypting {
                     recipients,
                     undecryptable: ! have_one_secret,
@@ -964,12 +1025,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         writer_stack.finalize().context("Failed to encrypt")
             .map_err(op!())?;
-
-        stream.output(
-            &self.params,
-            Output::Encrypted(output::Encrypted {
-            }))
-            .map_err(|err| Error::StreamOutputError(err))?;
 
         Ok(())
     }
