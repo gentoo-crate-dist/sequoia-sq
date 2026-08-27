@@ -721,6 +721,19 @@ pub struct Outcome {
 }
 
 impl Outcome {
+    fn new(cert: &Cert) -> Self {
+        Outcome {
+            cert: cert.clone(),
+            certifications: Vec::new(),
+        }
+    }
+
+    fn to_report(&self) -> output::Report {
+        output::Report {
+            certifications: self.certifications.clone(),
+        }
+    }
+
     /// Returns a reference to the updated certificate.
     pub fn cert(&self) -> &Cert {
         &self.cert
@@ -1464,17 +1477,12 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     where
         P: prompt::Prompt,
     {
+        let mut outcome = Outcome::new(cert);
+
         let result = Self::certify_(
             &self.params, &mut self.params_once,
-            certifier, cert, userids, &prompt);
-
-        let (result, certifications) = match result {
-            Ok(outcome) => {
-                let certifications = outcome.certifications.clone();
-                (Ok(outcome), certifications)
-            }
-            Err(err) => (Err(err), Vec::new()),
-        };
+            certifier, cert, userids, &prompt,
+            &mut outcome);
 
         let mut stream = self.params_once.stream;
 
@@ -1483,13 +1491,11 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
             // Emit the report.
             stream.output(
                 &self.params,
-                Output::Report(output::Report {
-                    certifications,
-                }))
+                Output::Report(outcome.to_report()))
                 .map_err(|err| Error::StreamOutputError(err))?;
         }
 
-        result
+        result.map(|_| outcome)
     }
 
     fn certify_<'a>(params: &Params<'sequoia>,
@@ -1497,8 +1503,9 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
                     certifier: &Cert,
                     cert: &Cert,
                     userids: &[UserID],
-                    prompt: &(dyn prompt::Prompt + 'a))
-        -> Result<Outcome, Error>
+                    prompt: &(dyn prompt::Prompt + 'a),
+                    outcome: &mut Outcome)
+        -> Result<(), Error>
     {
         tracer!(false, "certify");
 
@@ -1896,10 +1903,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
 
         if certifications.iter().all(|(_u, s)| s.is_empty()) {
             // There are no signatures to insert.  We're done.
-            return Ok(Outcome {
-                cert: cert.clone(),
-                certifications: Vec::new(),
-            });
+            return Ok(());
         }
 
         let cert = cert.clone()
@@ -1930,10 +1934,9 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
             }
         }
 
-        Ok(Outcome {
-            cert,
-            certifications,
-        })
+        outcome.cert = cert;
+        outcome.certifications = certifications;
+        Ok(())
     }
 }
 
