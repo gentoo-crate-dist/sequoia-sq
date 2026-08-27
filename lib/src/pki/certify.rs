@@ -1242,12 +1242,14 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     /// incorrect, you should use this function when constraining by
     /// domain.  See [`Builder::add_regular_expression_constraints`]
     /// for more information about constraints.
-    pub fn add_domain_constraints<S>(mut self, domains: impl Iterator<Item=S>)
+    pub fn add_domain_constraints<S>(mut self,
+                                     domains: impl IntoIterator<Item=S>)
         -> Self
     where
         S: AsRef<str>
     {
-        self.params.domains.extend(domains.map(|d| d.as_ref().to_string()));
+        self.params.domains.extend(
+            domains.into_iter().map(|d| d.as_ref().to_string()));
         self
     }
 
@@ -1317,12 +1319,13 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     /// See [`Builder::add_regular_expression_constraint`] for a more
     /// detailed explanation.
     pub fn add_regular_expression_constraints<S>(
-        mut self, regexes: impl Iterator<Item=S>)
+        mut self, regexes: impl IntoIterator<Item=S>)
         -> Self
     where
         S: AsRef<str>
     {
-        self.params.regular_expressions.extend(regexes.map(|r| r.as_ref().to_string()));
+        self.params.regular_expressions.extend(
+            regexes.into_iter().map(|r| r.as_ref().to_string()));
         self
     }
 
@@ -1377,10 +1380,10 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     ///
     ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
     pub fn add_notations(mut self,
-                         notations: impl Iterator<Item=(bool, NotationData)>)
+                         notations: impl IntoIterator<Item=(bool, NotationData)>)
         -> Self
     {
-        self.params.notations.extend(notations);
+        self.params.notations.extend(notations.into_iter());
         self
     }
 
@@ -1425,12 +1428,13 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     /// certifications, the first additional certification will have a
     /// signature creation time of 11:59.58, the second at 11:59.59
     /// and the primary certification will be at 12:00.00.
-    pub fn add_certifications<T>(mut self, templates: impl Iterator<Item=T>)
+    pub fn add_certifications<T>(mut self, templates: impl IntoIterator<Item=T>)
         -> Self
     where
         T: Into<CertificationTemplate>
     {
-        self.params.additional_certifications.extend(templates.map(|t| t.into()));
+        self.params.additional_certifications.extend(
+            templates.into_iter().map(|t| t.into()));
         self
     }
 
