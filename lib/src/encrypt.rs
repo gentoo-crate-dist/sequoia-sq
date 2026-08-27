@@ -1,3 +1,238 @@
+//! Encrypt data.
+//!
+//! This module contains functionality related to encrypting and
+//! optionally signing data.  For decrypting a mesasge, see
+//! [`Sequoia::decrypt`](crate::decrypt).  To only sign a message, see
+//! [`Sequoia::sign`](crate::sign).
+//!
+//! # Encryption
+//!
+//! Messages are encrypted with public keys (certificates), with
+//! passwords, or a mix of the two.  For instance, to encrypt a
+//! message for Alice and Bob, you could obtain Alice and Bob's
+//! certificates and then pass them to [`Builder::add_recipient`].
+//! They can then use their private keys to decrypt the message.  If
+//! you don't have a certificate for Alice or Bob, you could instead
+//! use a password ([`Builder::add_password`]).  The first challenge
+//! is to securely share the password with them.  Long term, the
+//! larger difficulty is managing the passwords, which is much more
+//! complicated than managing certificates.  Nevertheless, there are a
+//! few cases where using a password is the better option, because it,
+//! unlike a key, can be memorized.
+//!
+//! Usually when encrypting a message, you'll also want to encrypt it
+//! for the user so that they can decrypt it later.
+//!
+//! # Signing
+//!
+//! When someone decrypts a message, they usually want to know who it
+//! was from.  Social clues, like a sign off, are not enough: anyone
+//! can encrypt a message to any certificate.  This identification is
+//! accomplished by having the sender sign the message using their own
+//! certificate ([`Builder::add_signer`]).  The recipient can then
+//! verify the signature and they know what certificate was used to
+//! sign the message.  If the recipient has authenticated the
+//! certificate (see [`Sequoia::pki_certify`](crate::pki::certify]),
+//! then they know who sent the message.
+//!
+//! Although it is possible to send a message without a signature, it
+//! is usually better to include a signature unless you have very
+//! specific requirements.
+//!
+//! In OpenPGP, signing and encryption are separate operations.  As
+//! such, it is possible to either sign first and then encrypt or vice
+//! versa.  To protect the signer's identity, it is more common to
+//! sign first, and then encrypt the signed message.  That is the only
+//! option using this interface.
+//!
+//! # Examples
+//!
+//! The following example shows how Alice might sign and encrypt a
+//! message for Bob.
+//!
+//! If you have a `Fingerprint` or `KeyID`, use
+//! [`Sequoia::lookup`](crate::lookup) to find the corresponding
+//! certificate.  If you have an email address, use
+//! [`Sequoia::cert_list`](crate::cert::list) to find an authenticated
+//! certificate.
+//!
+//! The encryption function looks for secret key material in the
+//! certificate itself, in any [specified
+//! keyrings](crate::SequoiaBuilder::add_keyring), and on the key
+//! store.
+//!
+//! ```
+//! use sequoia::Sequoia;
+//! use sequoia::cert::list::Query;
+//! use sequoia::cert;
+//! use sequoia::prompt::Cancel;
+//! use sequoia::sign;
+//!
+//! use openpgp::cert::amalgamation::ValidAmalgamation;
+//! use openpgp::types::RevocationStatus;
+//! use sequoia_openpgp as openpgp;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! // A stateless Sequoia instance.
+//! let sequoia = Sequoia::builder().ephemeral()?.build()?;
+//! #   // Since we create the certificates, they are marked as
+//! #   // authenticated.
+//! #   let alice = sequoia.key_generate()
+//! #         .email("alice@example.org")
+//! #         .without_password()
+//! #         .generate(Cancel::new())
+//! #         .expect("can generate certificate")
+//! #         .into_cert();
+//! #   let bob_priv = sequoia.key_generate()
+//! #         .email("bob@example.org")
+//! #         .without_password()
+//! #         .generate(Cancel::new())
+//! #         .expect("can generate certificate")
+//! #         .into_cert();
+//!
+//! // The message to sign.
+//! let message = b"I love you";
+//!
+//! // Find a certificate for Bob.
+//! let mut output = Vec::new();
+//! sequoia.cert_list()
+//!     .query(Query::email("bob@example.org"))
+//!     .list(&mut output)?;
+//!
+//! // If there are multiple certificates that we can authenticate for
+//! // "bob@example.org" we take the first one (arbitrarily) that is valid
+//! // (live, not revoked, has an encryption capable subkey).
+//! let bob = output.into_iter().find_map(|o| {
+//!     let cert::list::Output::Binding(binding) = o else {
+//!         return None;
+//!     };
+//!     let cert = binding.cert(&sequoia).ok()?;
+//!     let Ok(vc) = cert.with_policy(sequoia.policy(), sequoia.time()) else {
+//!         return None;
+//!     };
+//!     if vc.alive().is_err() {
+//!         // Not live.
+//!         return None;
+//!     }
+//!     if let RevocationStatus::NotAsFarAsWeKnow = vc.revocation_status() {
+//!     } else {
+//!         return None;
+//!     }
+//!     // Check for an encryption-capable subkey.
+//!     for k in vc.keys().for_transport_encryption() {
+//!         if ! k.key().pk_algo().is_supported() {
+//!             return None;
+//!         }
+//!         if k.alive().is_err() {
+//!             // Not live.
+//!             return None;
+//!         }
+//!         if let RevocationStatus::NotAsFarAsWeKnow = k.revocation_status() {
+//!         } else {
+//!             continue;
+//!         }
+//!         return Some(cert.clone());
+//!     }
+//!
+//!     None
+//! });
+//!
+//! let Some(bob) = bob else {
+//!     panic!("Could not find an authenticated certificate for Bob");
+//! };
+//!
+//! let mut ciphertext = Vec::new();
+//! sequoia.encrypt()
+//!     .add_signer(alice.clone())
+//!     .add_recipient(bob.clone())
+//!     .encrypt(
+//!         std::io::Cursor::new(message),
+//!         &mut ciphertext,
+//!         // Fail if the signing key is password protected.
+//!         sequoia::prompt::Cancel::new())?;
+//! #
+//! # let mut plaintext = Vec::new();
+//! # sequoia.decrypt()
+//! #     .add_designated_signer(alice)
+//! #     .add_secret_key(bob_priv)
+//! #     .decrypt(
+//! #         std::io::Cursor::new(ciphertext),
+//! #         &mut plaintext,
+//! #         Cancel::new())
+//! #     .expect("Valid signature");
+//! # assert_eq!(&plaintext, message);
+//! # Ok(()) }
+//! ```
+//!
+//! To get more information about the encryption process, you can
+//! provide an implementation of [`Stream`]:
+//!
+//! ```
+//! use sequoia::Result;
+//! use sequoia::Sequoia;
+//! use sequoia::encrypt::Output;
+//! use sequoia::encrypt::Params;
+//! use sequoia::encrypt::Stream;
+//! use sequoia::encrypt;
+//! use sequoia::prompt::Cancel;
+//! # use sequoia::openpgp::cert::CertBuilder;
+//!
+//! struct MyStream {
+//! }
+//!
+//! impl Stream for MyStream {
+//!    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+//!        match output {
+//!            Output::Encrypting(encrypting) => {
+//!                eprintln!("Will encrypt to {} recipients and sign with {} keys",
+//!                          encrypting.recipients.len(), encrypting.signers.len());
+//!            }
+//!            _ => (),
+//!        }
+//!
+//!        Ok(())
+//!    }
+//! }
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let (alice, _) =
+//! #     CertBuilder::general_purpose(Some("alice@example.org"))
+//! #         .generate()?;
+//! # let (bob, _) =
+//! #     CertBuilder::general_purpose(Some("bob@example.org"))
+//! #         .generate()?;
+//! #
+//! // A stateless Sequoia instance.
+//! let sequoia = Sequoia::builder().stateless().build()?;
+//!
+//! // The message to sign.
+//! let message = b"I owe you";
+//!
+//! let mut stream = MyStream {};
+//!
+//! let mut ciphertext = Vec::new();
+//! sequoia.encrypt()
+//!     .stream(&mut stream)
+//!     .add_signer(alice.clone())
+//!     .add_recipient(bob.clone())
+//!     .encrypt(
+//!         std::io::Cursor::new(message),
+//!         &mut ciphertext,
+//!         // Fail if the signing key is password protected.
+//!         sequoia::prompt::Cancel::new())?;
+//! #
+//! # let mut plaintext = Vec::new();
+//! # sequoia.decrypt()
+//! #     .add_designated_signer(alice)
+//! #     .add_secret_key(bob)
+//! #     .decrypt(
+//! #         std::io::Cursor::new(ciphertext),
+//! #         &mut plaintext,
+//! #         Cancel::new())
+//! #     .expect("Valid signature");
+//! # assert_eq!(&plaintext, message);
+//! # Ok(()) }
+//! ```
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -41,6 +276,12 @@ use crate::types::EncryptPurpose;
 // Stream trait.
 stream!{}
 
+/// Errors related to encryption.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+///
+/// These errors are usually wrapped in an [`Error`].
 pub mod error {
     use super::*;
 
@@ -182,8 +423,10 @@ pub mod output {
     }
 }
 
+/// The [`Stream`] output.
+///
 /// The variants of this enum are the different types of output that
-/// [`encrypt`](Builder::encrypt) emits.
+/// [`encrypt`](Builder::encrypt) emits.  See [`Stream`].
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Output {
@@ -221,7 +464,7 @@ pub enum Output {
     Report(output::Report),
 }
 
-/// The outcome.
+/// The encryption operation's outcome.
 ///
 /// This is returned by [`Builder::encrypt`].  It contains information
 /// about the operation's outcome.  More detailed information is
