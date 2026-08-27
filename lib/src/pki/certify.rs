@@ -459,6 +459,36 @@ stream!{}
 pub mod error {
     use super::*;
 
+    /// The certificate or the user ID is revoked and can't be
+    /// certified.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Can't certify {} for {}, it's revoked",
+            .fingerprint, Safe(.userid))]
+    pub struct Revoked {
+        pub fingerprint: Fingerprint,
+        pub userid: UserID,
+        /// A reason for revocation.
+        pub revocation: Signature,
+    }
+
+    /// An error related to making a certification.
+    ///
+    /// `CertificationError`s are considered hard errors and cause
+    /// processing to stop.  You can turn `CertificationError`s into
+    /// soft errors using [`Builder::ignore_certification_errors`].
+    /// In that case, you can still reject certain certifications by
+    /// catching them in your [`Stream`] implementation and returning
+    /// an error.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum CertificationError {
+        #[error(transparent)]
+        Revoked(#[from] Revoked),
+        #[error(transparent)]
+        Other(#[from] Arc<anyhow::Error>),
+    }
+
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -469,6 +499,9 @@ pub mod error {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
+        #[error(transparent)]
+        CertificationError(CertificationError),
+
         #[error(transparent)]
         Other(Arc<anyhow::Error>),
     }
@@ -504,36 +537,6 @@ pub mod error {
         CertifierSameAsCertificate(CertifierSameAsCertificate),
         #[error(transparent)]
         NoRegularExpressions(NoRegularExpressions),
-    }
-
-    /// The certificate or the user ID is revoked and can't be
-    /// certified.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("Can't certify {} for {}, it's revoked",
-            .fingerprint, Safe(.userid))]
-    pub struct Revoked {
-        pub fingerprint: Fingerprint,
-        pub userid: UserID,
-        /// A reason for revocation.
-        pub revocation: Signature,
-    }
-
-    /// An error related to making a certification.
-    ///
-    /// `CertificationError`s are considered hard errors and cause
-    /// processing to stop.  You can turn `CertificationError`s into
-    /// soft errors using [`Builder::ignore_certification_errors`].
-    /// In that case, you can still reject certain certifications by
-    /// catching them in your [`Stream`] implementation and returning
-    /// an error.
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    pub enum CertificationError {
-        #[error(transparent)]
-        Revoked(#[from] Revoked),
-        #[error(transparent)]
-        Other(#[from] Arc<anyhow::Error>),
     }
 
     /// The caller attempted to create a retraction, but there is
@@ -597,10 +600,6 @@ pub enum Error {
     /// This error is unrecoverable, and the rest of the operation
     /// will be aborted.
     ArgumentError(#[from] error::ArgumentError),
-
-    /// Errors related to a certification.
-    #[error(transparent)]
-    CertificationError(#[from] error::CertificationError),
 
     /// If [`Stream::output`] returns an error, it is propagated here.
     StreamOutputError(anyhow::Error),
@@ -1761,13 +1760,14 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
                             .map_err(|err| Error::StreamOutputError(err))?;
 
                         if ! ignore_certification_errors {
-                            return Err(Error::CertificationError(
-                                error::CertificationError::Revoked(
-                                    error::Revoked {
-                                        fingerprint: cert.fingerprint(),
-                                        userid: userid.clone(),
-                                        revocation: revs[0].clone(),
-                                    })));
+                            return Err(Error::OperationalError(
+                                error::OperationalError::CertificationError(
+                                    error::CertificationError::Revoked(
+                                        error::Revoked {
+                                            fingerprint: cert.fingerprint(),
+                                            userid: userid.clone(),
+                                            revocation: revs[0].clone(),
+                                        }))));
                         }
 
                         // Return a signature packet to indicate that we
@@ -1886,8 +1886,9 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
                         .map_err(|err| Error::StreamOutputError(err))?;
 
                     if ! ignore_certification_errors {
-                        return Err(Error::CertificationError(
-                            error::CertificationError::Other(err)));
+                        return Err(Error::OperationalError(
+                            error::OperationalError::CertificationError(
+                                error::CertificationError::Other(err))));
                     }
 
                     // Return a signature packet to indicate that we
