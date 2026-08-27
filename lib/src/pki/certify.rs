@@ -1504,14 +1504,36 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
 
         let mut stream = self.params_once.stream;
 
-        if let Err(Error::StreamOutputError(_)) = result.as_ref() {
-        } else {
-            // Emit the report.
-            stream.output(
-                &self.params,
-                Output::Report(outcome.to_report()))
-                .map_err(|err| Error::StreamOutputError(err))?;
-        }
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&self.params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&self.params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&self.params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        // Emit the report.
+        stream.output(
+            &self.params,
+            Output::Report(outcome.to_report()))
+            .map_err(|err| Error::StreamOutputError(err))?;
 
         result.map(|_| outcome)
     }
@@ -1550,35 +1572,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
 
         assert!(userids.len() > 0);
 
-        macro_rules! op {
-            () => {
-                |err| {
-                    let err = Arc::new(anyhow::Error::from(err));
-
-                    if let Err(err) = stream.output(
-                        params,
-                        Output::OperationalError(
-                            error::OperationalError::Other(Arc::clone(&err))))
-                    {
-                        Error::StreamOutputError(err)
-                    } else {
-                        Error::OperationalError(
-                            error::OperationalError::Other(err))
-                    }
-                }
-            }
-        }
-
         if certifier.fingerprint() == cert.fingerprint() {
-            stream.output(
-                params,
-                Output::ArgumentError(
-                    error::ArgumentError::CertifierSameAsCertificate(
-                        error::CertifierSameAsCertificate {
-                            cert: cert.clone(),
-                        })))
-                .map_err(|err| Error::StreamOutputError(err))?;
-
             return Err(Error::ArgumentError(
                 error::ArgumentError::CertifierSameAsCertificate(
                     error::CertifierSameAsCertificate {
@@ -1587,14 +1581,6 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         }
 
         if trust_depth == 0 && !regular_expressions.is_empty() {
-            stream.output(
-                params,
-                Output::ArgumentError(
-                    error::ArgumentError::NoRegularExpressions(
-                        error::NoRegularExpressions {
-                        })))
-                .map_err(|err| Error::StreamOutputError(err))?;
-
             return Err(Error::ArgumentError(
                 error::ArgumentError::NoRegularExpressions(
                     error::NoRegularExpressions {
@@ -2262,7 +2248,7 @@ Failed:              {:8}{:8}",
                     &["carol".into()],
                     prompt::Cancel::new())
                 .unwrap_err();
-            check(output, None, 0, 0, 0, 0, 1);
+            check(output, None, 1, 0, 0, 0, 1);
 
             // If we say ignore_certification_errors, `certify` will
             // return `Ok` (but it will still say that the
