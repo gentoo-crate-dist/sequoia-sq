@@ -1066,3 +1066,227 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         Ok(())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::prompt::Cancel;
+
+    const MESSAGE: &[u8] = b"message";
+
+    fn check(output: Vec<Output>, result: Result<Outcome, Error>,
+             recipients: usize, signers: usize)
+    {
+        let mut saw_error = None;
+        let mut saw_report = false;
+        let mut saw_signing = false;
+
+        eprintln!("Start: expecting {} signers, result: {:?}",
+                  signers,
+                  result.as_ref().map(|_| ()).map_err(|err| err.to_string()));
+        for o in output.iter() {
+            match o {
+                Output::OperationalError(err) => {
+                    eprintln!("- Operational Error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
+                }
+                Output::SystemError(err) => {
+                    eprintln!("- System Error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
+                }
+                Output::ArgumentError(err) => {
+                    eprintln!("- Argument Error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
+                }
+
+                Output::Encrypting(encrypting) => {
+                    eprintln!("- Encrypting");
+                    assert!(! saw_report);
+                    assert!(saw_error.is_none());
+                    saw_signing = true;
+                    assert_eq!(recipients, encrypting.recipients.len(),
+                               "recipients: expected vs. got");
+                    assert_eq!(signers, encrypting.signers.len(),
+                               "signers: expected vs. got");
+                }
+
+                Output::Report(_report) => {
+                    eprintln!("- Report");
+                    assert!(! saw_report);
+                    saw_report = true;
+                }
+            }
+        }
+        eprintln!("End");
+
+        assert!(saw_report);
+
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+            }
+            (Ok(_outcome), None) => {
+                assert!(saw_signing);
+            }
+        }
+    }
+
+    #[test]
+    fn encrypt() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate certificates and import them to the key store.
+        let keystore1 = sq.key_generate()
+            .email("keystore@example.org")
+            .without_password()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+        let keystore2 = sq.key_generate()
+            .email("keystore@example.org")
+            .without_password()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+
+        // Generate certificates and don't import them to the key store.
+        let ephemeral1 = sq.key_generate()
+            .email("ephemeral@example.org")
+            .without_password()
+            .ephemeral()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+        let ephemeral2 = sq.key_generate()
+            .email("ephemeral@example.org")
+            .without_password()
+            .ephemeral()
+            .generate(Cancel::new())
+            .expect("can generate a key")
+            .into_cert();
+
+        // The cert contains secret key material and the key
+        // material is stored on the key store.
+        let mut output = Vec::new();
+        let mut ciphertext = Vec::new();
+        let result = sq.encrypt()
+            .stream(&mut output)
+            .add_recipient(keystore1.clone())
+            .add_signer(keystore2.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1, 1);
+
+        // The cert contains secret key material and the key
+        // material is NOT stored on the key store.
+        let mut output = Vec::new();
+        let mut ciphertext = Vec::new();
+        let result = sq.encrypt()
+            .stream(&mut output)
+            .add_recipient(ephemeral1.clone())
+            .add_signer(ephemeral2.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1, 1);
+
+        // No secret key material.
+        let mut output = Vec::new();
+        let mut ciphertext = Vec::new();
+        let result = sq.encrypt()
+            .stream(&mut output)
+            .add_recipient(ephemeral1.clone().strip_secret_key_material())
+            .add_signer(ephemeral2.clone().strip_secret_key_material())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_err());
+        check(output, result, 0, 0);
+
+        // Multiple recipients and multiple signers.
+        let mut output = Vec::new();
+        let mut ciphertext = Vec::new();
+        let result = sq.encrypt()
+            .stream(&mut output)
+            .add_recipient(ephemeral1.clone())
+            .add_recipient(keystore1.clone())
+            .add_signer(ephemeral1.clone())
+            .add_signer(ephemeral2.clone())
+            .add_signer(keystore2.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 2, 3);
+
+        // No signer (good).
+        let mut output = Vec::new();
+        let mut ciphertext = Vec::new();
+        let result = sq.encrypt()
+            .stream(&mut output)
+            .add_recipient(keystore1.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(output, result, 1, 0);
+
+        // Signer, but no recipient (bad).
+        let mut output = Vec::new();
+        let mut ciphertext = Vec::new();
+        let result = sq.encrypt()
+            .stream(&mut output)
+            .add_signer(keystore1.clone())
+            .encrypt(
+                std::io::Cursor::new(MESSAGE),
+                &mut ciphertext,
+                crate::prompt::Cancel::new());
+
+        assert!(result.is_err());
+        check(output, result, 0, 0);
+    }
+}
