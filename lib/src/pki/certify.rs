@@ -148,6 +148,7 @@ use cert_store::store::UserIDQueryParams;
 
 use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::Writer;
 use crate::config::Expiration;
 use crate::consts::SECONDS_IN_YEAR;
@@ -585,21 +586,30 @@ pub mod error {
 #[derive(thiserror::Error, Debug)]
 #[error(transparent)]
 pub enum Error {
-    /// An operational-related error.
+    /// An error related to the arguments.
     ///
-    /// This may be because the operation requires the certificate
-    /// store, but it is disabled.
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
     ///
-    /// This error is unrecoverable, and the rest of the operation
-    /// will be aborted.
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
     #[error(transparent)]
     OperationalError(#[from] error::OperationalError),
-
-    /// Errors related to incorrectly calling the function.
-    ///
-    /// This error is unrecoverable, and the rest of the operation
-    /// will be aborted.
-    ArgumentError(#[from] error::ArgumentError),
 
     /// If [`Stream::output`] returns an error, it is propagated here.
     StreamOutputError(anyhow::Error),
@@ -679,6 +689,15 @@ pub enum Output {
     /// This error is unrecoverable, and the rest of the operation
     /// will be aborted.
     OperationalError(error::OperationalError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    SystemError(SystemError),
 
     /// Errors related to incorrectly calling the function.
     ///
@@ -1963,6 +1982,7 @@ mod tests {
 
         let mut operational_errors = 0;
         let mut argument_errors = 0;
+        let mut system_errors = 0;
         let mut certifications = 0;
         let mut certifications_skipped = 0;
         let mut certifications_failed = 0;
@@ -1980,6 +2000,11 @@ mod tests {
                     eprintln!("ArguementError: {}", err);
                     assert!(! saw_report);
                     argument_errors += 1;
+                }
+                Output::SystemError(err) => {
+                    eprintln!("SystemError: {}", err);
+                    assert!(! saw_report);
+                    system_errors += 1;
                 }
                 Output::Certified(
                     output::Certified {
@@ -2027,16 +2052,19 @@ mod tests {
                      Expected     Got
 Operational Errors:  {:8}{:8}
 Argument Errors:     {:8}{:8}
+System Errors:       {:8}{:8}
 Certifications:      {:8}{:8}
 Skipped:             {:8}{:8}
 Failed:              {:8}{:8}",
                   expected_operational_errors, operational_errors,
                   expected_argument_errors, argument_errors,
+                  0, system_errors,
                   expected_certifications, certifications,
                   expected_certifications_skipped, certifications_skipped,
                   expected_certifications_failed, certifications_failed);
 
         assert!(saw_report);
+        assert_eq!(system_errors, 0);
         assert_eq!(expected_operational_errors, operational_errors,
                    "operation errors");
         assert_eq!(expected_argument_errors, argument_errors,
