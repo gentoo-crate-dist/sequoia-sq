@@ -185,18 +185,6 @@ pub mod error {
         Other(Arc<anyhow::Error>),
     }
 
-    /// We failed to parse the input.
-    ///
-    /// Note: If we were unable to parse an individual artifact, then
-    /// we emit [`ImportError::BrokenArtifact`].
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("Parse error")]
-    pub struct ParseError {
-        #[source]
-        pub error: Arc<anyhow::Error>,
-    }
-
     /// Information about a broken certificate.
     ///
     /// If `cert` is `None`, then we expected a certificate and found
@@ -332,12 +320,6 @@ pub mod error {
     #[derive(thiserror::Error, Debug, Clone)]
     #[error(transparent)]
     pub enum ImportError {
-        /// We failed to parse the input.
-        ///
-        /// Note: If we were unable to parse an individual artifact,
-        /// then we emit [`ImportError::BrokenArtifact`].
-        ParseError(ParseError),
-
         /// An artifact is broken.
         BrokenArtifact(BrokenArtifact),
 
@@ -352,6 +334,18 @@ pub mod error {
         ImportingError(ImportingError),
     }
 
+    /// We failed to parse the input.
+    ///
+    /// Note: If we were unable to parse an individual artifact, then
+    /// we emit [`ImportError::BrokenArtifact`].
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parse error")]
+    pub struct ParseError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -362,6 +356,13 @@ pub mod error {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
+        /// We failed to parse the input.
+        ///
+        /// Note: If we were unable to parse an individual artifact,
+        /// then we emit [`ImportError::BrokenArtifact`].
+        #[error(transparent)]
+        ParseError(ParseError),
+
         #[error(transparent)]
         ImportError(ImportError),
 
@@ -529,7 +530,7 @@ pub mod output {
         pub decrypted: bool,
     }
 
-    /// We failed to import a cert.
+    /// We failed to import a cert to the store.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     #[error(transparent)]
@@ -586,10 +587,10 @@ pub enum Output {
     /// imported to the store.
     Imported(output::Imported),
 
-    /// Emitted when something can't be imported to the store.
+    /// Emitted when a certificate can't be imported to the store.
     ///
-    /// This is not considered an operational error, as processing is
-    /// not aborted.
+    /// This is not considered an operational error, and processing is
+    /// not normally aborted.
     ImportingFailed(output::ImportingFailed),
 
     /// Emitted after attempting to decrypt an autocrypt message.
@@ -925,15 +926,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             error: err.clone(),
         });
 
-        match err {
-            error::ImportError::BrokenArtifact(_)
-                | error::ImportError::ImportingError(_)
-                | error::ImportError::NoAutocryptHeader(_) =>
-            {
-                outcome.stats.certs.inc_errors();
-            },
-            _ => (),
-        }
+        outcome.stats.certs.inc_errors();
+
         stream.output(
             params,
             Output::ImportingFailed(
@@ -1104,16 +1098,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let raw_certs = match RawCertParser::from_buffered_reader(source) {
             Ok(raw_certs) => raw_certs,
             Err(err) => {
-                let err = error::ImportError::ParseError(
-                    error::ParseError {
-                        error: err.into(),
-                    });
-
-                Self::report_failure(
-                    params, params_once, err.clone(), outcome)?;
-
                 return Err(Error::OperationalError(
-                    error::OperationalError::ImportError(err)));
+                    error::OperationalError::ParseError(
+                        error::ParseError {
+                            error: err.into(),
+                        })));
             }
         };
 
@@ -1327,33 +1316,22 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     {
         let ppr = match PacketParser::from_buffered_reader(source) {
             Err(err) => {
-                let err = error::ImportError::ParseError(
-                    error::ParseError {
-                        error: err.into(),
-                    });
-
-                Self::report_failure(
-                    params, params_once,
-                    err.clone(), outcome)?;
-
                 return Err(Error::OperationalError(
-                    error::OperationalError::ImportError(err)));
+                    error::OperationalError::ParseError(
+                        error::ParseError {
+                            error: err.into(),
+                        })));
             }
             Ok(ppr) => ppr,
         };
         let sig = if let PacketParserResult::Some(pp) = ppr {
             let (packet, next_ppr) = match pp.next() {
                 Err(err) => {
-                    let err = error::ImportError::ParseError(
-                        error::ParseError {
-                            error: err.into(),
-                        });
-
-                    Self::report_failure(params, params_once,
-                                         err.clone().into(), outcome)?;
-
                     return Err(Error::OperationalError(
-                        error::OperationalError::ImportError(err)));
+                        error::OperationalError::ParseError(
+                            error::ParseError {
+                                error: err.into(),
+                            })));
                 }
                 Ok(ppr) => ppr,
             };
@@ -1396,17 +1374,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
             sig
         } else {
-            let err = error::ImportError::ParseError(
-                error::ParseError {
-                    error: Arc::new(anyhow::anyhow!(
-                        "Unnexpected end of file")),
-                });
-
-            Self::report_failure(
-                params, params_once, err.clone(), outcome)?;
-
             return Err(Error::OperationalError(
-                error::OperationalError::ImportError(err)));
+                error::OperationalError::ParseError(
+                    error::ParseError {
+                        error: Arc::new(anyhow::anyhow!(
+                            "Unnexpected end of file")),
+                    })));
         };
 
         if sig.typ() != SignatureType::KeyRevocation {
@@ -1929,15 +1902,7 @@ mod tests {
                     eprintln!("- ImportingFailed: {}", failure);
                     assert!(! saw_report);
                     assert!(saw_error.is_none());
-                    match failure {
-                        error::ImportError::BrokenArtifact(_)
-                            | error::ImportError::ImportingError(_)
-                            | error::ImportError::NoAutocryptHeader(_) =>
-                        {
-                            errors_count += 1;
-                        }
-                        _ => (),
-                    }
+                    errors_count += 1;
                 }
                 Output::DecryptedAutocrypt(_) => {
                     eprintln!("- DecryptedAutocrypt");
