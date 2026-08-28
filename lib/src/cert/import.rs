@@ -544,7 +544,7 @@ pub mod output {
     ///
     /// This is always emitted whether anything is imported or not.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Report {
         pub artifact_type: ArtifactType,
 
@@ -620,7 +620,7 @@ pub enum Output {
 /// operation's outcome.  More detailed information is available via
 /// the [`Stream`] interface.
 #[non_exhaustive]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Outcome {
     pub artifact_type: ArtifactType,
 
