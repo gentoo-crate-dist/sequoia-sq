@@ -1,12 +1,15 @@
 //! Import certificates and revocation certificates.
 //!
-//! The certificates can be imported from a keyring or from an email's
-//! autocrypt headers.  Importing bare revocation certificates is also
-//! supported, if the corresponding certificate is already available
-//! in the certificate store or in one of the supplied keyrings.
+//! Certificates can be imported directly, from a keyring or from an
+//! email's autocrypt headers.  Importing bare revocation certificates
+//! is also supported, if the corresponding certificate is already
+//! available in the certificate store or in one of the supplied
+//! keyrings (see [`SequoiaBuilder::add_keyring`]).
 //! [`Builder::import`] auto-detects the file's type.
 //! [`Builder::import_keyring`], [`Builder::import_revocation`], and
 //! [`Builder::import_autocrypt`] each handle a specific file type.
+//!
+//! [`SequoiaBuilder::add_keyring`]: crate::SequoiaBuilder::add_keyring
 //!
 //! If an imported certificate includes secret key material, the
 //! secret key material is silently dropped.  To import secret key
@@ -628,7 +631,7 @@ pub struct Outcome {
     /// Statistics.
     pub stats: ImportStats,
 
-    /// The imported keys.
+    /// The imported certificates.
     pub imported: Vec<output::Imported>,
     /// The import failures.
     pub importing_failed: Vec<output::ImportingFailed>,
@@ -1153,7 +1156,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         Ok(())
     }
 
-    /// Imports the certificates.
+    /// Imports certificates.
     ///
     /// This function returns an error if the certificate store is
     /// disabled.
@@ -1161,7 +1164,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// Recoverable errors, such as failing to import a certificate
     /// into the certificate store, do not cause this function to
     /// return an error.  These errors are reported using
-    /// [`Output::ImportingFailed`].  Parsing is not aborted.
+    /// [`Output::ImportingFailed`].  Parsing is not aborted.  Use
+    /// [`Outcome::all_imported`] to check if all certificates were
+    /// successfully imported.
     pub fn import_certs<I>(mut self, certs: I) -> Result<Outcome, Error>
     where
         I: IntoIterator<Item=Cert>,
