@@ -1315,6 +1315,9 @@ mod tests {
 
     use std::collections::BTreeSet;
 
+    use sequoia_openpgp as openpgp;
+    use openpgp::cert::CertBuilder;
+
     use crate::prompt::Cancel;
 
     fn check(sequoia: &Sequoia,
@@ -1748,5 +1751,76 @@ mod tests {
             panic!("Failed to return CertStoreDisabled");
         };
 
+    }
+
+    #[test]
+    fn local_trust_root() {
+        // Check that the trust roots are updated when the local trust
+        // root is created.
+        //
+        // cert_list will get the trust roots.  But, as we haven't
+        // accessed the local trust root yet, it won't be added.
+        // That's correct.  But make sure that after we create the
+        // local trust root, the set of trust roots is updated.
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+
+        let sequoia = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // This uses the trust roots, but it won't incluce the local
+        // trust root as that hasn't been created yet.
+        let mut output = Vec::new();
+        sequoia
+            .cert_list()
+            .query(Query::email("alice@example.org"))
+            .list(&mut output)
+            .expect("can list");
+        assert!(output.into_iter().all(|o| ! matches!(o, Output::Binding(_))));
+
+        sequoia
+            .cert_import()
+            .import_certs(Some(alice.clone()))
+            .expect("Can import cert");
+
+        let mut output = Vec::new();
+        sequoia
+            .cert_list()
+            .query(Query::email("alice@example.org"))
+            .list(&mut output)
+            .expect("can list");
+        assert!(output.into_iter().all(|o| ! matches!(o, Output::Binding(_))));
+
+        // Get the local trust root (creating it in the process).
+        let local_trust_root = sequoia.local_trust_root()
+            .expect("have local trust root");
+
+        assert!(local_trust_root.created());
+        let local_trust_root = local_trust_root
+            .into_cert()
+            .to_cert()
+            .expect("valid cert")
+            .clone();
+
+        // Certify a binding using the local trust root.
+        sequoia
+            .pki_certify()
+            .certify(&local_trust_root,
+                     &alice,
+                     &[UserID::from("<alice@example.org>")],
+                     Cancel::new())
+            .expect("can certify");
+
+        // Make sure the binding is now considered to be
+        // authenticated.
+        let mut output = Vec::new();
+        sequoia
+            .cert_list()
+            .query(Query::email("alice@example.org"))
+            .list(&mut output)
+            .expect("can list");
+        assert!(output.into_iter().any(|o| matches!(o, Output::Binding(_))));
     }
 }

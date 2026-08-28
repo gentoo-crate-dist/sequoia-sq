@@ -221,6 +221,7 @@ use openpgp::packet::key::PublicParts;
 use openpgp::packet::key::UnspecifiedRole;
 
 use cert_store::StoreUpdate;
+use cert_store::store::openpgp_cert_d;
 
 #[macro_use] mod transitional;
 #[macro_use] mod destination;
@@ -305,9 +306,6 @@ pub struct Sequoia {
     keyring_tsks: OnceLock<BTreeMap<
             Fingerprint,
         (Fingerprint, Key<PublicParts, UnspecifiedRole>)>>,
-
-    /// The local trust root, as set in the cert store.
-    trust_root_local: OnceLock<Option<Fingerprint>>,
 
     /// Additional trust roots.
     trust_roots: Vec<Fingerprint>,
@@ -760,50 +758,22 @@ impl Sequoia {
     /// Returns the trust roots, including the cert store's trust
     /// root, if any.
     pub fn trust_roots(&self) -> Vec<Fingerprint> {
-        let trust_root_local = self.trust_root_local.get_or_init(|| {
+        let trust_root_local = || -> Option<Fingerprint> {
             let cert_store = self.cert_store_or_else().ok()?;
             let certd = cert_store.certd()?;
 
-            let cert_bytes = match certd.certd().get(cert_store::store::openpgp_cert_d::TRUST_ROOT) {
-                Ok(Some((_tag, cert_bytes))) => Some(cert_bytes),
-                // Not found.
-                Ok(None) => None,
-                Err(err) => {
-                    self.warn(format_args!(
-                        "Error looking up local trust root: {}", err));
-                    None
-                }
-            }?;
+            let path = certd.certd()
+                .get_path(openpgp_cert_d::TRUST_ROOT)
+                .ok()?;
 
-            let cert = match RawCertParser::from_bytes(&cert_bytes[..]) {
-                Ok(mut parser) => {
-                    match parser.next() {
-                        Some(Ok(cert)) => Some(cert.fingerprint()),
-                        Some(Err(err)) => {
-                            self.warn(format_args!(
-                                "Local trust root is corrupted: {}",
-                                err));
-                            None
-                        }
-                        None =>  {
-                            self.warn(format_args!(
-                                "Local trust root is corrupted: \
-                                 no data"));
-                            None
-                        }
-                    }
-                }
-                Err(err) => {
-                    self.warn(format_args!(
-                        "Error parsing local trust root: {}", err));
-                    None
-                }
-            };
+            if path.exists() {
+                Some(self.local_trust_root().ok()?.fingerprint())
+            } else {
+                None
+            }
+        };
 
-            cert
-        });
-
-        if let Some(trust_root_local) = trust_root_local {
+        if let Some(trust_root_local) = trust_root_local() {
             self.trust_roots.iter().cloned()
                 .chain(std::iter::once(trust_root_local.clone()))
                 .collect()
@@ -982,4 +952,27 @@ type WotStore
 // import it, but it is private.
 pub fn ca_creation_time() -> SystemTime {
     SystemTime::UNIX_EPOCH + std::time::Duration::new(1014235320, 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_trust_root() {
+        // The local trust root is created and loaded on demand.  If
+        // we call `Sequoia::trust_roots` and the local trust root
+        // does not exist, it is not created.  Make sure that after we
+        // create the local trust root, `Sequoia::trust_roots` returns
+        // it.
+
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        assert!(sq.trust_roots().is_empty());
+
+        let trust_root = sq.local_trust_root()
+            .expect("Created trust root");
+
+        assert_eq!(sq.trust_roots(), &[trust_root.fingerprint()]);
+    }
 }

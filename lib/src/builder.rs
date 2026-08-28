@@ -264,7 +264,6 @@ impl SequoiaBuilder {
             key_store_path: self.key_store_path.clone(),
             key_store: Default::default(),
             trust_roots: self.trust_roots.clone(),
-            trust_root_local: Default::default(),
             ipc_server_path: self.ipc_server_path.clone(),
             password_cache: Default::default(),
         })
