@@ -803,7 +803,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     pub fn import<'a, P>(self,
                          input: impl std::io::Read + Send + Sync + 'a,
                          prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -819,8 +819,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             input, None, Cookie::default());
 
         if input.eof() {
-            // Empty file.  Silently skip it.
-            return Ok(());
+            // Empty file.  Silently skip it.  Treat it like an empty
+            // keyring.
+            return Ok(Outcome::new(ArtifactType::Keyring));
         }
 
         enum Type {
@@ -879,7 +880,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         params_once.stream.output(&params, Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        result
+        result.map(|_| outcome)
     }
 
     /// Report that importing something failed.
