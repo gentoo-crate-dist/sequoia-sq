@@ -877,7 +877,34 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             }
         };
 
-        params_once.stream.output(&params, Output::Report(outcome.to_report()))
+        let mut stream = params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(())
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(&params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(&params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(&params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        stream.output(&params, Output::Report(outcome.to_report()))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result.map(|_| outcome)
