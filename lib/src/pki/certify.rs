@@ -1,19 +1,81 @@
-//! Functionality for certifying user IDs.
+//! Certify user IDs and certificates.
 //!
-//! After Alice convinces herself that a given certificate belongs to
-//! Bob, she can create a certification that says as much.  Her
-//! software can use this to find the right certificate for Bob in the
-//! future.  If she decides, she can also share the certification with
-//! other people.  If they are willing to rely on her, they can use
-//! her certification to help them find the right certificate for Bob.
+//! # Certifications
 //!
-//! A good starting point for understanding how to use this
-//! functionality is to start with [`Sequoia::pki_certify`], and
-//! [`Builder`].
+//! Let's say Alice wants to send an encrypted message to Bob, or she
+//! has a signed message that she thinks is from Bob.  In both cases,
+//! she needs Bob's certificate.  After figuring out what the right
+//! certificate is, she should either memorize its fingerprint, or
+//! record that the certificate belongs to Bob so that she doesn't
+//! have to authenticate Bob's certificate again the next time she
+//! needs it.  Memorizing fingerprints is impractical.  So it is
+//! usually better to record the information.
+//!
+//! One way to record who a certificate belongs to, is to use a
+//! certification.  A certification is a special signature over a
+//! certificate and a user ID.  It says: the certifier is convinced
+//! that this certificate is controlled by an entity identified by the
+//! user ID.  Alice's software can use this certification to find the
+//! right certificate for Bob in the future.  (See
+//! [`Sequoia::cert_list`](crate::cert::list).)
+//!
+//! # Trusted Introducers
+//!
+//! If Alice decides to, she can share the certification with other
+//! people.  If they are willing to rely on her, they can use her
+//! certification to help them find the right certificate for Bob.
+//! (And because the certification is a signature, they can check that
+//! it is authentic.)  In these cases, those people consider Alice to
+//! be a trusted introducer.  A trusted introducer is another word for
+//! [certification authority] (CA).  This information can also be
+//! recorded using a certification.  To do this, set the trust depth
+//! to be greater than 0 using [`Builder::trust_depth`].
+//!
+//! [certification authority]: https://en.wikipedia.org/wiki/Certificate_authority
+//!
+//! In OpenPGP, certification authorities don't need to be all
+//! powerful.  Instead, someone can indicate that Alice is only
+//! partially trusted (see [`Builder::trust_amount`]).  This means
+//! that they need corroborating evidence from other trusted
+//! introducers.  Or, they can indicate that Alice should only be
+//! relied upon for email addresses within a certain domain, e.g.,
+//! `example.org` (see [`Builder::add_domain_constraint`]).  That is,
+//! Alice is only authoritative for user IDs with an email address in
+//! the `example.org` domain.
+//!
+//! # Social Graph
+//!
+//! Publishing a certification reveals the user's social graph.
+//! Particularly for private individuals, this is not always
+//! acceptable.  To prevent certifications from being accidentally
+//! published, you can clear the exportable flag using
+//! [`Builder::exportable`].  When OpenPGP software exports a
+//! certificate, it normally strips any non-exportable certifications.
+//! Similarly, well-behaving key servers strip non-exportable
+//! certifications on import.
+//!
+//! # Local Trust Root
+//!
+//! Sequoia maintains a local trust root.  The local trust root is
+//! user's default trust anchor.  It allows the user to create
+//! certifications independent of their day-to-day certificates.  Then
+//! if their day-to-day certificate expires, for instance, they don't
+//! need to recreate all of the certifications.  In particular, if a
+//! certification should not be exportable, you should probably use
+//! the local trust root instead of a specific certificate to create
+//! the certification.
+//!
+//! To get the local trust root, you can use
+//! [`Sequoia::local_trust_root`].  If it doesn't exist, then it is
+//! automatically created.
+//!
+//! Note: It is possible to add additional trust roots using
+//! [`SequoiaBuilder::add_trust_root`](crate::SequoiaBuilder::add_trust_root).
 //!
 //! # Examples
 //!
-//! Alice certifies Bob's certificate:
+//! Alice certifies that a certificate is controlled by
+//! `bob@example.org`:
 //!
 //! ```
 //! # use sequoia::openpgp;
@@ -212,7 +274,7 @@ where
 
 /// A `diff` of important parameters in a `Certification`.
 ///
-/// This `diff` does not intend to cover every possible different
+/// This `diff` does not intend to cover every possible difference
 /// between two certifications.  Instead, its purpose is to determine
 /// whether a certification should be updated.  If the answer is yes,
 /// this data structure can be used to conveniently summarize the
@@ -348,8 +410,7 @@ impl CertificationDiff {
         }
     }
 
-    /// Computes the difference between an old certification and a new
-    /// certification.
+    /// Computes the difference between two certifications.
     pub fn diff(old: &Signature, new: &Signature)
         -> Self
     {
@@ -452,11 +513,13 @@ impl CertificationDiff {
 // Stream trait.
 stream!{}
 
-/// Data structures related to [`Error`].
+/// Errors related to certifications.
 ///
 /// The errors are divided into categories, and the categories contain
 /// more precise errors.  In this way, if you match on a category, and
 /// a new error is added you can still react.
+///
+/// These errors are usually wrapped in an [`Error`].
 pub mod error {
     use super::*;
 
@@ -676,6 +739,8 @@ pub mod output {
     }
 }
 
+/// The [`Stream`] output.
+///
 /// The variants of this enum are the different types of output that
 /// [`pki_certify`](Builder::certify) emits.
 #[non_exhaustive]
@@ -716,18 +781,22 @@ pub enum Output {
 
     /// Emitted when the certification failed.
     ///
-    /// This is an error.
+    /// By default, this is a hard error.  Setting
+    /// [`Builder::ignore_certification_errors`] turns it into a soft
+    /// error.
     CertificationFailed(output::CertificationFailed),
 
     /// Emitted at the end.
     ///
-    /// This is always emitted whether anything is imported or not.
+    /// This is always emitted whether anything is certified or not.
     Report(output::Report),
 }
 
-/// The success value.
+/// The certify operation's outcome.
 ///
-/// Returned by [`Builder::certify`].
+/// Returned by [`Builder::certify`].  It contains information about
+/// the operation's outcome.  More detailed information is available
+/// via the [`Stream`] interface.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct Outcome {
@@ -918,12 +987,17 @@ impl<'sequoia> Params<'sequoia> {
 
     /// Returns whether certification errors are ignored.
     ///
-    /// By default, [`CertificationError`](error::CertificationError)s
+    /// By default, [`CertificationError`s](error::CertificationError)
     /// are considered hard errors and cause processing to stop.  If
     /// this is set, it turns `CertificationError`s into soft errors.
     /// In that case, you can still reject certain certifications by
     /// catching them in your [`Stream`] implementation and returning
     /// an error.
+    ///
+    /// If `ignore_certification_errors` is `false`, then an error
+    /// will be emitted twice.  Once as
+    /// [`Output::CertificationFailed`] and then as
+    /// [`Output::OperationalError`].
     pub fn ignore_certification_errors(&self) -> bool {
         self.ignore_certification_errors
     }
