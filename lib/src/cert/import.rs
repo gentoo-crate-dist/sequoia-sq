@@ -699,13 +699,13 @@ impl<'sequoia> Params<'sequoia> {
     /// Returns the pre-loaded secret keys.
     ///
     /// See [`Builder::secret_keys`].
-    pub fn secret_keys(&self) -> &[Cert] {
-        &self.secret_keys[..]
+    pub fn secret_keys(&self) -> impl Iterator<Item=&Cert> {
+        self.secret_keys.iter()
     }
 
     /// Returns the pre-loaded session keys.
-    pub fn session_keys(&self) -> &[SessionKey] {
-        &self.session_keys[..]
+    pub fn session_keys(&self) -> impl Iterator<Item=&SessionKey> {
+        self.session_keys.iter()
     }
 }
 
@@ -762,8 +762,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     ///
     /// Note: even if the autocrypt message can't be decrypted, any
     /// certificate found in the Autocrypt header is still imported.
-    pub fn secret_keys(mut self, secret_keys: Vec<Cert>) -> Self {
-        self.params.secret_keys = secret_keys;
+    pub fn secret_keys(mut self, secret_keys: impl IntoIterator<Item=Cert>)
+        -> Self
+    {
+        self.params.secret_keys = secret_keys.into_iter().collect();
 
         self
     }
@@ -781,8 +783,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     ///
     /// Note: even if the autocrypt message can't be decrypted, any
     /// certificate found in the Autocrypt header is still imported.
-    pub fn session_keys(mut self, session_keys: Vec<SessionKey>) -> Self {
-        self.params.session_keys = session_keys;
+    pub fn session_keys(mut self,
+                        session_keys: impl IntoIterator<Item=SessionKey>)
+        -> Self
+    {
+        self.params.session_keys = session_keys.into_iter().collect();
 
         self
     }
