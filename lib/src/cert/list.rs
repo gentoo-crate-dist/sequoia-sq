@@ -1782,7 +1782,7 @@ mod tests {
 
         sequoia
             .cert_import()
-            .import_certs(Some(alice.clone()))
+            .import_cert(alice.clone())
             .expect("Can import cert");
 
         let mut output = Vec::new();

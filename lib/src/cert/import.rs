@@ -619,10 +619,10 @@ pub enum Output {
 /// The outcome of importing keys.
 ///
 /// This is returned by [`Builder::import_keyring`],
-/// [`Builder::import_certs`], [`Builder::import_revocation`], and
-/// [`Builder::import_autocrypt`].  It contains information about the
-/// operation's outcome.  More detailed information is available via
-/// the [`Stream`] interface.
+/// [`Builder::import_certs`], [`Builder::import_cert`],
+/// [`Builder::import_revocation`], and [`Builder::import_autocrypt`].
+/// It contains information about the operation's outcome.  More
+/// detailed information is available via the [`Stream`] interface.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct Outcome {
@@ -1233,6 +1233,78 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         }
 
         Ok(())
+    }
+
+    /// Imports a certificate.
+    ///
+    /// This is similar to [`Builder::import_certs`], but it only
+    /// imports a single certificate, and it turns certificate import
+    /// errors, which are only reported via the stream interface, into
+    /// hard errors that are returned directly.
+    pub fn import_cert(mut self, cert: Cert) -> Result<Outcome, Error>
+    {
+        let Builder {
+            ref params,
+            ref mut params_once,
+        } = self;
+
+        let mut outcome = Outcome::new(ArtifactType::Certs);
+
+        let result = Self::import_and_report(
+            params, params_once,
+            cert.clone(),
+            output::Artifact::Cert(cert),
+            Vec::new(), // No provenance.
+            &mut outcome);
+
+        // Turn a soft error into a hard error.
+        let result = match result {
+            Ok(_) => {
+                outcome.importing_failed
+                    .first()
+                    .map_or(Ok(()),
+                            |failure| {
+                                Err(Error::OperationalError(
+                                    error::OperationalError::ImportError(
+                                        failure.error.clone())))
+                            })
+            },
+            Err(err) => Err(err),
+        };
+
+        let report = outcome.to_report();
+
+        let stream = &mut params_once.stream;
+
+        let result = match result {
+            Ok(()) => {
+                Ok(outcome)
+            }
+            Err(Error::ArgumentError(err)) => {
+                stream.output(params, Output::ArgumentError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::ArgumentError(err))
+            }
+            Err(Error::SystemError(err)) => {
+                stream.output(params, Output::SystemError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::SystemError(err))
+            }
+            Err(Error::OperationalError(err)) => {
+                stream.output(params, Output::OperationalError(err.clone()))
+                    .map_err(|err| Error::StreamOutputError(err))?;
+                Err(Error::OperationalError(err))
+            }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Return immediately; don't emit the report.
+                return Err(err);
+            }
+        };
+
+        stream.output(params, Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
     /// Imports a bare revocation certificate.
@@ -2158,6 +2230,48 @@ mod tests {
             panic!("Can import two certificates: {}", err);
         }
         check(ArtifactType::Certs, output, result, 2, 0);
+    }
+
+    #[test]
+    fn cert() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let (alice, _alice_rev) = CertBuilder::new()
+            .add_userid("<alice@example.org>")
+            .generate()
+            .unwrap();
+        let (bob, _bob_rev) = CertBuilder::new()
+            .add_userid("<bob@example.org>")
+            .generate()
+            .unwrap();
+
+        let mut output = Vec::new();
+        let result = sq.cert_import()
+            .stream(&mut output)
+            .import_cert(alice.clone());
+        if let Err(err) = result.as_ref() {
+            panic!("Can import a certificate: {}", err);
+        }
+        check(ArtifactType::Certs, output, result, 1, 0);
+
+        let mut output = Vec::new();
+        let result = sq.cert_import()
+            .stream(&mut output)
+            .import_cert(bob.clone());
+        if let Err(err) = result.as_ref() {
+            panic!("Can import a certificate: {}", err);
+        }
+        check(ArtifactType::Certs, output, result, 1, 0);
+
+        // Import Alice's certificate a second time.
+        let mut output = Vec::new();
+        let result = sq.cert_import()
+            .stream(&mut output)
+            .import_cert(alice.clone());
+        if let Err(err) = result.as_ref() {
+            panic!("Can import a certificate: {}", err);
+        }
+        check(ArtifactType::Certs, output, result, 1, 0);
     }
 
     #[test]
