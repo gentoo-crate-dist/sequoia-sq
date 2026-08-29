@@ -344,7 +344,7 @@ pub mod output {
 
     /// We failed to import a key.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error(transparent)]
     pub struct ImportingFailed {
         /// The related error.
@@ -357,7 +357,7 @@ pub mod output {
     ///
     /// This is always emitted whether anything is imported or not.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Report {
         /// Statistics.
         pub stats: ImportStats,
@@ -367,7 +367,7 @@ pub mod output {
 /// The variants of this enum are the different types of output that
 /// [`import`](Builder::import) emits.
 #[non_exhaustive]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Output {
     /// An operational error occurred.
     ///
@@ -413,7 +413,7 @@ pub enum Output {
 /// contains information about the outcome.  More detailed information
 /// is available via the [`Stream`] interface.
 #[non_exhaustive]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Outcome {
     /// The imported keys.
     pub imported: Vec<output::Imported>,
