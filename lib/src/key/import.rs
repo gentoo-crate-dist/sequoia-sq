@@ -165,18 +165,6 @@ pub mod error {
         Other(Arc<anyhow::Error>),
     }
 
-    /// We failed to parse the input.
-    ///
-    /// Note: If we were unable to parse an individual artifact, then
-    /// we emit [`ImportError::BrokenCert`].
-    #[non_exhaustive]
-    #[derive(thiserror::Error, Debug, Clone)]
-    #[error("Parse error")]
-    pub struct ParseError {
-        #[source]
-        pub error: Arc<anyhow::Error>,
-    }
-
     /// Information about a broken certificate.
     ///
     /// If `cert` is `None`, then we expected a certificate and found
@@ -239,12 +227,6 @@ pub mod error {
     #[derive(thiserror::Error, Debug, Clone)]
     #[error(transparent)]
     pub enum ImportError {
-        /// We failed to parse the input.
-        ///
-        /// Note: If we were unable to parse an individual
-        /// certificate, then we emit [`ImportError::BrokenCert`].
-        ParseError(ParseError),
-
         /// An artifact is broken.
         BrokenCert(BrokenCert),
 
@@ -259,6 +241,18 @@ pub mod error {
         ImportingCert(ImportingCert),
     }
 
+    /// We failed to parse the input.
+    ///
+    /// Note: If we were unable to parse an individual artifact, then
+    /// we emit [`ImportError::BrokenCert`].
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parse error")]
+    pub struct ParseError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
     /// An operational error that prevents processing from continuing.
     ///
     /// Operational errors are fatal and cause processing to abort.
@@ -269,6 +263,13 @@ pub mod error {
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
+        /// We failed to parse the input.
+        ///
+        /// Note: If we were unable to parse an individual
+        /// certificate, then we emit [`ImportError::BrokenCert`].
+        #[error(transparent)]
+        ParseError(ParseError),
+
         #[error(transparent)]
         ImportError(ImportError),
 
@@ -662,16 +663,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let parser = match CertParser::from_reader(input) {
             Ok(parser) => parser,
             Err(err) => {
-                let err = error::ImportError::ParseError(
-                    error::ParseError {
-                        error: err.into(),
-                    });
-
-                Self::report_failure(
-                    params, params_once, err.clone(), outcome)?;
-
                 return Err(Error::OperationalError(
-                    error::OperationalError::ImportError(err)));
+                    error::OperationalError::ParseError(
+                        error::ParseError {
+                            error: err.into(),
+                        })));
             }
         };
 

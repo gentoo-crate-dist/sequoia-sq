@@ -60,6 +60,22 @@ impl import::Stream for Stream<'_> {
         -> Result<()>
     {
         match output {
+            Output::OperationalError(
+                error @ error::OperationalError::ParseError(
+                    error::ParseError {
+                        error: _,
+                        ..
+                    })) =>
+            {
+                let input = if let Some(source) = self.source.as_ref() {
+                    Cow::Owned(source.display().to_string())
+                } else {
+                    Cow::Borrowed("input")
+                };
+
+                return Err(anyhow::Error::from(error)
+                           .context(format!("Reading {}", input)));
+            }
             Output::SystemError(_)
                 | Output::ArgumentError(_)
                 | Output::OperationalError(_) =>
@@ -151,15 +167,6 @@ impl import::Stream for Stream<'_> {
                 };
 
                 match error {
-                    error::ImportError::ParseError(
-                        error::ParseError {
-                            error: _,
-                            ..
-                        }) =>
-                    {
-                        return Err(anyhow::Error::from(error)
-                                   .context(format!("Reading {}", input)));
-                    }
                     error::ImportError::BrokenCert(
                         error::BrokenCert {
                             ref cert,
