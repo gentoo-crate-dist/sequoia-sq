@@ -1068,7 +1068,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// using the wrong data.
     ///
     /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-    pub fn inline_signature<'w, I, O>(self, input: I, output: O)
+    pub fn inline_signature<'w, I, O>(self, mut input: I, output: O)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
@@ -1080,7 +1080,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = self;
 
         Self::execute(&params, &mut params_once,
-                      input, None::<std::io::Empty>, output.into())
+                      &mut input, None, output.into())
     }
 
     /// Verifies a detached signature.
@@ -1103,7 +1103,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// using the wrong data.
     ///
     /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-    pub fn detached_signature<'w, I, D, O>(self, input: I, detached: D,
+    pub fn detached_signature<'w, I, D, O>(self, mut input: I, mut detached: D,
                                            output: O)
         -> Result<(), Error>
     where
@@ -1117,19 +1117,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = self;
 
         Self::execute(&params, &mut params_once,
-                      input, Some(detached), output.into())
+                      &mut input, Some(&mut detached), output.into())
     }
 
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute<'w, I, D>(params: &Params, params_once: &mut ParamsOnce,
-                         input: I, detached: Option<D>,
-                         output: OptionalWriter<'w>)
+    fn execute<'w>(params: &Params, params_once: &mut ParamsOnce,
+                   input: &mut (dyn std::io::Read + Send + Sync),
+                   detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
+                   output: OptionalWriter<'w>)
         -> Result<(), Error>
-    where
-        I: std::io::Read + Send + Sync,
-        D: std::io::Read + Send + Sync,
     {
         let mut report = output::Report::new();
         let result = Self::execute_(
@@ -1173,14 +1171,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute_<I, D>(params: &Params, params_once: &mut ParamsOnce,
-                      input: I, detached: Option<D>,
-                      mut output: OptionalWriter,
-                      report: &mut output::Report)
+    fn execute_(params: &Params, params_once: &mut ParamsOnce,
+                input: &mut (dyn std::io::Read + Send + Sync),
+                detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
+                mut output: OptionalWriter,
+                report: &mut output::Report)
         -> Result<(), Error>
-    where
-        I: std::io::Read + Send + Sync,
-        D: std::io::Read + Send + Sync,
     {
         let &Params {
             sequoia,
