@@ -1,19 +1,48 @@
-//! Functionality for importing keys.
+//! Import keys.
 //!
 //! A key is a certificate with secret key material.  When using
-//! [`Sequoia::cert_import`] to import a certificate, any secret key
+//! [`Sequoia::cert_import`] to import a certificate, secret key
 //! material is silently ignored.  The functionality here first
-//! imports the secret key material into the key store, and then
-//! imports the certificate into the certificate store.
+//! imports the secret key material into the key store, and only if
+//! that succeeds imports the certificate into the certificate store.
+//!
+//! # Key Store
+//!
+//! Secret key material is imported into Sequoia's [key store].  The
+//! key store supports several different backends.  Among others, it
+//! includes support for soft keys, [smartcards] and devices that
+//! implement a [PKCS#11] interface.  The soft keys backend just stores
+//! keys in the user's home directory.  Other backends provide
+//! different security guarantees.  Importing keys into these backends
+//! usually requires some backend-specific parameters.  As such, if
+//! you you want to store a key on one of these backends, you need to
+//! use backend specific interfaces.  These interfaces only use the
+//! soft keys backend.
+//!
+//! [key store]: https://gitlab.com/sequoia-pgp/sequoia-keystore
+//! [smartcards]: https://gitlab.com/sequoia-pgp/sequoia-keystore/-/tree/main/openpgp-card?ref_type=heads
+//! [PKCS#11]: https://gitlab.com/sequoia-pgp/sequoia-keystore/-/tree/main/cryptoki?ref_type=heads
+//!
+//! # Authenticate
+//!
+//! A key that is imported is not implicitly trusted: it could have
+//! been provided by an attacker.  If the key is the user's own key,
+//! you should follow up with a called to
+//! [`Sequoia::pki_certify`](crate::pki::certify) and mark it as a
+//! trusted introducer.
 //!
 //! # Examples
 //!
 //! Import keys from an OpenPGP keyring using
 //! [`Builder::import_keyring`].  Note: this function only returns an
 //! error if the file is unreadable or the key store is not available.
-//! To check if an error occurred while importing an individual key,
-//! you need to examine the returned [`Outcome`] (shown here) or the
-//! [`Stream`] output (see next example):
+//! Further, if a certificate does not contain secret key material, it
+//! is not imported.  To check if an error occurred while importing an
+//! individual key, you need to examine the returned [`Outcome`].  If
+//! one or more errors occurred, you can get the first error using
+//! [`Outcome::all_imported`].  You can also directly iterate over all
+//! errors, as shown below or using the [`Stream`] output (see next
+//! example):
 //!
 //! ```
 //! # use sequoia::openpgp;
@@ -147,11 +176,13 @@ use crate::types::import_stats::ImportStatus;
 // Stream trait.
 stream!{}
 
-/// Data structures related to [`Error`].
+/// Errors related to importing keys.
 ///
 /// The errors are divided into categories, and the categories contain
 /// more precise errors.  In this way, if you match on a category, and
 /// a new error is added you can still react.
+///
+/// These errors are usually wrapped in an [`Error`].
 pub mod error {
     use super::*;
 
@@ -365,8 +396,12 @@ pub mod output {
     }
 }
 
+/// The [`Stream`] output.
+///
 /// The variants of this enum are the different types of output that
-/// [`import`](Builder::import) emits.
+/// [`import_keyring`](Builder::import_keyring),
+/// [`import_keys`](Builder::import_keys) and
+/// [`import_key`](Builder::import_key) emit.  See [`Stream`].
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum Output {
@@ -407,7 +442,7 @@ pub enum Output {
     Report(output::Report),
 }
 
-/// The outcome of importing keys.
+/// The key importing operation's outcome.
 ///
 /// This is returned by [`Builder::import_keyring`],
 /// [`Builder::import_keys`], and [`Builder::import_key`].  It
@@ -456,7 +491,8 @@ impl Outcome {
 
 /// The key import parameters.
 ///
-/// These parameters are used by [`key_import`](Builder::key_import).
+/// These parameters are used by [`Builder::import_keyring`],
+/// [`Builder::import_keys`], and [`Builder::import_key`].
 #[derive(Clone)]
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
@@ -605,7 +641,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// corrupted that the input is not recognizable as a keyring,
     /// this function will not return an error; it will import the
     /// other two certificates, and emit [`Output::ImportingFailed`]
-    /// for the corrupted certificate.
+    /// for the corrupted certificate.  To determine if importing a
+    /// key failed, either implement [`Stream`] and look for
+    /// `Output::ImportingFailed` events, or use
+    /// [`Outcome::all_imported`].
     pub fn import_keyring<'a, I>(mut self, mut input: I)
         -> Result<Outcome, Error>
     where
@@ -726,8 +765,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// If importing a key results in a recoverable error, that error
     /// is reported using [`Output::ImportingFailed`], but **importing
     /// is not aborted**, and the function does not return an error.
-    /// If you need to check whether importing a key failed, use a
-    /// [`Stream`](Builder::stream).
+    /// If you need to check whether importing a key failed, use
+    /// implement [`Stream`](Builder::stream), or use
+    /// [`Outcome::all_imported`].
     ///
     /// **Note: these semantics are different from
     /// [`Builder::import_key`], which directly returns import
@@ -797,8 +837,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// certificate store.
     ///
     /// If importing a key results in an error, that error is reported
-    /// using [`Output::ImportingFailed`], and the function returns an
-    /// error.  **Note: these semantics are different from
+    /// using [`Output::ImportingFailed`], and the function returns
+    /// the error.  **Note: these semantics are different from
     /// [`Builder::import_keys`] and [`Builder::import_keyring`],
     /// which only return import errors via the stream interface.**
     pub fn import_key(mut self, cert: Cert)
