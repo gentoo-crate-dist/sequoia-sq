@@ -10,7 +10,11 @@ use crate::config::ConfigFile;
 use crate::openpgp;
 
 enum Home {
-    /// Use the default home directory.
+    /// Use the default.
+    ///
+    /// The default is to respect `$SEQUOIA_HOME`, if set, and
+    /// otherwise use the default home directory consistent with the
+    /// XDG guidelines.
     Default,
     /// Use the specified home directory.
     Home(Cow<'static, sequoia_directories::Home>),
@@ -230,12 +234,13 @@ impl SequoiaBuilder {
     pub fn build(&self) -> Result<Sequoia> {
         let home = match &self.home {
             Home::Default => {
-                let home = sequoia_directories::Home::default()
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Platform does not have any known \
-                                         default directories.")
+                let home = sequoia_directories::Home::new(None)
+                    .map_err(|err| {
+                        anyhow::Error::from(err)
+                            .context("Platform does not have any known \
+                                      default directories.")
                     })?;
-                Some(Cow::Borrowed(home))
+                Some(Cow::Owned(home))
             }
             Home::Home(home) => Some(home.clone()),
             Home::Stateless => None,
