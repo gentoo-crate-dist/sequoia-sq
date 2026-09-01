@@ -2109,6 +2109,43 @@ mod tests {
 
         check(&sq, &output, result, true,
               R::authenticated().authenticated_signatures(2));
+
+        // Empty file...
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .add_designated_signers(vec![ alice.clone() ])
+            .inline_signature(
+                std::io::Cursor::new(&[]),
+                std::io::empty());
+
+        assert!(
+            matches!(
+                result,
+                Err(Error::OperationalError(_))),
+            "Got: {:?}", result.as_ref().map(|_| ()));
+
+        check(&sq, &output, result, false,
+              R::unauthenticated());
+
+        // Junk message.
+        let junk = vec![b'X'; 100 * 1024];
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .add_designated_signers(vec![ alice.clone() ])
+            .inline_signature(
+                std::io::Cursor::new(&junk),
+                std::io::empty());
+
+        assert!(
+            matches!(
+                result,
+                Err(Error::OperationalError(_))),
+            "Got: {:?}", result.as_ref().map(|_| ()));
+
+        check(&sq, &output, result, false,
+              R::unauthenticated());
     }
 
     #[test]
@@ -2172,6 +2209,42 @@ mod tests {
 
         check(&sq, &output, result, false,
               R::unauthenticated());
+
+        // Empty signature...
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .add_designated_signers(vec![ alice.clone() ])
+            .detached_signature(
+                std::io::Cursor::new(&MESSAGE),
+                std::io::Cursor::new(&[]),
+                std::io::empty());
+
+        assert!(matches!(
+            result,
+            Err(Error::OperationalError(
+                error::OperationalError::NotADetachedSignature(_)))));
+
+        check(&sq, &output, result, false,
+              R::unauthenticated());
+
+        // Wrong (empty) message.
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .add_designated_signers(vec![ alice.clone() ])
+            .detached_signature(
+                std::io::Cursor::new([]),
+                std::io::Cursor::new(&alice_sig),
+                std::io::empty());
+
+        assert!(matches!(
+            result,
+            Err(Error::OperationalError(
+                error::OperationalError::Unauthenticated(_)))));
+
+        check(&sq, &output, result, false,
+              R::unauthenticated().bad_signatures(1));
     }
 
     #[test]
