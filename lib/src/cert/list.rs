@@ -193,7 +193,7 @@ pub mod output {
     /// Note the binding is not necessarily authenticated.  You still
     /// need to check the aggregate trust amount.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Binding {
         /// The fingerprint.
         pub fingerprint: Fingerprint,
@@ -244,7 +244,7 @@ pub mod output {
     }
 
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Report {
         /// A certificate for each of the specified trust roots could not
         /// be found.
@@ -254,10 +254,10 @@ pub mod output {
         ///
         /// Roots is a copy of the trust roots.
         pub missing_trust_roots:
-            Option<(wot::Roots, Vec<(Fingerprint, anyhow::Error)>)>,
+            Option<(wot::Roots, Vec<(Fingerprint, Arc<anyhow::Error>)>)>,
 
         /// Query lints.
-        pub query_lints: Vec<(Query, anyhow::Error)>,
+        pub query_lints: Vec<(Query, Arc<anyhow::Error>)>,
 
         /// The number of bindings that match the query.
         pub matching_bindings: usize,
@@ -434,6 +434,7 @@ pub enum Error {
 /// Parameters to the list function.
 ///
 /// The parameters passed to [`Sequoia::cert_list`].
+#[derive(Clone)]
 pub struct Params<'a> {
     sequoia: &'a Sequoia,
     queries: Vec<Query>,
@@ -1271,7 +1272,7 @@ impl<'a> Builder<'a> {
                 }
                 if is.contains(&i) {
                     if let Some(lint) = lint.take() {
-                        unsatisfied_lints.push((query.clone(), lint));
+                        unsatisfied_lints.push((query.clone(), Arc::new(lint)));
                     }
                 }
             }
@@ -1283,7 +1284,7 @@ impl<'a> Builder<'a> {
             for r in n.roots().iter() {
                 let fpr = r.fingerprint();
                 if let Err(err) = n.lookup_synopsis_by_fpr(&fpr) {
-                    missing_trust_roots.push((fpr.clone(), err));
+                    missing_trust_roots.push((fpr.clone(), Arc::new(err)));
                 }
             }
         }
