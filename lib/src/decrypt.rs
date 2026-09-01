@@ -242,13 +242,13 @@ impl<'sequoia> Params<'sequoia> {
     /// Returns the pre-loaded secret keys.
     ///
     /// See [`Builder::add_secret_key`].
-    pub fn secret_keys(&self) -> &[Cert] {
-        &self.secret_keys[..]
+    pub fn secret_keys(&self) -> impl Iterator<Item=&Cert> {
+        self.secret_keys.iter()
     }
 
     /// Returns the pre-loaded session keys.
-    pub fn session_keys(&self) -> &[SessionKey] {
-        &self.session_keys[..]
+    pub fn session_keys(&self) -> impl Iterator<Item=&SessionKey> {
+        self.session_keys.iter()
     }
 }
 
