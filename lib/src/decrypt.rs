@@ -683,7 +683,7 @@ pub mod output {
     /// A key is locked, but not trying cached passwords, because the
     /// key may be protected by a retry counter.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct NotTryingCachedPasswords {
         pub key_handle: KeyHandle,
         pub userid: PreferredUserID,
@@ -693,7 +693,7 @@ pub mod output {
     /// We decrypted a PKESK, but the session key was not able to
     /// decrypt the message.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct BadSessionKey {
         pub key_handle: KeyHandle,
         pub userid: PreferredUserID,
@@ -701,13 +701,13 @@ pub mod output {
     }
 
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct KeyStoreUnreachable {
         pub error: SystemError,
     }
 
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum Info {
         /// A key is locked, but not trying cached passwords, because
         /// the key may be protected by a retry counter.
@@ -755,7 +755,7 @@ pub mod output {
 
     /// The message was decrypted using the specified decryptor.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Decrypted {
         pub decryptor: Decryptor,
         pub session_key: crypto::SessionKey,
