@@ -451,8 +451,8 @@ impl<'a> Params<'a> {
     }
 
     /// Returns the set of queries.
-    pub fn queries(&self) -> &[Query] {
-        &self.queries
+    pub fn queries(&self) -> impl Iterator<Item=&Query> {
+        self.queries.iter()
     }
 
     /// Returns whether gossip mode is enabled.

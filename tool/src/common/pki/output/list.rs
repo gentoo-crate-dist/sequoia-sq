@@ -135,7 +135,7 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
 
                     qprintln!("No valid bindings match the query.");
 
-                    if params.queries().len() == 1 {
+                    if params.queries().count() == 1 {
                         if let QueryKind::Pattern(pattern)
                             = &unsatisfied_queries[0].kind
                         {
@@ -152,7 +152,7 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                         qprintln!("Warning: The certificate store does not \
                                    contain any certificates.");
 
-                        let return_all = params.queries().iter()
+                        let return_all = params.queries()
                             .any(|q| matches!(q.kind, QueryKind::All));
                         if return_all {
                             self.sq.hint(format_args!(
@@ -227,13 +227,13 @@ impl<'a> sequoia::cert::list::Stream for Stream<'a> {
                 let unsatisfied_count = unsatisfied_queries.len();
                 if unsatisfied_count == 1 {
                     if params.gossip() {
-                        if params.queries().len() == 1 {
+                        if params.queries().count() == 1 {
                             Err(anyhow::anyhow!("No bindings match the query."))?;
                         } else {
                             Err(anyhow::anyhow!("No bindings match one of the queries."))?;
                         }
                     } else {
-                        if params.queries().len() == 1 {
+                        if params.queries().count() == 1 {
                             Err(anyhow::anyhow!(
                                 "No bindings matching the query could be authenticated."))?;
                         } else {
