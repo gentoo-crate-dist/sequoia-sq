@@ -395,7 +395,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// See [`verify::Builder`] for details.  By default, at least one
     /// signature needs to be authenticated.
     pub fn decrypt<'w, I, O, P>(self, mut input: I, output: O, prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
@@ -406,16 +406,16 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             mut params_once,
         } = self;
 
-        let mut report = verify::output::Report::new();
+        let mut report = output::Report::new();
         let result = Self::decrypt_(
             &params, &mut params_once, &mut input, output.into(), &prompt,
-            &mut report);
+            &mut report.verification);
 
         let mut stream = params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(report.to_outcome())
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(&params, Output::ArgumentError(err.clone()))
@@ -440,9 +440,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         stream.output(
             &params,
-            Output::Report(output::Report {
-                verification: report,
-            }))
+            Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -519,7 +517,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     pub fn decrypt_unwrap<'w, I, O, P>(self,
                                        mut input: I, output: O,
                                        prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
@@ -530,17 +528,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             mut params_once,
         } = self;
 
-        let mut report = verify::output::Report::new();
+        let mut report = output::Report::new();
 
         let result = Self::decrypt_unwrap_(
             &params, &mut params_once, &mut input, output.into(), &prompt,
-            &mut report);
+            &mut report.verification);
 
         let mut stream = params_once.stream;
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(report.to_outcome())
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(&params, Output::ArgumentError(err.clone()))
@@ -565,9 +563,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         stream.output(
             &params,
-            Output::Report(output::Report {
-                verification: report,
-            }))
+            Output::Report(report))
             .map_err(|err| Error::StreamOutputError(err))?;
 
         result
@@ -766,6 +762,20 @@ pub mod output {
     pub struct Report {
         pub verification: verify::output::Report,
     }
+
+    impl Report {
+        pub(crate) fn new() -> Self {
+            Report {
+                verification: verify::output::Report::new(),
+            }
+        }
+
+        pub(crate) fn to_outcome(&self) -> Outcome {
+            Outcome {
+                verification: self.verification.clone(),
+            }
+        }
+    }
 }
 
 /// The variants of this enum are the different types of output that
@@ -835,6 +845,18 @@ pub enum Output {
     ///
     /// This is always emitted at the end of the operation.
     Report(output::Report),
+}
+
+/// The outcome of decrypting a message.
+///
+/// This is returned by [`Builder::decrypt`], and
+/// [`Builder::decrypt_unwrap`].  It contains information about the
+/// operation's outcome.  More detailed information is available via
+/// the [`Stream`] interface.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    pub verification: verify::output::Report,
 }
 
 /// Data structures related to [`Error`].
@@ -1595,12 +1617,13 @@ mod tests {
     // signatures.
     fn check(_sequoia: &Sequoia,
              output: &[Output],
+             result: Result<Outcome, Error>,
              expect_decrypted: bool,
              expect_error: bool)
     {
         let mut saw_decrypted = false;
         let mut saw_message_structure = false;
-        let mut saw_error = false;
+        let mut saw_error = None;
         let mut saw_report = false;
 
         use Output::*;
@@ -1616,25 +1639,25 @@ mod tests {
                     // Currently system errors only happen at the
                     // beginning (although this is not part of the API
                     // contract).
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_decrypted);
                     assert!(! saw_report);
-                    saw_error = true;
+                    saw_error = Some(err.to_string());
                 }
                 OperationalError(err) => {
                     eprintln!("  - operational error: {}", err);
                     // An operational error can happen at any time.
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                 }
                 Info(info) => {
                     eprintln!("  - info: {:?}", info);
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_report);
                 }
                 Decrypted(decrypted) => {
                     eprintln!("  - decrypted: {:?}", decrypted);
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_decrypted);
                     assert!(! saw_message_structure);
                     assert!(! saw_report);
@@ -1643,7 +1666,7 @@ mod tests {
                 }
                 MessageStructure(structure) => {
                     eprintln!("  - message structure: {:?}", structure);
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(saw_decrypted);
                     assert!(! saw_message_structure);
                     assert!(! saw_report);
@@ -1660,11 +1683,40 @@ mod tests {
         }
 
         assert!((saw_decrypted && saw_message_structure)
-                || saw_error);
+                || saw_error.is_some());
         assert!(saw_report);
 
         assert_eq!(saw_decrypted, expect_decrypted);
-        assert_eq!(saw_error, expect_error);
+        assert_eq!(saw_error.is_some(), expect_error);
+
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+            }
+            (Ok(_outcome), None) => {
+                // Function returned success and we didn't see an error.
+            }
+        }
     }
 
     #[test]
@@ -1695,28 +1747,27 @@ mod tests {
 
         // Fail to decrypt, because, by default, we expect a valid
         // signature and the message is not signed.
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-        check(&sq, &output, true, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, true, true);
 
         // Successfully decrypt by not requiring a signature.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect("can decrypt");
-
-        check(&sq, &output, true, false);
+                Cancel::new());
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(&sq, &output, result, true, false);
         assert_eq!(&plaintext, MESSAGE);
     }
 
@@ -1763,28 +1814,27 @@ mod tests {
 
         // Fail to decrypt, because we expect a valid signature, but
         // the signer is not authenticated.
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-        check(&sq, &output, true, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, true, true);
 
         // Successfully decrypt by designating the signer.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .add_designated_signer(bob.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect("can decrypt");
-
-        check(&sq, &output, true, false);
+                Cancel::new());
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(&sq, &output, result, true, false);
         assert_eq!(&plaintext, MESSAGE);
     }
 
@@ -1828,44 +1878,44 @@ mod tests {
         // Decrypt, because we expect a valid signature, and we can
         // authenticate it with an authenticated certificate in the
         // cert store.
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect("can decrypt");
-        check(&sq, &output, true, false);
+                Cancel::new());
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(&sq, &output, result, true, false);
         assert_eq!(&plaintext, MESSAGE);
 
         // Fail to decrypt by designating the wrong signer.  If we
         // designate a signer then we don't use the certificate store.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .add_designated_signer(alice.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, true, true);
 
         // Fail to decrypt by designating the empty set of signers.
         // If we designate a signer then we don't use the certificate
         // store.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .add_designated_signers(std::iter::empty())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-
-        check(&sq, &output, true, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, true, true);
     }
 
     #[test]
@@ -1896,14 +1946,14 @@ mod tests {
 
         // Fail to decrypt, because we expect a valid signature, but
         // there is none.
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-        check(&sq, &output, true, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, true, true);
 
         // Extract the session key.
         let session_key = output.into_iter()
@@ -1927,28 +1977,28 @@ mod tests {
         // Without the key, we can't decrypt the message.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-        check(&sq, &output, false, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, false, true);
 
         // Unless we have the session key.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .add_session_key(session_key.into())
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect("can decrypt");
-        check(&sq, &output, true, false);
+                Cancel::new());
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(&sq, &output, result, true, false);
 
         // But not if we have the WRONG session key.
         let session_key = SessionKey::from_str("001122334455667788001122334455667788")
@@ -1956,16 +2006,16 @@ mod tests {
 
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .add_session_key(session_key.into())
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-        check(&sq, &output, false, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, false, true);
     }
 
     #[test]
@@ -1995,15 +2045,15 @@ mod tests {
         // Make sure we can decrypt the message.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
                 &mut plaintext,
-                Cancel::new())
-            .expect("can decrypt");
-        check(&sq, &output, true, false);
+                Cancel::new());
+        assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
+        check(&sq, &output, result, true, false);
         assert_eq!(&message, &plaintext);
 
         // Corrupt the message towards the end so that Decrypted will
@@ -2015,13 +2065,13 @@ mod tests {
         // Decryption should now fail.
         let mut plaintext = Vec::new();
         let mut output = Vec::new();
-        sq.decrypt()
+        let result = sq.decrypt()
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&corrupted),
                 &mut plaintext,
-                Cancel::new())
-            .expect_err("fail to decrypt");
-        check(&sq, &output, true, true);
+                Cancel::new());
+        assert!(result.is_err());
+        check(&sq, &output, result, true, true);
     }
 }
