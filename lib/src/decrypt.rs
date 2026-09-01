@@ -703,7 +703,7 @@ pub mod output {
     #[non_exhaustive]
     #[derive(Debug)]
     pub struct KeyStoreUnreachable {
-        pub error: anyhow::Error,
+        pub error: SystemError,
     }
 
     #[non_exhaustive]
