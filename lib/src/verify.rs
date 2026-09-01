@@ -745,6 +745,18 @@ pub mod output {
                 broken_signatures: 0,
             }
         }
+
+        pub(crate) fn to_outcome(&self) -> Outcome {
+            Outcome {
+                authenticated: self.authenticated,
+                authenticated_signatures: self.authenticated_signatures,
+                unauthenticated_signatures: self.unauthenticated_signatures,
+                uncheckable_signatures: self.uncheckable_signatures,
+                broken_keys: self.broken_keys,
+                bad_signatures: self.bad_signatures,
+                broken_signatures: self.broken_signatures,
+            }
+        }
     }
 }
 
@@ -865,6 +877,65 @@ pub mod error {
         #[error(transparent)]
         Other(Arc<anyhow::Error>),
     }
+}
+
+#[cfg(doc)]
+use output::SignatureStatus;
+
+/// The verification operation's outcome.
+///
+/// This is returned by [`Builder::inline_signature`], and
+/// [`Builder::detached_signature`].  It contains information about
+/// the outcome.  More detailed information is available via the
+/// [`Stream`] interface.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    /// Whether enough signatures could be verified.
+    ///
+    /// A signature is considered verified if the signature is
+    /// mathematically correct, and either at least one user ID
+    /// (not necessarily a self-signed user ID) could be
+    /// authenticated for the signer's certificate using the web
+    /// of trust, or the certificate is considered authenticated
+    /// (see [`Builder::add_designated_signer`]).
+    pub authenticated: bool,
+
+    /// The number of authenticated signatures.
+    ///
+    /// See [`SignatureStatus::Verified`].
+    pub authenticated_signatures: usize,
+
+    /// The number of mathematically correct signatures whose
+    /// signer could not be authenticated.
+    ///
+    /// See [`SignatureStatus::GoodChecksum`].
+    pub unauthenticated_signatures: usize,
+
+    /// Signatures that could not be checked, because the key is
+    /// missing.
+    ///
+    /// See [`SignatureStatus::MissingKey`].
+    pub uncheckable_signatures: usize,
+
+    /// The number of signatures that could not be checked,
+    /// because the signature was bad.
+    ///
+    /// See [`SignatureStatus::UnknownSignature`] and
+    /// [`SignatureStatus::BadSignature`].
+    pub bad_signatures: usize,
+
+    /// The number of signatures that could not be checked,
+    /// because the key or certificate was bad.
+    ///
+    /// See [`SignatureStatus::UnboundKey`] and
+    /// [`SignatureStatus::BadKey`].
+    pub broken_keys: usize,
+
+    /// The number of signatures that are broken.
+    ///
+    /// See [`SignatureStatus::MalformedSignature`].
+    pub broken_signatures: usize,
 }
 
 /// Errors related to verifying a message.
@@ -1069,7 +1140,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     ///
     /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
     pub fn inline_signature<'w, I, O>(self, mut input: I, output: O)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
@@ -1105,7 +1176,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
     pub fn detached_signature<'w, I, D, O>(self, mut input: I, mut detached: D,
                                            output: O)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
@@ -1127,7 +1198,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                    input: &mut (dyn std::io::Read + Send + Sync),
                    detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
                    output: OptionalWriter<'w>)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     {
         let mut report = output::Report::new();
         let result = Self::execute_(
@@ -1137,7 +1208,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(report.to_outcome())
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(params, Output::ArgumentError(err.clone()))
@@ -1820,11 +1891,12 @@ mod tests {
     // signatures.
     fn check(_sequoia: &Sequoia,
              output: &[Output],
+             result: Result<Outcome, Error>,
              expect_success: bool,
              expect_report: R)
     {
         let mut saw_message_structure = false;
-        let mut saw_error = false;
+        let mut saw_error = None;
         let mut saw_report = false;
 
         use Output::*;
@@ -1840,20 +1912,20 @@ mod tests {
                     // Currently system errors only happen at the
                     // beginning (although this is not part of the API
                     // contract).
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_message_structure);
                     assert!(! saw_report);
-                    saw_error = true;
+                    saw_error = Some(err.to_string());
                 }
                 OperationalError(err) => {
                     eprintln!("  - operational error: {}", err);
                     // An operational error can happen at any time.
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                 }
                 MessageStructure(structure) => {
                     eprintln!("  - message structure: {:?}", structure);
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_message_structure);
                     assert!(! saw_report);
 
@@ -1869,9 +1941,39 @@ mod tests {
             }
         }
 
-        assert!(saw_message_structure || saw_error);
+        assert!(saw_message_structure || saw_error.is_some());
         assert!(saw_report);
-        assert_eq!(expect_success, ! saw_error);
+
+        assert_eq!(expect_success, saw_error.is_none());
+
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+            }
+            (Ok(_outcome), None) => {
+                // Function returned success and we didn't see an error.
+            }
+        }
     }
 
     #[test]
@@ -1922,80 +2024,90 @@ mod tests {
 
         eprintln!("Verify Alice's signature using the web of trust.");
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty())
-            .expect("valid signature");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated().authenticated_signatures(1));
 
         eprintln!("Verify both signatures using the web of trust.");
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .inline_signature(
                 std::io::Cursor::new(&ab_signed),
-                std::io::empty())
-            .expect("valid signature");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated().authenticated_signatures(2));
 
         eprintln!("Verify Alice's signature by designating her certificate.");
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty())
-            .expect("valid signature");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated().authenticated_signatures(1));
 
         eprintln!("Fail to verify Alice's signature by designating Bob's certificate.");
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ bob.clone() ])
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty())
-            .expect_err("unauthenticated signature");
+                std::io::empty());
+        assert!(result.is_err(), "unauthenticated signature");
 
-        check(&sq, &output, false,
+        check(&sq, &output, result, false,
               R::unauthenticated().uncheckable_signatures(1));
 
         eprintln!("Verify Alice's signature by designating Bob's certificate, but not requiring any signatures.");
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ bob.clone() ])
             .signatures(0)
             .inline_signature(
                 std::io::Cursor::new(&alice_signed),
-                std::io::empty())
-            .expect("authenticated signature");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected authenticated signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated().uncheckable_signatures(1));
 
         eprintln!("Verify both signature by designating both certificate.");
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ alice.clone(), bob.clone() ])
             .signatures(0)
             .inline_signature(
                 std::io::Cursor::new(&ab_signed),
-                std::io::empty())
-            .expect("authenticated signatures");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected authenticated signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated().authenticated_signatures(2));
     }
 
@@ -2027,16 +2139,18 @@ mod tests {
 
         // Double check that the signature is valid.
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 std::io::Cursor::new(&MESSAGE),
                 std::io::Cursor::new(&alice_sig),
-                std::io::empty())
-            .expect("valid signature");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated()
                   .authenticated_signatures(1));
 
@@ -2056,7 +2170,7 @@ mod tests {
             Err(Error::OperationalError(
                 error::OperationalError::NotADetachedSignature(_)))));
 
-        check(&sq, &output, false,
+        check(&sq, &output, result, false,
               R::unauthenticated());
     }
 
@@ -2088,16 +2202,18 @@ mod tests {
 
         // Double check that the signature is valid.
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 std::io::Cursor::new(&MESSAGE),
                 std::io::Cursor::new(&alice_sig),
-                std::io::empty())
-            .expect("valid signature");
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
 
-        check(&sq, &output, true,
+        check(&sq, &output, result, true,
               R::authenticated()
                   .authenticated_signatures(1));
 
@@ -2126,16 +2242,16 @@ mod tests {
 
         // If we try to verify the signature, we'll fail.
         let mut output = Vec::new();
-        sq.verify()
+        let result = sq.verify()
             .stream(&mut output)
             .add_designated_signers(vec![ alice.clone() ])
             .detached_signature(
                 std::io::Cursor::new(&MESSAGE),
                 std::io::Cursor::new(&bad_signature),
-                std::io::empty())
-            .expect_err("bad signature");
+                std::io::empty());
+        assert!(result.is_err(), "bad signature");
 
-        check(&sq, &output, false,
+        check(&sq, &output, result, false,
               R::unauthenticated()
                   .authenticated_signatures(0)
                   .bad_signatures(1));

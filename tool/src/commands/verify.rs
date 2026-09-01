@@ -49,7 +49,7 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
         verifier
             .stream(stream)
             .inline_signature(input,  &mut output)
-    }.map_err(|err| anyhow::Error::from(err));
+    }.map(|_| ()).map_err(|err| anyhow::Error::from(err));
 
     if result.is_err() {
         if let Some(path) = command.output.path() {
