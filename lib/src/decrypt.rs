@@ -394,7 +394,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Returns `Ok` if the message could be decrypted and verified.
     /// See [`verify::Builder`] for details.  By default, at least one
     /// signature needs to be authenticated.
-    pub fn decrypt<'w, I, O, P>(self, input: I, output: O, prompt: P)
+    pub fn decrypt<'w, I, O, P>(self, mut input: I, output: O, prompt: P)
         -> Result<(), Error>
     where
         I: std::io::Read + Send + Sync,
@@ -408,7 +408,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let mut report = verify::output::Report::new();
         let result = Self::decrypt_(
-            &params, &mut params_once, input, output.into(), prompt,
+            &params, &mut params_once, &mut input, output.into(), &prompt,
             &mut report);
 
         let mut stream = params_once.stream;
@@ -448,13 +448,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_<'a, 'w, I, P>(params: &Params, params_once: &mut ParamsOnce,
-                              input: I, mut output: OptionalWriter,
-                              prompt: P, report: &mut verify::output::Report)
+    fn decrypt_<'w>(params: &Params, params_once: &mut ParamsOnce,
+                    input: &mut (dyn std::io::Read + Send + Sync),
+                    mut output: OptionalWriter,
+                    prompt: &dyn prompt::Prompt,
+                    report: &mut verify::output::Report)
         -> Result<(), Error>
-    where
-        I: std::io::Read + Send + Sync,
-        P: prompt::Prompt,
     {
         let &Params {
             vparams: verify::Params {
@@ -518,7 +517,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Thus, the signing policy parameters ([`Builder::signatures`]
     /// and [`Builder::add_designated_signer`]) are ignored.
     pub fn decrypt_unwrap<'w, I, O, P>(self,
-                                       input: I, output: O,
+                                       mut input: I, output: O,
                                        prompt: P)
         -> Result<(), Error>
     where
@@ -534,7 +533,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         let mut report = verify::output::Report::new();
 
         let result = Self::decrypt_unwrap_(
-            &params, &mut params_once, input, output.into(), prompt,
+            &params, &mut params_once, &mut input, output.into(), &prompt,
             &mut report);
 
         let mut stream = params_once.stream;
@@ -574,14 +573,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_unwrap_<'w, I, P>(params: &Params, params_once: &mut ParamsOnce,
-                                 input: I, mut output: OptionalWriter<'w>,
-                                 prompt: P,
-                                 report: &mut verify::output::Report)
+    fn decrypt_unwrap_<'w>(params: &Params, params_once: &mut ParamsOnce,
+                           input: &mut (dyn std::io::Read + Send + Sync),
+                           mut output: OptionalWriter<'w>,
+                           prompt: &dyn prompt::Prompt,
+                           report: &mut verify::output::Report)
         -> Result<(), Error>
-    where
-        I: std::io::Read + Send + Sync,
-        P: prompt::Prompt,
     {
         let &Params {
             vparams: verify::Params {
