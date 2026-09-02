@@ -24,7 +24,7 @@ pub struct Stream<'a> {
     pb: ProgressBar,
     certs: Vec<CertResult>,
     cert_count: usize,
-    request_errors: Vec<(Source, Query, search::Error)>,
+    request_errors: Vec<(Source, Query, search::error::OperationalError)>,
     output_path: Option<Option<PathBuf>>,
 }
 

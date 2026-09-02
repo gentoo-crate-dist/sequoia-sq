@@ -551,22 +551,6 @@ pub enum Error {
     StreamOutputError(anyhow::Error),
 }
 
-impl Error {
-    /// Returns a clone of `Error`.
-    ///
-    /// This `panic`s if passed a `StreamOutputError`, which can't be
-    /// cloned.
-    fn clone_or_panic(&self) -> Self {
-        use Error::*;
-        match self {
-            ArgumentError(err) => ArgumentError(err.clone()),
-            SystemError(err) => SystemError(err.clone()),
-            OperationalError(err) => OperationalError(err.clone()),
-            StreamOutputError(_) => panic!("StreamOutputError unexpected"),
-        }
-    }
-}
-
 /// Data structures related to [`Output`].
 pub mod output {
     use super::*;
@@ -637,7 +621,8 @@ pub mod output {
         /// certificates may be so corrupted that it can't be parsed.
         /// In that case, the parse error will be stored instead of
         /// the certificate that couldn't be parsed.
-        pub results: Result<Vec<Result<Cert, Error>>, Error>,
+        pub results: Result<Vec<Result<Cert, error::OperationalError>>,
+                            error::OperationalError>,
     }
 
     /// Information related to a particular source and certificate.
@@ -665,7 +650,7 @@ pub mod output {
         ///
         /// Note: a CA may be returned here even if it didn't certify
         /// the certificate this time, but did in the past.
-        pub ca: Option<Result<Ca>>,
+        pub ca: Option<Result<Ca, Arc<anyhow::Error>>>,
     }
 
     /// A final, merged certificate.
@@ -1271,18 +1256,18 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
                 let massage_query_results = |results: Result<Vec<Result<Cert>>>,
                                              query: Query,
                                              source: Source|
-                    -> Result<Vec<Result<Cert, Error>>, Error>
+                    -> Result<Vec<Result<Cert, error::OperationalError>>,
+                              error::OperationalError>
                 {
                     let results = match results {
                         Ok(results) => results,
                         Err(err) => {
-                            return Err(Error::OperationalError(
-                                error::OperationalError::ExecutingQuery(
+                            return Err(error::OperationalError::ExecutingQuery(
                                     error::ExecutingQuery {
                                         query: query.clone(),
                                         source: source.clone(),
                                         error: err.into(),
-                                    })));
+                                    }));
                         }
                     };
 
@@ -1292,13 +1277,12 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
                             match result {
                                 Ok(result) => Ok(result),
                                 Err(err) => {
-                                    Err(Error::OperationalError(
-                                        error::OperationalError::ExecutingQuery(
+                                    Err(error::OperationalError::ExecutingQuery(
                                             error::ExecutingQuery {
                                                 query: query.clone(),
                                                 source: source.clone(),
                                                 error: err.into(),
-                                            })))
+                                            }))
                                 }
                             }
                         })
@@ -1607,7 +1591,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
                                 Err(err) => {
                                     errors.push((response.source.clone(),
                                                  response.query.clone(),
-                                                 err.clone_or_panic()));
+                                                 err.clone()));
                                 }
                             }
                         }
@@ -1631,13 +1615,13 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
                                     source: response.source.clone(),
                                     query: response.query.clone(),
                                     request: response.request,
-                                    results: Err(err.clone_or_panic()),
+                                    results: Err(err.clone()),
                                 }))
                             .map_err(|err| Error::StreamOutputError(err))?;
 
                         errors.push((response.source.clone(),
                                      response.query.clone(),
-                                     err.clone_or_panic()));
+                                     err.clone()));
                     }
                 }
             }
@@ -1676,7 +1660,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
                                 .map(|(source, ca)| {
                                     output::SourceInfo {
                                         source,
-                                        ca,
+                                        ca: ca.map(|ca| ca.map_err(|err| Arc::new(err))),
                                     }
                                 })
                                 .collect(),
