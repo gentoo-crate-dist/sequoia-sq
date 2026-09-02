@@ -1,8 +1,62 @@
-//! Functionality for generating keys.
+//! Generate keys.
 //!
 //! A key is a certificate with secret key material.  A certificate
 //! consists of the public keys as well optional information about the
 //! certificate holder like their name, and their email address.
+//!
+//! # Subkeys
+//!
+//! By default, this generate a certificate with a signing subkey, an
+//! encryption subkey, and an authentication subkey.  You can
+//! customize this using [`Builder::can_sign`],
+//! [`Builder::can_encrypt`], and [`Builder::can_authenticate`].  You
+//! can add additional subkeys using [`Builder::additional_keys`].
+//! See [`KeyTemplate`] for more information.
+//!
+//! # Algorithms
+//!
+//! You can customize what public key algorithms to use using
+//! [`Builder::cipher_suite`], [`Builder::encryption_algorithm`] and
+//! [`Builder::signing_algorithm`].  `Builder::cipher_suite` selects a
+//! pair of signing and encryption algorithms that work well together.
+//! Not algorithms can be specified using a cipher suite.  For
+//! instance, the SLH-DSA signing algorithm is not part of a cipher
+//! suite.  It has a high-security margin, but is very slow.  This
+//! makes it appropriate for software signing, but it should be
+//! avoided when signing and encrypting messages.  To use SLH-DSA, you
+//! can specify it using [`Builder::signing_algorithm`].  (In this
+//! case, you probably want to not generate an encryption-capable
+//! subkey, see [`Builder::can_encrypt`].)
+//!
+//! # User IDs
+//!
+//! If you don't call [`Builder::name`], [`Builder::email`], or
+//! [`Builder::userid`] to add one or more user IDs, then the
+//! generated certificate will not contain any user IDs.  This is
+//! legal, but not usually what you want.
+//!
+//! The user IDs are linted and if they are not in canonical form,
+//! they will be rejected.  You can force the use of non-canonical
+//! user IDs by calling [`Builder::allow_non_canonical_userids`].
+//!
+//! # Authentication
+//!
+//! When a key is generated and imported into the key store, the user
+//! IDs are certified.  If [`Builder::own_key`] is true (the default),
+//! the user IDs are certified as trusted introducers by the local
+//! trust root.  If it is false (meaning that the key will be shared
+//! with someone else), they are just certified.
+//!
+//! If a certificate is considered a trusted introducer, that means
+//! that any certificates that it certifies are considered
+//! authenticated.
+//!
+//! # Password Protection
+//!
+//! By default, the key generate function will prompt the user for a
+//! password.  You can override this by setting a password using
+//! [`Builder::password`], or by configuring it to not set a password
+//! using [`Builder::without_password`].
 //!
 //! # Examples
 //!
@@ -98,11 +152,13 @@ use crate::userid::lint_email;
 use crate::userid::lint_name;
 use crate::userid::lint_userid;
 
-/// Data structures related to [`Error`].
+/// Errors related to importing keys.
 ///
 /// The errors are divided into categories, and the categories contain
 /// more precise errors.  In this way, if you match on a category, and
 /// a new error is added you can still react.
+///
+/// These errors are usually wrapped in an [`Error`].
 pub mod error {
     use super::*;
 
@@ -197,13 +253,18 @@ pub enum Error {
     PromptError(#[from] prompt::Error),
 }
 
-/// The success value.
+/// The key generate operation's outcome.
 ///
-/// Returned by [`Builder::generate`].
+/// This is returned by [`Builder::generate`].  It contains
+/// information about the outcome.
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct Outcome {
     pub cert: Cert,
+
+    /// The key import status.
+    ///
+    /// This is `None` if the key was not imported to the key store.
     pub key_import_status: Option<Vec<(sequoia_openpgp::Fingerprint,
                                        import_stats::ImportStatus)>>,
 }
@@ -230,7 +291,7 @@ impl Outcome {
 
 /// Key generation parameters.
 ///
-/// These parameters are used by [`generate`](Builder::generate).
+/// These parameters are used by [`Builder::generate`].
 #[derive(Clone)]
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
@@ -361,7 +422,9 @@ impl<'sequoia> Params<'sequoia> {
     destination_params_impl!("key");
 }
 
-/// An additional key.
+/// Describes an additional key.
+///
+/// This is passed to [`Builder::additional_keys`].
 #[derive(Clone, Debug)]
 pub struct KeyTemplate {
     key_flags: KeyFlags,
