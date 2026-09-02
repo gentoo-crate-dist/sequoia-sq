@@ -1119,7 +1119,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
 
         let result = Self::search_(
             &self.params, &mut self.params_once,
-            queries, prompt, &mut report).await;
+            queries, &prompt, &mut report).await;
 
         let mut stream = self.params_once.stream;
 
@@ -1158,14 +1158,12 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     }
 
     /// Search for certificates on the network.
-    async fn search_<P>(params: &Params<'sequoia>,
-                        params_once: &mut ParamsOnce<'writer, 'stream>,
-                        mut queries: Vec<Query>,
-                        prompt: P,
-                        report: &mut output::Report)
+    async fn search_(params: &Params<'sequoia>,
+                     params_once: &mut ParamsOnce<'writer, 'stream>,
+                     mut queries: Vec<Query>,
+                     prompt: &dyn Prompt,
+                     report: &mut output::Report)
         -> Result<(), Error>
-    where
-        P: Prompt
     {
         let &Params {
             sequoia,
