@@ -688,6 +688,12 @@ pub mod output {
                 import_stats: ImportStats::default(),
             }
         }
+
+        pub(super) fn to_outcome(&self) -> Outcome {
+            Outcome {
+                import_stats: self.import_stats.clone(),
+            }
+        }
     }
 }
 
@@ -772,6 +778,22 @@ pub enum Output {
     ///
     /// This is always emitted whether anything is found or not.
     Report(output::Report),
+}
+
+/// The outcome of searching for certificates.
+///
+/// This is returned by [`Builder::search`].  It contains information
+/// about the operation's outcome.  More detailed information is
+/// available via the [`Stream`] interface.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    /// Statistics about certificates imported into the certificate
+    /// store.
+    ///
+    /// This is only updated when the certificates are imported into
+    /// the certificate store.
+    pub import_stats: ImportStats,
 }
 
 /// Parameters to the network search function.
@@ -1113,7 +1135,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     pub async fn search<P>(mut self,
                            queries: impl IntoIterator<Item=Query>,
                            prompt: P)
-        -> Result<(), Error>
+        -> Result<Outcome, Error>
     where
         P: Prompt
     {
@@ -1129,7 +1151,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
 
         let result = match result {
             Ok(()) => {
-                Ok(())
+                Ok(report.to_outcome())
             }
             Err(Error::ArgumentError(err)) => {
                 stream.output(&self.params, Output::ArgumentError(err.clone()))
@@ -1758,11 +1780,12 @@ mod tests {
 
     fn check(_sequoia: &Sequoia,
              output: &[Output],
+             result: Result<Outcome, Error>,
              expect_success: bool,
              expected_requests: Option<usize>,
              expected_certs: &[Fingerprint])
     {
-        let mut saw_error = false;
+        let mut saw_error = None;
         let mut saw_report = false;
         let mut saw_requests: BTreeSet<usize> = BTreeSet::new();
         let mut saw_responses: BTreeSet<usize> = BTreeSet::new();
@@ -1778,8 +1801,8 @@ mod tests {
                 ArgumentError(err) => {
                     // No argument errors.
                     eprintln!("  - argument error: {}", err);
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                     assert!(! saw_report);
                 }
                 SystemError(err) => {
@@ -1787,15 +1810,15 @@ mod tests {
                     // Currently system errors only happen at the
                     // beginning (although this is not part of the API
                     // contract).
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                     assert!(! saw_report);
                 }
                 OperationalError(err) => {
                     eprintln!("  - operational error: {}", err);
                     // An operational error can happen at any time.
-                    assert!(! saw_error);
-                    saw_error = true;
+                    assert!(saw_error.is_none());
+                    saw_error = Some(err.to_string());
                     assert!(! saw_report);
                 }
                 RequestQueued(request) => {
@@ -1803,7 +1826,7 @@ mod tests {
                     eprintln!("    - query: {}", request.query);
                     eprintln!("    - source: {}", request.source);
                     eprintln!("    - request: {}", request.request);
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(saw_responses.len() <= saw_requests.len());
                     assert!(! saw_requests.contains(&request.request));
                     assert!(! saw_report);
@@ -1829,7 +1852,7 @@ mod tests {
                                   }
                                   Err(err) => err.to_string(),
                               });
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(saw_responses.len() <= saw_requests.len());
                     assert!(saw_requests.contains(&response.request));
                     assert!(! saw_report);
@@ -1837,7 +1860,7 @@ mod tests {
                     }
                 StartOfResults => {
                     eprintln!("  - start of results");
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(! saw_start_of_results);
                     assert!(! saw_end_of_results);
                     assert!(! saw_report);
@@ -1845,7 +1868,7 @@ mod tests {
                 }
                 CertResult(cert) => {
                     eprintln!("  - cert result: {}", cert.cert.fingerprint());
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(saw_start_of_results);
                     assert!(! saw_end_of_results);
                     assert!(! saw_report);
@@ -1854,7 +1877,7 @@ mod tests {
                 }
                 EndOfResults => {
                     eprintln!("  - end of results");
-                    assert!(! saw_error);
+                    assert!(saw_error.is_none());
                     assert!(saw_start_of_results);
                     assert!(! saw_end_of_results);
                     assert!(! saw_report);
@@ -1870,11 +1893,11 @@ mod tests {
         }
 
         if expect_success {
-            assert!(! saw_error);
+            assert!(saw_error.is_none());
             assert!(saw_start_of_results);
             assert!(saw_end_of_results);
         } else {
-            assert!(saw_error);
+            assert!(saw_error.is_some());
         }
 
         assert_eq!(saw_responses.len(), saw_requests.len());
@@ -1895,6 +1918,34 @@ mod tests {
         assert_eq!(saw_certs, expected_certs);
 
         assert!(saw_report);
+
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+            }
+            (Ok(_outcome), None) => {
+            }
+        }
     }
 
     #[test]
@@ -1905,7 +1956,7 @@ mod tests {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -1915,12 +1966,12 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect("should succeed");
         });
-        check(&sq, &output, true, Some(1), &[]);
+        assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
+        check(&sq, &output, result, true, Some(1), &[]);
 
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -1930,9 +1981,9 @@ mod tests {
                     vec![Query::Address("invalid@alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect_err("should fail on invalid address");
         });
-        check(&sq, &output, false, Some(0), &[]);
+        assert!(result.is_err(), "should fail on invalid address");
+        check(&sq, &output, result, false, Some(0), &[]);
     }
 
     #[test]
@@ -1944,7 +1995,7 @@ mod tests {
         let sq = Sequoia::builder().stateless().build().unwrap();
 
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -1954,9 +2005,9 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect_err("should fail with no cert store");
         });
-        check(&sq, &output, false, Some(0), &[]);
+        assert!(result.is_err(), "should fail with no cert store");
+        check(&sq, &output, result, false, Some(0), &[]);
         // The error should be second to last and followed by the
         // report.
         assert!(matches!(
@@ -1970,7 +2021,7 @@ mod tests {
         // Write to a file.
         let mut output = Vec::new();
         let mut keyring = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -1980,9 +2031,9 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect("should succeed");
         });
-        check(&sq, &output, true, Some(0), &[]);
+        assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
+        check(&sq, &output, result, true, Some(0), &[]);
     }
 
     #[test]
@@ -2007,7 +2058,7 @@ mod tests {
 
         // Search for alice@example.org.
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -2017,15 +2068,15 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect("should succeed");
         });
         // Looking up alice@example.org generates queries for
         // alice@other.org and the fingerprint.
-        check(&sq, &output, true, Some(3), &[ alice1.cert.fingerprint() ]);
+        assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
+        check(&sq, &output, result, true, Some(3), &[ alice1.cert.fingerprint() ]);
 
         // Do the same, but only do a single iterations.
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -2036,11 +2087,11 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect("should succeed");
         });
         // Looking up alice@example.org shouldn't generate additional
         // queries as we don't iterate.
-        check(&sq, &output, true, Some(1), &[ alice1.cert.fingerprint() ]);
+        assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
+        check(&sq, &output, result, true, Some(1), &[ alice1.cert.fingerprint() ]);
 
 
         let alice2 = sq.key_generate()
@@ -2051,7 +2102,7 @@ mod tests {
 
         // Search for alice@example.org.
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -2061,13 +2112,13 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect("should succeed");
         });
         // Looking up alice@example.org generates queries for
         // alice@other.org and the fingerprint, and then
         // alice@other.org resolves to the second certificate, which
         // we also search for by fingerprint.
-        check(&sq, &output, true, Some(4),
+        assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
+        check(&sq, &output, result, true, Some(4),
               &[
                   alice1.cert.fingerprint(),
                   alice2.cert.fingerprint(),
@@ -2075,7 +2126,7 @@ mod tests {
 
         // Do the same, but only do a single iterations.
         let mut output = Vec::new();
-        rt.block_on(async {
+        let result = rt.block_on(async {
             sq.network_search()
                 .stream(&mut output)
                 .clear_sources()
@@ -2086,10 +2137,10 @@ mod tests {
                     vec![Query::Address("alice@example.org".to_string())],
                     Cancel::new())
                 .await
-                .expect("should succeed");
         });
         // Looking up alice@example.org shouldn't generate additional
         // queries as we don't iterate.
-        check(&sq, &output, true, Some(1), &[ alice1.cert.fingerprint() ]);
+        assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
+        check(&sq, &output, result, true, Some(1), &[ alice1.cert.fingerprint() ]);
     }
 }
