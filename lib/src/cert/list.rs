@@ -285,6 +285,20 @@ pub mod output {
         /// authenticated at the specified level and this will be 0.
         pub unauthenticated_bindings: usize,
     }
+
+    impl Report {
+        pub(super) fn to_outcome(&self) -> Outcome {
+            Outcome {
+                missing_trust_roots: self.missing_trust_roots.clone(),
+                query_lints: self.query_lints.clone(),
+                matching_bindings: self.matching_bindings.clone(),
+                unsatisfied_queries: self.unsatisfied_queries.clone(),
+                authenticated_bindings: self.authenticated_bindings.clone(),
+                unusable_bindings: self.unusable_bindings.clone(),
+                unauthenticated_bindings: self.unauthenticated_bindings.clone(),
+            }
+        }
+    }
 }
 
 /// The variants of this enum are the different types of output that
@@ -335,6 +349,54 @@ pub enum Output {
     /// The report includes lints and statistics that are collected
     /// during the operation.
     Report(output::Report),
+}
+
+/// The outcome of list certificates.
+///
+/// This is returned by [`Builder::list`].  It contains information
+/// about the operation's outcome.  More detailed information is
+/// available via the [`Stream`] interface.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    /// A certificate for each of the specified trust roots could not
+    /// be found.
+    ///
+    /// This is only included in the report if at least one query did
+    /// not match anything.
+    ///
+    /// Roots is a copy of the trust roots.
+    pub missing_trust_roots:
+    Option<(wot::Roots, Vec<(Fingerprint, Arc<anyhow::Error>)>)>,
+
+    /// Query lints.
+    pub query_lints: Vec<(Query, Arc<anyhow::Error>)>,
+
+    /// The number of bindings that match the query.
+    pub matching_bindings: usize,
+
+    /// The queries that didn't match any bindings in the certificate
+    /// store.
+    pub unsatisfied_queries: Vec<Query>,
+
+    /// The number of bindings that match the query and could be
+    /// authenticated.
+    pub authenticated_bindings: usize,
+
+    /// The number of matching bindings that were not considered
+    /// because they are unusable.
+    ///
+    /// See [`Builder::unusable`] for an explanation of
+    /// unusable bindings.
+    pub unusable_bindings: usize,
+
+    /// The number of matching bindings that were not considered
+    /// because they could not be authenticated at the specified
+    /// level.
+    ///
+    /// When gossip mode is enabled, all bindings are considered
+    /// authenticated at the specified level and this will be 0.
+    pub unauthenticated_bindings: usize,
 }
 
 /// Data structures related to [`Error`].
@@ -646,7 +708,7 @@ impl<'a> Builder<'a> {
     /// Returns an error if the cert store was disabled (see
     /// [`SequoiaBuilder::cert_store_path`]) and no keyrings were
     /// added (see [`SequoiaBuilder::add_keyring`]).
-    pub fn list<S>(self, mut stream: S) -> Result<(), Error>
+    pub fn list<S>(self, mut stream: S) -> Result<Outcome, Error>
     where
         S: Stream,
     {
@@ -654,9 +716,10 @@ impl<'a> Builder<'a> {
 
         match result {
             Ok(report) => {
+                let outcome = report.to_outcome();
                 stream.output(&self.params, Output::Report(report))
                     .map_err(|err| Error::StreamOutputError(err))?;
-                Ok(())
+                Ok(outcome)
             }
             Err(err @ Error::StreamOutputError(_)) => {
                 Err(err)
@@ -1323,6 +1386,7 @@ mod tests {
 
     fn check(sequoia: &Sequoia,
              output: Vec<Output>,
+             result: Result<Outcome, Error>,
              expected_certs: &[(Fingerprint, Option<&str>, usize)])
     {
         let local_trust_root = sequoia.local_trust_root()
@@ -1335,6 +1399,7 @@ mod tests {
         let mut saw_start_of_bindings = false;
         let mut saw_end_of_bindings = false;
         let mut saw_report = false;
+        let mut saw_error = None;
 
         let expected_certs = BTreeSet::from_iter(
             expected_certs
@@ -1356,6 +1421,7 @@ mod tests {
                     assert!(! saw_start_of_bindings);
                     assert!(! saw_end_of_bindings);
                     assert!(! saw_report);
+                    assert!(saw_error.is_none());
                     saw_start_of_bindings = true;
                 }
                 Output::Binding(binding) => {
@@ -1372,6 +1438,7 @@ mod tests {
                     assert!(saw_start_of_bindings);
                     assert!(! saw_end_of_bindings);
                     assert!(! saw_report);
+                    assert!(saw_error.is_none());
 
                     if binding.fingerprint == local_trust_root {
                         eprintln!("  (local trust root; skipping)");
@@ -1398,6 +1465,7 @@ mod tests {
                     assert!(saw_start_of_bindings);
                     assert!(! saw_end_of_bindings);
                     assert!(! saw_report);
+                    assert!(saw_error.is_none());
                     saw_end_of_bindings = true;
                 }
                 Output::Report(report) => {
@@ -1405,6 +1473,7 @@ mod tests {
                     assert!(saw_start_of_bindings);
                     assert!(saw_end_of_bindings);
                     assert!(! saw_report);
+                    assert!(saw_error.is_none());
                     saw_report = true;
 
                     // If gossip is true, then not all returned
@@ -1412,13 +1481,25 @@ mod tests {
                     assert!(report.authenticated_bindings <= binding_count);
                 }
                 Output::ArgumentError(err) => {
-                    panic!("Argument error: {}", err);
+                    eprintln!("Argument error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
                 }
                 Output::OperationalError(err) => {
-                    panic!("Operational error: {}", err);
+                    eprintln!("Operational error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
                 }
                 Output::SystemError(err) => {
-                    panic!("System error: {}", err);
+                    eprintln!("System error: {}", err);
+                    assert!(saw_error.is_none());
+                    assert!(! saw_report);
+
+                    saw_error = Some(err.to_string());
                 }
             }
         }
@@ -1464,6 +1545,34 @@ mod tests {
         }
         assert_eq!(missing.len(), 0);
         assert_eq!(unexpected.len(), 0);
+
+        match (result, saw_error) {
+            (Ok(_), Some(err)) => {
+                // Function returned success, but saw an error.
+                panic!("Function returned success, but an error was \
+                        propagated via the stream: {:?}",
+                       err);
+            }
+            (Err(err), None) => {
+                // Function returned an error, but we didn't see an error.
+                panic!("Function return an error, but error was not \
+                        propagated via the steam: {:?}",
+                       err);
+            }
+            (Err(f_err), Some(s_err)) => {
+                // Error does not implement Eq.  Instead convert the
+                // error to a string.  Unless two different errors
+                // have the same display output, this should is
+                // enough.
+                if f_err.to_string() != s_err {
+                    panic!("Function returned a different error from the stream:\
+                            \nFunction: {:?}\n  Stream: {:?}",
+                           f_err, s_err);
+                }
+            }
+            (Ok(_outcome), None) => {
+            }
+        }
     }
 
     #[test]
@@ -1471,17 +1580,17 @@ mod tests {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 
         let mut output = Vec::new();
-        sq.cert_list()
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output, &[]);
+        let result = sq.cert_list()
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result, &[]);
 
         let mut output = Vec::new();
-        sq.cert_list()
+        let result = sq.cert_list()
             .gossip(true)
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output, &[]);
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result, &[]);
     }
 
     #[test]
@@ -1498,21 +1607,21 @@ mod tests {
             .into_cert();
 
         let mut output = Vec::new();
-        sq.cert_list()
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output,
+        let result = sq.cert_list()
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result,
               &[(alice.fingerprint(), Some("<alice@example.org>"), 120)]);
 
         // In gossip mode, we don't stop at 120.  It will also get 1
         // point of trust amount from the "Generated on host" shadow
         // CA.
         let mut output = Vec::new();
-        sq.cert_list()
+        let result = sq.cert_list()
             .gossip(true)
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output,
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result,
               &[(alice.fingerprint(), Some("<alice@example.org>"), 121)]);
     }
 
@@ -1575,10 +1684,10 @@ mod tests {
 
         // List authenticated bindings.
         let mut output = Vec::new();
-        sq.cert_list()
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output,
+        let result = sq.cert_list()
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result,
               &[
                   alice_binding.clone(),
                   bob_binding.clone(),
@@ -1586,11 +1695,11 @@ mod tests {
 
         // List all bindings.
         let mut output = Vec::new();
-        sq.cert_list()
+        let result = sq.cert_list()
             .gossip(true)
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output,
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result,
               &[
                   alice_binding.clone(),
                   bob_binding.clone(),
@@ -1607,86 +1716,86 @@ mod tests {
         ] {
             // By unauthenticated certificate.
             let mut output = Vec::new();
-            sq.cert_list()
+            let result = sq.cert_list()
                 .query(Query::unauthenticated_cert(binding.0.clone().into()))
-                .list(&mut output)
-                .expect("ok");
+                .list(&mut output);
+            assert!(result.is_ok());
             if binding.2 >= 120 {
-                check(&sq, output, &[ binding.clone(), ]);
+                check(&sq, output, result, &[ binding.clone(), ]);
             } else {
-                check(&sq, output, &[ ]);
+                check(&sq, output, result, &[ ]);
             }
 
             let mut output = Vec::new();
-            sq.cert_list()
+            let result = sq.cert_list()
                 .query(Query::unauthenticated_cert(binding.0.clone().into()))
                 .gossip(true)
-                .list(&mut output)
-                .expect("ok");
-            check(&sq, output, &[ binding.clone(), ]);
+                .list(&mut output);
+            assert!(result.is_ok());
+            check(&sq, output, result, &[ binding.clone(), ]);
 
             // By authenticated certificate.
             let mut output = Vec::new();
-            sq.cert_list()
+            let result = sq.cert_list()
                 .query(Query::authenticated_cert(binding.0.clone().into()))
-                .list(&mut output)
-                .expect("ok");
-            check(&sq, output, &[ binding.clone(), ]);
+                .list(&mut output);
+            assert!(result.is_ok());
+            check(&sq, output, result, &[ binding.clone(), ]);
 
             let mut output = Vec::new();
-            sq.cert_list()
+            let result = sq.cert_list()
                 .query(Query::authenticated_cert(binding.0.clone().into()))
                 .gossip(true)
-                .list(&mut output)
-                .expect("ok");
-            check(&sq, output, &[ binding.clone(), ]);
+                .list(&mut output);
+            assert!(result.is_ok());
+            check(&sq, output, result, &[ binding.clone(), ]);
 
             // By user ID.
             if let Some(userid) = binding.1 {
                 let mut output = Vec::new();
-                sq.cert_list()
+                let result = sq.cert_list()
                     .query(Query::userid(userid))
-                    .list(&mut output)
-                    .expect("ok");
+                    .list(&mut output);
+                assert!(result.is_ok());
                 if binding.2 >= 120 {
-                    check(&sq, output, &[ binding.clone(), ]);
+                    check(&sq, output, result, &[ binding.clone(), ]);
                 } else {
-                    check(&sq, output, &[ ]);
+                    check(&sq, output, result, &[ ]);
                 }
 
                 let mut output = Vec::new();
-                sq.cert_list()
+                let result = sq.cert_list()
                     .query(Query::userid(userid))
                     .gossip(true)
-                    .list(&mut output)
-                    .expect("ok");
-                check(&sq, output, &[ binding.clone(), ]);
+                    .list(&mut output);
+                assert!(result.is_ok());
+                check(&sq, output, result, &[ binding.clone(), ]);
             }
         }
 
         // And queries that don't match anything.
         let mut output = Vec::new();
-        sq.cert_list()
+        let result = sq.cert_list()
             .query(Query::unauthenticated_cert(
                 "012345678901234567890123456789".parse().expect("valid")))
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output, &[ ]);
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result, &[ ]);
 
         let mut output = Vec::new();
-        sq.cert_list()
+        let result = sq.cert_list()
             .query(Query::authenticated_cert(
                 "012345678901234567890123456789".parse().expect("valid")))
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output, &[ ]);
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result, &[ ]);
 
         let mut output = Vec::new();
-        sq.cert_list()
+        let result = sq.cert_list()
             .query(Query::userid("not present"))
-            .list(&mut output)
-            .expect("ok");
-        check(&sq, output, &[ ]);
+            .list(&mut output);
+        assert!(result.is_ok());
+        check(&sq, output, result, &[ ]);
     }
 
     #[test]
