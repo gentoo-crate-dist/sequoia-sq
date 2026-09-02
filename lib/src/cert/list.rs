@@ -287,6 +287,18 @@ pub mod output {
     }
 
     impl Report {
+        pub(super) fn new() -> Self {
+            Report {
+                missing_trust_roots: None,
+                query_lints: Vec::new(),
+                matching_bindings: 0,
+                unsatisfied_queries: Vec::new(),
+                authenticated_bindings: 0,
+                unusable_bindings: 0,
+                unauthenticated_bindings: 0,
+            }
+        }
+
         pub(super) fn to_outcome(&self) -> Outcome {
             Outcome {
                 missing_trust_roots: self.missing_trust_roots.clone(),
@@ -712,17 +724,13 @@ impl<'a> Builder<'a> {
     where
         S: Stream,
     {
-        let result = self.list_(&mut stream);
+        let mut report = output::Report::new();
 
-        match result {
-            Ok(report) => {
-                let outcome = report.to_outcome();
-                stream.output(&self.params, Output::Report(report))
-                    .map_err(|err| Error::StreamOutputError(err))?;
-                Ok(outcome)
-            }
-            Err(err @ Error::StreamOutputError(_)) => {
-                Err(err)
+        let result = self.list_(&mut stream, &mut report);
+
+        let result = match result {
+            Ok(()) => {
+                Ok(report.to_outcome())
             }
             Err(Error::ArgumentError(err)) => {
                 let err_ = err.clone();
@@ -742,10 +750,20 @@ impl<'a> Builder<'a> {
                     .map_err(|err| Error::StreamOutputError(err))?;
                 Err(Error::OperationalError(err_))
             }
-        }
+            Err(err @ Error::StreamOutputError(_)) => {
+                // Stop immediately.
+                Err(err)
+            }
+        };
+
+        stream.output(&self.params, Output::Report(report))
+            .map_err(|err| Error::StreamOutputError(err))?;
+
+        result
     }
 
-    pub fn list_(&self, stream: &mut dyn Stream) -> Result<output::Report, Error>
+    pub fn list_(&self, stream: &mut dyn Stream, report: &mut output::Report)
+        -> Result<(), Error>
     {
         let &Params {
             sequoia,
@@ -1355,7 +1373,7 @@ impl<'a> Builder<'a> {
         let bindings_not_authenticated
             = bindings.len() - bindings_authenticated - bindings_unusable;
 
-        let report = output::Report {
+        *report = output::Report {
             missing_trust_roots: if ! unsatisfied.is_empty() {
                 Some((n.roots().clone(), missing_trust_roots))
             } else {
@@ -1369,7 +1387,7 @@ impl<'a> Builder<'a> {
             unauthenticated_bindings: bindings_not_authenticated
         };
 
-        Ok(report)
+        Ok(())
     }
 }
 
@@ -1390,11 +1408,11 @@ mod tests {
              expected_certs: &[(Fingerprint, Option<&str>, usize)])
     {
         let local_trust_root = sequoia.local_trust_root()
-            .expect("have local trust root")
-            .fingerprint();
+            .ok()
+            .map(|cert| cert.fingerprint());
         let generated_cert = sequoia.shadow_ca_generated_on()
-            .expect("have generate on")
-            .fingerprint();
+            .ok()
+            .map(|cert| cert.fingerprint());
 
         let mut saw_start_of_bindings = false;
         let mut saw_end_of_bindings = false;
@@ -1440,9 +1458,11 @@ mod tests {
                     assert!(! saw_report);
                     assert!(saw_error.is_none());
 
-                    if binding.fingerprint == local_trust_root {
+                    if Some(&binding.fingerprint) == local_trust_root.as_ref() {
                         eprintln!("  (local trust root; skipping)");
-                    } else if binding.fingerprint == generated_cert {
+                    } else if Some(&binding.fingerprint)
+                        == generated_cert.as_ref()
+                    {
                         eprintln!("  (generated cert; skipping)");
                     } else {
                         got_certs.insert(
@@ -1470,10 +1490,7 @@ mod tests {
                 }
                 Output::Report(report) => {
                     eprintln!("- Report");
-                    assert!(saw_start_of_bindings);
-                    assert!(saw_end_of_bindings);
                     assert!(! saw_report);
-                    assert!(saw_error.is_none());
                     saw_report = true;
 
                     // If gossip is true, then not all returned
@@ -1505,46 +1522,48 @@ mod tests {
         }
         eprintln!("End of cert list");
 
-        assert!(saw_start_of_bindings);
-        assert!(saw_end_of_bindings);
         assert!(saw_report);
 
-        let missing = expected_certs.difference(&got_certs)
-            .collect::<Vec<_>>();
-        if missing.len() > 0 {
-            eprintln!("{} missing bindings:", missing.len());
-            for (fingerprint, userid, aggregate_trust_amount) in missing.iter() {
-                eprintln!("  - {}, {}, {}",
-                          fingerprint,
-                          userid
+        if saw_end_of_bindings {
+            assert!(saw_start_of_bindings);
+
+            let missing = expected_certs.difference(&got_certs)
+                .collect::<Vec<_>>();
+            if missing.len() > 0 {
+                eprintln!("{} missing bindings:", missing.len());
+                for (fingerprint, userid, aggregate_trust_amount) in missing.iter() {
+                    eprintln!("  - {}, {}, {}",
+                              fingerprint,
+                              userid
                               .as_ref()
                               .map(|userid| {
                                   String::from_utf8_lossy(userid.value())
                                       .to_string()
                               })
                               .unwrap_or_else(|| "<none>".into()),
-                          aggregate_trust_amount);
+                              aggregate_trust_amount);
+                }
             }
-        }
-        let unexpected = got_certs.difference(&expected_certs)
-            .collect::<Vec<_>>();
-        if unexpected.len() > 0 {
-            eprintln!("{} unexpected bindings:", unexpected.len());
-            for (fingerprint, userid, aggregate_trust_amount) in unexpected.iter() {
-                eprintln!("  - {}, {}, {}",
-                          fingerprint,
-                          userid
+            let unexpected = got_certs.difference(&expected_certs)
+                .collect::<Vec<_>>();
+            if unexpected.len() > 0 {
+                eprintln!("{} unexpected bindings:", unexpected.len());
+                for (fingerprint, userid, aggregate_trust_amount) in unexpected.iter() {
+                    eprintln!("  - {}, {}, {}",
+                              fingerprint,
+                              userid
                               .as_ref()
                               .map(|userid| {
                                   String::from_utf8_lossy(userid.value())
                                       .to_string()
                               })
                               .unwrap_or_else(|| "<none>".into()),
-                          aggregate_trust_amount);
+                              aggregate_trust_amount);
+                }
             }
+            assert_eq!(missing.len(), 0);
+            assert_eq!(unexpected.len(), 0);
         }
-        assert_eq!(missing.len(), 0);
-        assert_eq!(unexpected.len(), 0);
 
         match (result, saw_error) {
             (Ok(_), Some(err)) => {
@@ -1571,6 +1590,8 @@ mod tests {
                 }
             }
             (Ok(_outcome), None) => {
+                assert!(saw_start_of_bindings);
+                assert!(saw_end_of_bindings);
             }
         }
     }
@@ -1807,8 +1828,19 @@ mod tests {
             .query(Query::email("invalid@email@domain.com"))
             .list(&mut output);
 
+        // Make sure the error (and then the report were returned) via
+        // the stream interface.
+        assert_eq!(output.len(), 2,
+                   "Unexpected stream output");
+        let Output::ArgumentError(err) = output.iter().next().unwrap() else {
+            panic!("Stream didn't return invalid argument");
+        };
+        let error::ArgumentError::InvalidEmail(_err) = err else {
+            panic!("Failed to return InvalidEmail");
+        };
+
         // Check the function's return value.
-        let Err(err) = result else {
+        let Err(err) = result.as_ref() else {
             panic!("Failed to catch invalid argument");
         };
         let Error::ArgumentError(err) = err else {
@@ -1817,17 +1849,7 @@ mod tests {
         let error::ArgumentError::InvalidEmail(_err) = err else {
             panic!("Failed to return InvalidEmail");
         };
-
-        // Make sure the error was also reported via the stream interface.
-        assert_eq!(output.len(), 1,
-                   "Unexpected stream output");
-        let output = output.into_iter().next().unwrap();
-        let Output::ArgumentError(err) = output else {
-            panic!("Stream didn't return invalid argument");
-        };
-        let error::ArgumentError::InvalidEmail(_err) = err else {
-            panic!("Failed to return InvalidEmail");
-        };
+        check(&sq, output, result, &[ ]);
     }
 
     #[test]
@@ -1840,7 +1862,7 @@ mod tests {
             .list(&mut output);
 
         // Check the function's return value.
-        let Err(err) = result else {
+        let Err(err) = result.as_ref() else {
             panic!("Failed to catch missing home error");
         };
         let Error::SystemError(err) = &err else {
@@ -1850,17 +1872,18 @@ mod tests {
             panic!("Failed to return CertStoreDisabled, got: {:?}", err);
         };
 
-        // Make sure the error was also reported via the stream interface.
-        assert_eq!(output.len(), 1,
+        // Make sure the error (and then the report were returned) via
+        // the stream interface.
+        assert_eq!(output.len(), 2,
                    "Unexpected stream output");
-        let output = output.into_iter().next().unwrap();
-        let Output::SystemError(err) = output else {
+        let Output::SystemError(err) = output.iter().next().unwrap() else {
             panic!("Stream didn't return CertStoreDisable");
         };
         let SystemError::CertStoreDisabled = err else {
             panic!("Failed to return CertStoreDisabled");
         };
 
+        check(&sq, output, result, &[ ]);
     }
 
     #[test]
