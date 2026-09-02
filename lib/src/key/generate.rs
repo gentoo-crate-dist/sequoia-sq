@@ -726,6 +726,12 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     where
         P: prompt::Prompt + 'a,
     {
+        self.generate_(&prompt)
+    }
+
+    fn generate_<'a>(self, prompt: &(dyn prompt::Prompt + 'a))
+        -> Result<Outcome, Error>
+    {
         let Builder {
             params: Params {
                 sequoia,
