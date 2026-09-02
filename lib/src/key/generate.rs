@@ -15,7 +15,7 @@
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
-//! let artifact = sq.key_generate()
+//! let outcome = sq.key_generate()
 //!     .name("Alice")
 //!     .email("alice@example.org")
 //!     .password("secr3t".into())
@@ -23,7 +23,7 @@
 //!     .generate(Cancel::new())?;
 //!
 //! println!("New certificate's fingerprint: {}",
-//!          artifact.cert().fingerprint());
+//!          outcome.cert().fingerprint());
 //! # Ok(()) }
 //! ```
 //!
@@ -39,7 +39,7 @@
 //! let mut key = Vec::new();
 //! let mut revocation = Vec::new();
 //!
-//! let artifact = sq.key_generate()
+//! let outcome = sq.key_generate()
 //!     .name("Alice")
 //!     .email("alice@example.org")
 //!     .password("secr3t".into())
@@ -48,7 +48,7 @@
 //!     .generate(Cancel::new())?;
 //!
 //! println!("New certificate's fingerprint: {}",
-//!          artifact.cert().fingerprint());
+//!          outcome.cert().fingerprint());
 //! # Ok(()) }
 //! ```
 use std::sync::Arc;
@@ -202,13 +202,13 @@ pub enum Error {
 /// Returned by [`Builder::generate`].
 #[non_exhaustive]
 #[derive(Clone)]
-pub struct Artifact {
+pub struct Outcome {
     pub cert: Cert,
     pub key_import_status: Option<Vec<(sequoia_openpgp::Fingerprint,
                                        import_stats::ImportStatus)>>,
 }
 
-impl Artifact {
+impl Outcome {
     /// Returns a reference to the generated certificate.
     pub fn cert(&self) -> &Cert {
         &self.cert
@@ -722,7 +722,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// if either fails, e.g., because the certificate is not usable,
     /// the error is silently ignored.
     pub fn generate<'a, P>(self, prompt: P)
-        -> Result<Artifact, Error>
+        -> Result<Outcome, Error>
     where
         P: prompt::Prompt + 'a,
     {
@@ -1081,7 +1081,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             }
         }
 
-        Ok(Artifact {
+        Ok(Outcome {
             cert,
             key_import_status,
         })
