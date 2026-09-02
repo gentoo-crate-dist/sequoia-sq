@@ -1110,12 +1110,16 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     }
 
     /// Search for certificates on the network.
-    pub async fn search<P>(mut self, queries: Vec<Query>, prompt: P)
+    pub async fn search<P>(mut self,
+                           queries: impl IntoIterator<Item=Query>,
+                           prompt: P)
         -> Result<(), Error>
     where
         P: Prompt
     {
         let mut report = output::Report::new();
+
+        let queries = queries.into_iter().collect::<Vec<_>>();
 
         let result = Self::search_(
             &self.params, &mut self.params_once,
