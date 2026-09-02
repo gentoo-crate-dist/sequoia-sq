@@ -400,10 +400,10 @@ impl KeyTemplate {
     ///   [RFC 9580 for details]: https://www.rfc-editor.org/rfc/rfc9580.html#name-notation-data
     pub fn add_notations(
         mut self,
-        notations: impl Iterator<Item=(bool, NotationData)>)
+        notations: impl IntoIterator<Item=(bool, NotationData)>)
         -> Self
     {
-        self.notations.extend(notations);
+        self.notations.extend(notations.into_iter());
         self
     }
 
