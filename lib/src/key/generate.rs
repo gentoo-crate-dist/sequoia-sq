@@ -51,6 +51,7 @@
 //!          artifact.cert().fingerprint());
 //! # Ok(()) }
 //! ```
+use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -109,7 +110,7 @@ pub mod error {
     ///
     /// Argument errors are fatal and cause processing to abort.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum ArgumentError {
         /// A user ID is not in canonical form.
         ///
@@ -119,7 +120,7 @@ pub mod error {
         InvalidUserIDs(#[from] InvalidUserIDs),
 
         #[error(transparent)]
-        Other(anyhow::Error),
+        Other(Arc<anyhow::Error>),
     }
 
     /// Some user IDs are invalid or not in canonical form.
@@ -127,7 +128,7 @@ pub mod error {
     /// Non-canonical user IDs can be accepted using
     /// [`Builder::allow_non_canonical_userids`].
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     #[error("Invalid user IDs{}{}",
               if .lints.is_empty() {
                   ""
@@ -151,10 +152,10 @@ pub mod error {
     /// of an operational error is that the operation needs to create
     /// a signature, but the secret key material is not available.
     #[non_exhaustive]
-    #[derive(thiserror::Error, Debug)]
+    #[derive(thiserror::Error, Debug, Clone)]
     pub enum OperationalError {
         #[error(transparent)]
-        Other(anyhow::Error),
+        Other(Arc<anyhow::Error>),
     }
 }
 
@@ -200,6 +201,7 @@ pub enum Error {
 ///
 /// Returned by [`Builder::generate`].
 #[non_exhaustive]
+#[derive(Clone)]
 pub struct Artifact {
     pub cert: Cert,
     pub key_import_status: Option<Vec<(sequoia_openpgp::Fingerprint,
@@ -229,6 +231,7 @@ impl Artifact {
 /// Key generation parameters.
 ///
 /// These parameters are used by [`generate`](Builder::generate).
+#[derive(Clone)]
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
     profile: Profile,
@@ -760,7 +763,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             () => {
                 |err| {
                     Error::OperationalError(
-                        error::OperationalError::Other(err.into()))
+                        error::OperationalError::Other(Arc::new(err.into())))
                 }
             }
         }
