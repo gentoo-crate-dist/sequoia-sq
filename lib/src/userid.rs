@@ -2,6 +2,7 @@ use sequoia_openpgp as openpgp;
 use openpgp::packet::UserID;
 
 /// A canonical user ID.
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum UserIDLint {
     /// Not UTF-8 Encoded.
