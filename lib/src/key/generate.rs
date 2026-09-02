@@ -1093,3 +1093,146 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use openpgp::parse::Parse;
+
+    use crate::cert::list::Output::Binding;
+    use crate::cert::list::Query;
+    use crate::prompt::Cancel;
+
+    fn check(sequoia: &Sequoia, cert: &Cert, imported: bool,
+             authenticated: bool)
+    {
+        // Check if the cert was import into the cert store.
+        let found = sequoia.lookup()
+            .lookup(Some(cert.key_handle()), false);
+        if imported {
+            let found = found.expect("Can lookup certificate that was imported");
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].fingerprint(), cert.fingerprint());
+        } else {
+            assert!(found.is_err());
+        }
+
+        if imported {
+            // Check for the secret key material.
+            assert!(sequoia.have_secret_key(&cert.primary_key()),
+                    "have secret key material for key that we just generated");
+        } else {
+            assert!(
+                ! sequoia.have_secret_key(
+                    &cert.clone().strip_secret_key_material().primary_key()),
+                "shouldn't have secret key material");
+        }
+
+        // Make sure the user ID was marked as authenticated.
+        let mut output = Vec::new();
+        sequoia.cert_list()
+            .query(Query::email("alice@example.org"))
+            .list(&mut output)
+            .expect("can list certificates");
+        if authenticated {
+            assert!(output.into_iter().any(|o| {
+                if let Binding(binding) = o {
+                    let c = binding.cert(&sequoia).expect("can read cert");
+                    assert_eq!(c.fingerprint(), cert.fingerprint());
+                    true
+                } else {
+                    false
+                }
+            }));
+        } else {
+            assert!(output.into_iter().all(|o| {
+                ! matches!(o, Binding(_))
+            }));
+        }
+    }
+
+    #[test]
+    fn key_generate_to_key_store() {
+        let sequoia = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate key using the high-level API and directly import
+        // it to the key store and the certificate store.
+        let outcome = sequoia.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate(Cancel::new())
+            .expect("can generate key");
+
+        assert!(outcome.key_import_status.is_some(),
+                "key should have been imported");
+
+        let cert = outcome.cert();
+
+        check(&sequoia, &cert, true, true);
+    }
+
+    #[test]
+    fn key_generate_to_writer() {
+        let sequoia = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let mut cert_bytes = Vec::new();
+
+        // Generate key using the high-level API and directly import
+        // it to the key store and the certificate store.
+        let outcome = sequoia.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .to_writer((&mut cert_bytes, None))
+            .generate(Cancel::new())
+            .expect("can generate key");
+
+        assert!(outcome.key_import_status.is_none(),
+                "key should not have been imported");
+
+        let cert = outcome.cert();
+
+        let from_writer = Cert::from_bytes(&cert_bytes)
+            .expect("can parse certificate");
+        assert_eq!(from_writer.fingerprint(), cert.fingerprint());
+
+        check(&sequoia, &cert, false, false);
+
+        // Import the key and make sure it was not certified by the
+        // local trust root.
+        sequoia.key_import()
+            .import_key(cert.clone())
+            .expect("imported");
+
+        check(&sequoia, &cert, true, false);
+    }
+
+    #[test]
+    fn key_generate_ephemeral() {
+        let sequoia = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Generate key using the high-level API and directly import
+        // it to the key store and the certificate store.
+        let outcome = sequoia.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .ephemeral()
+            .generate(Cancel::new())
+            .expect("can generate key");
+
+        assert!(outcome.key_import_status.is_none(),
+                "key should not have been imported");
+
+        let cert = outcome.cert();
+
+        check(&sequoia, &cert, false, false);
+
+        // Import the key and make sure it was not certified by the
+        // local trust root.
+        sequoia.key_import()
+            .import_key(cert.clone())
+            .expect("imported");
+
+        check(&sequoia, &cert, true, false);
+    }
+}
