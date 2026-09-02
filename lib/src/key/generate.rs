@@ -759,14 +759,6 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                 }
             }
         }
-        macro_rules! op {
-            () => {
-                |err| {
-                    Error::OperationalError(
-                        error::OperationalError::Other(Arc::new(err.into())))
-                }
-            }
-        }
 
         let to_keystore = destination.to_store();
         if to_keystore {
