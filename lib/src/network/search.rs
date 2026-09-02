@@ -61,7 +61,7 @@
 //! #   .clear_sources()
 //! #   .query_cert_store(true)
 //!     .search(
-//!         vec![Query::Address("alice@example.org".to_string())],
+//!         Query::Address("alice@example.org".to_string()),
 //!         // If a shadow CA is password protected, don't prompt for
 //!         // a password; ignore it;
 //!         Cancel::new())
@@ -134,7 +134,7 @@
 //! #   .clear_sources()
 //! #   .query_cert_store(true)
 //!     .search(
-//!         vec![Query::Address("alice@example.org".to_string())],
+//!         Query::Address("alice@example.org".to_string()),
 //!         // If a shadow CA is password protected, don't prompt for
 //!         // a password; ignore it;
 //!         Cancel::new())
@@ -342,6 +342,43 @@ impl Query {
                 })?;
         }
         Ok(())
+    }
+}
+
+/// Converts a `Query` into an iterator.
+///
+/// This allows passing a bare [`Query`] to [`Builder::search`].
+pub struct QueryIterator<'a> {
+    query: Option<Cow<'a, Query>>,
+}
+
+impl Iterator for QueryIterator<'_> {
+    type Item = Query;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.query.take().map(|q| q.into_owned())
+    }
+}
+
+impl IntoIterator for Query {
+    type Item = Query;
+    type IntoIter = QueryIterator<'static>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        QueryIterator {
+            query: Some(Cow::Owned(self)),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a Query {
+    type Item = Query;
+    type IntoIter = QueryIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        QueryIterator {
+            query: Some(Cow::Borrowed(self)),
+        }
     }
 }
 
@@ -1963,7 +2000,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
+                    Query::Address("alice@example.org".to_string()),
                     Cancel::new())
                 .await
         });
@@ -1978,7 +2015,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("invalid@alice@example.org".to_string())],
+                    &Query::Address("invalid@alice@example.org".to_string()),
                     Cancel::new())
                 .await
         });
