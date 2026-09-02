@@ -566,7 +566,7 @@ pub mod output {
     /// A query may also result in no requests if none of the enabled
     /// sources can handle it.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct RequestQueued {
         pub query: Query,
         pub source: Source,
@@ -597,7 +597,7 @@ pub mod output {
     /// If `results` is an error, the error is not fatal, but it can
     /// be helpful to display it when debugging.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Response {
         pub query: Query,
         pub source: Source,
@@ -630,7 +630,7 @@ pub mod output {
     /// This data structure is part of [`CertResult`].  See it for
     /// details.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct SourceInfo {
         pub source: Source,
 
@@ -661,7 +661,7 @@ pub mod output {
     /// Note: when this is emitted, the certificate has not yet been
     /// written out.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct CertResult {
         pub sources: Vec<SourceInfo>,
         pub cert: Cert,
@@ -672,7 +672,7 @@ pub mod output {
     /// This is emitted once after attempting to create the
     /// certifications.
     #[non_exhaustive]
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Report {
         /// Statistics about certificates imported into the
         /// certificate store.
@@ -777,6 +777,7 @@ pub enum Output {
 /// Parameters to the network search function.
 ///
 /// The parameters passed to [`Sequoia::network_search`].
+#[derive(Clone)]
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
     iterations: u8,
