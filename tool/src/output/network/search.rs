@@ -272,7 +272,6 @@ impl search::Stream for Stream<'_> {
                                     for issuer in s.get_issuers() {
                                         match sq.sequoia.lookup()
                                             .keyflags(None)
-                                            .or_by_primary(false)
                                             .lookup(&issuer)
                                         {
                                             Ok(c) => certs.extend(c),

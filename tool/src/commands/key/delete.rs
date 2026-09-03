@@ -113,7 +113,6 @@ pub fn dispatch(sq: Sq, command: cli::key::delete::Command)
             if let Ok(certs) = sq.lookup_with_policy(
                 ka.key().key_handle(),
                 None,
-                true,
                 NULL_POLICY,
                 sq.time())
             {

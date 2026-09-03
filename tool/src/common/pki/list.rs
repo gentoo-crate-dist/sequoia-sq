@@ -110,9 +110,7 @@ pub fn list_certifications(sq: &Sq,
 
                     for kh in key_handle_dealias(&issuers) {
                         if let Ok(certifiers)
-                            = sq.lookup(&kh,
-                                        Some(KeyFlags::certification()),
-                                        false)
+                            = sq.lookup(&kh, Some(KeyFlags::certification()))
                         {
                             for certifier in certifiers.into_iter() {
                                 t!("  Possible certification of {}, {:?} by {}, {}",

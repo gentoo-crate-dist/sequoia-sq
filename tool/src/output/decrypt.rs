@@ -116,7 +116,6 @@ impl decrypt::Stream for Stream<'_> {
                             if let Ok(cert) = self.vstream.sq.sequoia
                                 .lookup()
                                 .keyflags(None)
-                                .or_by_primary(true)
                                 .lookup_one(key.key_handle())
                             {
                                 qprintln!("Decrypted by {}, {}",
@@ -166,7 +165,6 @@ impl decrypt::Stream for Stream<'_> {
                                 .keyflags(Some(KeyFlags::empty()
                                                .set_storage_encryption()
                                                .set_transport_encryption()))
-                                .or_by_primary(false)
                                 .lookup(&r);
 
                             match certs {

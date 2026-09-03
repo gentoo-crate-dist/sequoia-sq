@@ -37,7 +37,6 @@ impl Sequoia {
             params: Params {
                 sequoia: self,
                 keyflags: None,
-                or_by_primary: false,
             }
         }
     }
@@ -51,7 +50,6 @@ pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
 
     keyflags: Option<KeyFlags>,
-    or_by_primary: bool,
 }
 
 impl<'sequoia> Params<'sequoia> {
@@ -66,25 +64,6 @@ impl<'sequoia> Params<'sequoia> {
     /// the matching key has at least one of the specified key flags.
     pub fn keyflags(&self) -> Option<&KeyFlags> {
         self.keyflags.as_ref()
-    }
-
-    /// Returns whether to also consider the primary key when
-    /// searching by key flags.
-    ///
-    /// By default, if `keyflags` is set, the specified key must have
-    /// the specified key flags.  Setting this flag changes the
-    /// behavior as follows: if the specified key is a primary key,
-    /// then the certificate matches if it has any subkeys with the
-    /// specified key flags.
-    ///
-    /// Consider a certificate 0x1111 that has an encryption-capable
-    /// subkey 0x2222.  If this flag is unset, then searching for
-    /// `0x1111 + encryption capable` will not match the certificate
-    /// since 0x1111 is not encryption capable.  If `or_by_primary` is
-    /// set, then 0x1111 matches, because it has a subkey with the
-    /// specified key flags.
-    pub fn or_by_primary(&self) -> bool {
-        self.or_by_primary
     }
 }
 
@@ -113,26 +92,6 @@ impl<'sequoia> Builder<'sequoia>
         K: Into<Option<KeyFlags>>
     {
         self.params.keyflags = keyflags.into();
-        self
-    }
-
-    /// Sets whether to also consider the primary key when searching
-    /// by key flags.
-    ///
-    /// By default, if `keyflags` is set, the specified key must have
-    /// the specified key flags.  Setting this flag changes the
-    /// behavior as follows: if the specified key is a primary key,
-    /// then the certificate matches if it has any subkeys with the
-    /// specified key flags.
-    ///
-    /// Consider a certificate 0x1111 that has an encryption-capable
-    /// subkey 0x2222.  If this flag is unset, then searching for
-    /// `0x1111 + encryption capable` will not match the certificate
-    /// since 0x1111 is not encryption capable.  If `or_by_primary` is
-    /// set, then 0x1111 matches, because it has a subkey with the
-    /// specified key flags.
-    pub fn or_by_primary(mut self, or_by_primary: bool) -> Self {
-        self.params.or_by_primary = or_by_primary;
         self
     }
 
@@ -178,22 +137,21 @@ impl<'sequoia> Builder<'sequoia>
             params: Params {
                 sequoia,
                 ref keyflags,
-                or_by_primary,
             },
         } = self;
 
         let (kh, mut certs) = match handle.into() {
             FileStdinOrKeyHandle::FileOrStdin(file) => {
-                t!("Reading file {}, keyflags: {:?}, or_by_primary: {}",
-                   file, keyflags, or_by_primary);
+                t!("Reading file {}, keyflags: {:?}",
+                   file, keyflags);
 
                 let br = file.open("an OpenPGP certificate")?;
                 let cert = Cert::from_buffered_reader(br)?;
                 (cert.key_handle(), vec![ cert ])
             }
             FileStdinOrKeyHandle::KeyHandle(kh) => {
-                t!("Looking up {}, keyflags: {:?}, or_by_primary: {}",
-                   kh, keyflags, or_by_primary);
+                t!("Looking up {}, keyflags: {:?}",
+                   kh, keyflags);
 
                 let certs = sequoia.cert_store_or_else()?
                     .lookup_by_cert_or_subkey(&kh)
@@ -241,12 +199,9 @@ impl<'sequoia> Builder<'sequoia>
                     }
                 };
 
-                let checked_id = or_by_primary
-                    && vc.cert().key_handle().aliases(&kh);
-
                 for ka in vc.keys() {
                     let ka_keyflags = ka.key_flags().unwrap_or(KeyFlags::empty());
-                    if checked_id || ka.key().key_handle().aliases(&kh) {
+                    if ka.key().key_handle().aliases(&kh) {
                         if ! (&ka_keyflags & keyflags).is_empty() {
                             t!("{} ({:?}) matches key flags constraint ({:?})",
                                ka.key().fingerprint(), ka_keyflags,
@@ -256,16 +211,10 @@ impl<'sequoia> Builder<'sequoia>
                     }
                 }
 
-                if checked_id {
-                    weprintln!("Error: {} does not have a key with \
-                                the required capabilities ({:?})",
-                               cert.keyid(), keyflags);
-                } else {
-                    weprintln!("Error: The subkey {} (cert: {}) \
-                                does not have the required capabilities \
-                                ({:?})",
-                               kh, cert.keyid(), keyflags);
-                }
+                weprintln!("Error: The subkey {} (cert: {}) \
+                            does not have the required capabilities \
+                            ({:?})",
+                           kh, cert.keyid(), keyflags);
                 return false;
             })
         } else {
@@ -324,8 +273,6 @@ impl<'sequoia> Builder<'sequoia>
 mod test {
     use super::*;
 
-    use openpgp::cert::amalgamation::key::PrimaryKey;
-
     use crate::prompt::Cancel;
 
     #[test]
@@ -371,11 +318,11 @@ mod test {
         }
 
         let keyflags = [
-            (KeyFlags::for_certification as fn(&KeyFlags) -> bool, KeyFlags::certification(), true),
-            (KeyFlags::for_signing as _, KeyFlags::signing(), true),
-            (KeyFlags::for_transport_encryption as _, KeyFlags::transport_encryption(), true),
-            (KeyFlags::for_storage_encryption as _, KeyFlags::storage_encryption(), true),
-            (KeyFlags::for_authentication as _, KeyFlags::authentication(), false),
+            (KeyFlags::for_certification as fn(&KeyFlags) -> bool, KeyFlags::certification()),
+            (KeyFlags::for_signing as _, KeyFlags::signing()),
+            (KeyFlags::for_transport_encryption as _, KeyFlags::transport_encryption()),
+            (KeyFlags::for_storage_encryption as _, KeyFlags::storage_encryption()),
+            (KeyFlags::for_authentication as _, KeyFlags::authentication()),
         ];
 
         // Lookup by key and key flags.
@@ -392,7 +339,7 @@ mod test {
             eprintln!("Considering {} (keyflags: {:?})",
                       k.key().fingerprint(), k_key_flags);
 
-            for (check, kf, _have_one) in keyflags.iter() {
+            for (check, kf) in keyflags.iter() {
                 eprintln!("- Looking up {}, key flags: {:?}",
                           k.key().fingerprint(), kf);
 
@@ -401,38 +348,6 @@ mod test {
                     .lookup_one(k.key().fingerprint());
 
                 if check(&k_key_flags) {
-                    eprintln!("  - Expecting a match.");
-                    assert_eq!(ret.expect("have a certificate").fingerprint(),
-                               cert.fingerprint());
-                } else {
-                    eprintln!("  - Expecting not found.");
-                    assert!(ret.is_err());
-                }
-            }
-        }
-
-        // Lookup by key handle and key flags.  Also allow matches on
-        // the certificate's key handle.
-        //
-        // This returns a certificate if the certificate contains a
-        // key with the specified key handle and that key has the
-        // specified flags.
-        for k in vc.keys() {
-            let k_key_flags = k.key_flags().expect("have key flags");
-
-            eprintln!("Considering {} (keyflags: {:?})",
-                      k.key().fingerprint(), k_key_flags);
-
-            for (check, kf, have_one) in keyflags.iter() {
-                eprintln!("- Looking up {}, key flags: {:?}, or_by_primary: true",
-                          k.key().fingerprint(), kf);
-
-                let ret = sq.lookup()
-                    .keyflags(kf.clone())
-                    .or_by_primary(true)
-                    .lookup_one(k.key().fingerprint());
-
-                if (k.primary() && *have_one) || check(&k_key_flags) {
                     eprintln!("  - Expecting a match.");
                     assert_eq!(ret.expect("have a certificate").fingerprint(),
                                cert.fingerprint());

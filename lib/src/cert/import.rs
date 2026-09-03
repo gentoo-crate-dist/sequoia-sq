@@ -1483,7 +1483,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         for issuer in issuers.iter() {
             let certs = if let Ok(certs) = params.sequoia.lookup()
                 .keyflags(None)
-                .or_by_primary(false)
                 .lookup(issuer)
             {
                 certs

@@ -398,9 +398,7 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                     })
                                 }
                             } else if let Ok(cert)
-                                = sq.lookup_one(issuer,
-                                                Some(KeyFlags::signing()),
-                                                false)
+                                = sq.lookup_one(issuer, Some(KeyFlags::signing()))
                             {
                                 if seen.contains_key(&cert.fingerprint()) {
                                     // Already saw that certificate.

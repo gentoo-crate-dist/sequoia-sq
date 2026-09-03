@@ -201,21 +201,18 @@ impl Sq {
 
 
     pub fn lookup<'a, H>(&self, handle: H,
-                         keyflags: Option<KeyFlags>,
-                         or_by_primary: bool)
+                         keyflags: Option<KeyFlags>)
         -> Result<Vec<Cert>>
     where
         H: Into<FileStdinOrKeyHandle>,
     {
         self.sequoia.lookup()
             .keyflags(keyflags)
-            .or_by_primary(or_by_primary)
             .lookup(handle)
     }
 
     pub fn lookup_with_policy<'a, H>(&self, handle: H,
                                      keyflags: Option<KeyFlags>,
-                                     or_by_primary: bool,
                                      policy: &dyn Policy,
                                      time: SystemTime)
         -> Result<Vec<Cert>>
@@ -224,25 +221,21 @@ impl Sq {
     {
         self.sequoia.lookup()
             .keyflags(keyflags)
-            .or_by_primary(or_by_primary)
-            .lookup_with_policy(handle,
-                                policy, time)
+            .lookup_with_policy(handle, policy, time)
     }
 
     pub fn lookup_one<H>(&self, handle: H,
-                         keyflags: Option<KeyFlags>, or_by_primary: bool)
+                         keyflags: Option<KeyFlags>)
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
     {
         self.sequoia.lookup()
             .keyflags(keyflags)
-            .or_by_primary(or_by_primary)
             .lookup_one(handle)
     }
 
     pub fn lookup_one_with_policy<H>(&self, handle: H,
                                      keyflags: Option<KeyFlags>,
-                                     or_by_primary: bool,
                                      policy: &dyn Policy,
                                      time: SystemTime)
         -> Result<Cert>
@@ -250,7 +243,6 @@ impl Sq {
     {
         self.sequoia.lookup()
             .keyflags(keyflags)
-            .or_by_primary(or_by_primary)
             .lookup_one_with_policy(handle, policy, time)
     }
 
