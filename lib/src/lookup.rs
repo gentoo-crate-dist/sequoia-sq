@@ -25,6 +25,8 @@ use crate::Sequoia;
 use crate::transitional::print_error_chain;
 use crate::types::FileStdinOrKeyHandle;
 
+const TRACE: bool = false;
+
 impl Sequoia {
     /// Lookup a certificate.
     ///
@@ -106,8 +108,11 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// If `keyflags` is `Some`, then only returns certificates where
     /// the matching key has at least one of the specified key flags.
-    pub fn keyflags(mut self, keyflags: Option<KeyFlags>) -> Self {
-        self.params.keyflags = keyflags;
+    pub fn keyflags<K>(mut self, keyflags: K) -> Self
+    where
+        K: Into<Option<KeyFlags>>
+    {
+        self.params.keyflags = keyflags.into();
         self
     }
 
@@ -167,6 +172,8 @@ impl<'sequoia> Builder<'sequoia>
                            time: SystemTime)
         -> Result<Vec<Cert>>
     {
+        tracer!(TRACE, "lookup_with_policy");
+
         let &Builder {
             params: Params {
                 sequoia,
@@ -177,11 +184,17 @@ impl<'sequoia> Builder<'sequoia>
 
         let (kh, mut certs) = match handle.into() {
             FileStdinOrKeyHandle::FileOrStdin(file) => {
+                t!("Reading file {}, keyflags: {:?}, or_by_primary: {}",
+                   file, keyflags, or_by_primary);
+
                 let br = file.open("an OpenPGP certificate")?;
                 let cert = Cert::from_buffered_reader(br)?;
                 (cert.key_handle(), vec![ cert ])
             }
             FileStdinOrKeyHandle::KeyHandle(kh) => {
+                t!("Looking up {}, keyflags: {:?}, or_by_primary: {}",
+                   kh, keyflags, or_by_primary);
+
                 let certs = sequoia.cert_store_or_else()?
                     .lookup_by_cert_or_subkey(&kh)
                     .with_context(|| {
@@ -202,11 +215,18 @@ impl<'sequoia> Builder<'sequoia>
                     })
                     .collect::<Vec<Cert>>();
 
+                t!("Found {} certificates matching {}: {}",
+                   certs.len(), kh,
+                   certs.iter().map(|c| c.fingerprint().to_string())
+                       .collect::<Vec<String>>()
+                       .join(", "));
+
                 (kh.clone(), certs)
             }
         };
 
         if let Some(keyflags) = keyflags.as_ref() {
+            t!("Checking key flags constraint: {:?}", keyflags);
             certs.retain(|cert| {
                 let vc = match cert.with_policy(policy, time)
                 {
@@ -225,11 +245,12 @@ impl<'sequoia> Builder<'sequoia>
                     && vc.cert().key_handle().aliases(&kh);
 
                 for ka in vc.keys() {
+                    let ka_keyflags = ka.key_flags().unwrap_or(KeyFlags::empty());
                     if checked_id || ka.key().key_handle().aliases(&kh) {
-                        if &ka.key_flags().unwrap_or(KeyFlags::empty())
-                            & keyflags
-                            != KeyFlags::empty()
-                        {
+                        if ! (&ka_keyflags & keyflags).is_empty() {
+                            t!("{} ({:?}) matches key flags constraint ({:?})",
+                               ka.key().fingerprint(), ka_keyflags,
+                               keyflags);
                             return true;
                         }
                     }
@@ -247,6 +268,8 @@ impl<'sequoia> Builder<'sequoia>
                 }
                 return false;
             })
+        } else {
+            t!("No key flags constraint");
         }
 
         if ! allow_ambiguous && certs.len() > 1 {
@@ -294,5 +317,130 @@ impl<'sequoia> Builder<'sequoia>
                 assert_eq!(certs.len(), 1);
                 certs.into_iter().next().expect("have one")
             })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use openpgp::cert::amalgamation::key::PrimaryKey;
+
+    use crate::prompt::Cancel;
+
+    #[test]
+    fn lookup() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let cert = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .can_authenticate(false)
+            .generate(Cancel::new())
+            .expect("can generate key")
+            .into_cert();
+        let vc = cert.with_policy(sq.policy(), sq.time())
+            .expect("have a valid certificate");
+
+        eprintln!("Certificate:");
+        for k in vc.keys() {
+            eprintln!("  {}: {:?}",
+                      k.key().fingerprint(),
+                      k.key_flags());
+        }
+
+        // Lookup by primary.
+        let ret = sq.lookup()
+            .lookup_one(cert.fingerprint())
+            .expect("have certificate");
+
+        assert_eq!(ret.fingerprint(), cert.fingerprint());
+
+        // Lookup by subkey.
+        for k in vc.keys().subkeys() {
+            eprintln!("Considering {} (keyflags: {:?})",
+                      k.key().fingerprint(),
+                      k.key_flags());
+
+            eprintln!("- Looking up {}", k.key().fingerprint());
+            let ret = sq.lookup()
+                .lookup_one(k.key().fingerprint())
+                .expect("have certificate");
+
+            assert_eq!(ret.fingerprint(), cert.fingerprint());
+        }
+
+        let keyflags = [
+            (KeyFlags::for_certification as fn(&KeyFlags) -> bool, KeyFlags::certification(), true),
+            (KeyFlags::for_signing as _, KeyFlags::signing(), true),
+            (KeyFlags::for_transport_encryption as _, KeyFlags::transport_encryption(), true),
+            (KeyFlags::for_storage_encryption as _, KeyFlags::storage_encryption(), true),
+            (KeyFlags::for_authentication as _, KeyFlags::authentication(), false),
+        ];
+
+        // Lookup by key and key flags.
+        //
+        // This returns a certificate if the certificate contains a
+        // key with the specified key handle and that key has the
+        // specified flags.
+        //
+        // This does NOT match if the matched key is the primary key
+        // and a subkey has the specified key flags.
+        for k in vc.keys() {
+            let k_key_flags = k.key_flags().expect("have key flags");
+
+            eprintln!("Considering {} (keyflags: {:?})",
+                      k.key().fingerprint(), k_key_flags);
+
+            for (check, kf, _have_one) in keyflags.iter() {
+                eprintln!("- Looking up {}, key flags: {:?}",
+                          k.key().fingerprint(), kf);
+
+                let ret = sq.lookup()
+                    .keyflags(kf.clone())
+                    .lookup_one(k.key().fingerprint());
+
+                if check(&k_key_flags) {
+                    eprintln!("  - Expecting a match.");
+                    assert_eq!(ret.expect("have a certificate").fingerprint(),
+                               cert.fingerprint());
+                } else {
+                    eprintln!("  - Expecting not found.");
+                    assert!(ret.is_err());
+                }
+            }
+        }
+
+        // Lookup by key handle and key flags.  Also allow matches on
+        // the certificate's key handle.
+        //
+        // This returns a certificate if the certificate contains a
+        // key with the specified key handle and that key has the
+        // specified flags.
+        for k in vc.keys() {
+            let k_key_flags = k.key_flags().expect("have key flags");
+
+            eprintln!("Considering {} (keyflags: {:?})",
+                      k.key().fingerprint(), k_key_flags);
+
+            for (check, kf, have_one) in keyflags.iter() {
+                eprintln!("- Looking up {}, key flags: {:?}, or_by_primary: true",
+                          k.key().fingerprint(), kf);
+
+                let ret = sq.lookup()
+                    .keyflags(kf.clone())
+                    .or_by_primary(true)
+                    .lookup_one(k.key().fingerprint());
+
+                if (k.primary() && *have_one) || check(&k_key_flags) {
+                    eprintln!("  - Expecting a match.");
+                    assert_eq!(ret.expect("have a certificate").fingerprint(),
+                               cert.fingerprint());
+                } else {
+                    eprintln!("  - Expecting not found.");
+                    assert!(ret.is_err());
+                }
+            }
+        }
     }
 }
