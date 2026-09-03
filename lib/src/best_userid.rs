@@ -156,7 +156,7 @@ impl Sequoia {
         let certs = self.lookup()
             .keyflags(keyflags.into())
             .or_by_primary(false)
-            .lookup(std::iter::once(key_handle), true);
+            .lookup(key_handle);
 
         match certs {
             Ok(certs) => {

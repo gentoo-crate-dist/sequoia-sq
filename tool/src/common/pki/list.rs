@@ -110,9 +110,9 @@ pub fn list_certifications(sq: &Sq,
 
                     for kh in key_handle_dealias(&issuers) {
                         if let Ok(certifiers)
-                            = sq.lookup(std::iter::once(&kh),
+                            = sq.lookup(&kh,
                                         Some(KeyFlags::certification()),
-                                        false, true)
+                                        false)
                         {
                             for certifier in certifiers.into_iter() {
                                 t!("  Possible certification of {}, {:?} by {}, {}",

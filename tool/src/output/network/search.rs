@@ -267,21 +267,33 @@ impl search::Stream for Stream<'_> {
                                                   "possibly revoked");
                                     }
 
-                                    match sq.sequoia.lookup()
-                                        .keyflags(None)
-                                        .or_by_primary(false)
-                                        .lookup(s.get_issuers(), true)
-                                    {
-                                        Ok(issuers) => for issuer in issuers {
+                                    let mut certs = Vec::new();
+                                    let mut err = None;
+                                    for issuer in s.get_issuers() {
+                                        match sq.sequoia.lookup()
+                                            .keyflags(None)
+                                            .or_by_primary(false)
+                                            .lookup(issuer)
+                                        {
+                                            Ok(c) => certs.extend(c),
+                                            Err(e) => {
+                                                err = Some(e);
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(_) = err {
+                                        qprintln!(initial_indent = "     - ",
+                                                  "by {}", s.get_issuers()[0]);
+                                    } else {
+                                        for issuer in certs {
                                             qprintln!(initial_indent = "     - ",
                                                       "by {}, {}",
                                                       issuer.fingerprint(),
                                                       sq.sequoia.best_userid(&issuer, true)
                                                       .display());
-                                        },
-                                        Err(_) =>
-                                            qprintln!(initial_indent = "     - ",
-                                                      "by {}", s.get_issuers()[0]),
+                                        }
                                     }
                                 },
 

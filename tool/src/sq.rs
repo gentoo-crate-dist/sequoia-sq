@@ -200,34 +200,32 @@ impl Sq {
     }
 
 
-    pub fn lookup<'a, I>(&self, handles: I,
+    pub fn lookup<'a, H>(&self, handle: H,
                          keyflags: Option<KeyFlags>,
-                         or_by_primary: bool,
-                         allow_ambiguous: bool)
+                         or_by_primary: bool)
         -> Result<Vec<Cert>>
-    where I: IntoIterator,
-          I::Item: Into<FileStdinOrKeyHandle>,
+    where
+        H: Into<FileStdinOrKeyHandle>,
     {
         self.sequoia.lookup()
             .keyflags(keyflags)
             .or_by_primary(or_by_primary)
-            .lookup(handles, allow_ambiguous)
+            .lookup(handle)
     }
 
-    pub fn lookup_with_policy<'a, I>(&self, handles: I,
+    pub fn lookup_with_policy<'a, H>(&self, handle: H,
                                      keyflags: Option<KeyFlags>,
                                      or_by_primary: bool,
-                                     allow_ambiguous: bool,
                                      policy: &dyn Policy,
                                      time: SystemTime)
         -> Result<Vec<Cert>>
-    where I: IntoIterator,
-          I::Item: Into<FileStdinOrKeyHandle>,
+    where
+        H: Into<FileStdinOrKeyHandle>,
     {
         self.sequoia.lookup()
             .keyflags(keyflags)
             .or_by_primary(or_by_primary)
-            .lookup_with_policy(handles, allow_ambiguous,
+            .lookup_with_policy(handle,
                                 policy, time)
     }
 

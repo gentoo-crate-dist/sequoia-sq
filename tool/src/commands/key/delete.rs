@@ -111,9 +111,8 @@ pub fn dispatch(sq: Sq, command: cli::key::delete::Command)
         // Make sure this is not ambiguous.
         for (ka, _remote) in to_delete.iter() {
             if let Ok(certs) = sq.lookup_with_policy(
-                std::iter::once(ka.key().key_handle()),
+                ka.key().key_handle(),
                 None,
-                true,
                 true,
                 NULL_POLICY,
                 sq.time())

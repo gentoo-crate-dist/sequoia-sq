@@ -133,19 +133,17 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up certificates.
     ///
-    /// If `allow_ambiguous` is true, then all matching certificates
-    /// are returned.  Otherwise, if an identifier matches multiple
-    /// certificates an error is returned.
+    /// Returns all matching certificates.
     ///
-    /// An error is also returned if any of the identifiers does not
-    /// match at least one certificate.
-    pub fn lookup<'a, I>(&self, handles: I, allow_ambiguous: bool)
+    /// An error is also returned if the identifier does not match at
+    /// least one certificate.
+    pub fn lookup<'a, H>(&self, handle: H)
         -> Result<Vec<Cert>>
-    where I: IntoIterator,
-          I::Item: Into<FileStdinOrKeyHandle>,
+    where
+        H: Into<FileStdinOrKeyHandle>,
     {
-        self.lookup_with_policy(
-            handles, allow_ambiguous,
+        self.lookup_with_policy_(
+            handle.into(), true,
             self.params.sequoia.policy(), self.params.sequoia.time())
     }
 
@@ -153,13 +151,21 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// Like [`Builder::lookup`], but uses an alternate policy and an
     /// alternate reference time.
-    pub fn lookup_with_policy<'a, I>(&self, handles: I,
-                                     allow_ambiguous: bool,
+    pub fn lookup_with_policy<'a, H>(&self, handle: H,
                                      policy: &dyn Policy,
                                      time: SystemTime)
         -> Result<Vec<Cert>>
-    where I: IntoIterator,
-          I::Item: Into<FileStdinOrKeyHandle>,
+    where
+        H: Into<FileStdinOrKeyHandle>,
+    {
+        self.lookup_with_policy_(handle.into(), true, policy, time)
+    }
+
+    fn lookup_with_policy_(&self, handle: FileStdinOrKeyHandle,
+                           allow_ambiguous: bool,
+                           policy: &dyn Policy,
+                           time: SystemTime)
+        -> Result<Vec<Cert>>
     {
         let &Builder {
             params: Params {
@@ -169,101 +175,95 @@ impl<'sequoia> Builder<'sequoia>
             },
         } = self;
 
-        let mut results = Vec::new();
-
-        for handle in handles {
-            let (kh, mut certs) = match handle.into() {
-                FileStdinOrKeyHandle::FileOrStdin(file) => {
-                    let br = file.open("an OpenPGP certificate")?;
-                    let cert = Cert::from_buffered_reader(br)?;
-                    (cert.key_handle(), vec![ cert ])
-                }
-                FileStdinOrKeyHandle::KeyHandle(kh) => {
-                    let certs = sequoia.cert_store_or_else()?
-                        .lookup_by_cert_or_subkey(&kh)
-                        .with_context(|| {
-                            format!("Failed to load {} from certificate store", kh)
-                        })?
-                        .into_iter()
-                        .filter_map(|cert| {
-                            match cert.to_cert() {
-                                Ok(cert) => Some(cert.clone()),
-                                Err(err) => {
-                                    let err = err.context(
-                                        format!("Failed to parse {} as loaded \
-                                                 from certificate store", kh));
-                                    print_error_chain(&err);
-                                    None
-                                }
-                            }
-                        })
-                        .collect::<Vec<Cert>>();
-
-                    (kh.clone(), certs)
-                }
-            };
-
-            if let Some(keyflags) = keyflags.as_ref() {
-                certs.retain(|cert| {
-                    let vc = match cert.with_policy(policy, time)
-                    {
-                        Ok(vc) => vc,
-                        Err(err) => {
-                            let err = err.context(
-                                format!("{} is not valid according \
-                                         to the current policy, ignoring",
-                                        kh));
-                            print_error_chain(&err);
-                            return false;
-                        }
-                    };
-
-                    let checked_id = or_by_primary
-                        && vc.cert().key_handle().aliases(&kh);
-
-                    for ka in vc.keys() {
-                        if checked_id || ka.key().key_handle().aliases(&kh) {
-                            if &ka.key_flags().unwrap_or(KeyFlags::empty())
-                                & keyflags
-                                != KeyFlags::empty()
-                            {
-                                return true;
+        let (kh, mut certs) = match handle.into() {
+            FileStdinOrKeyHandle::FileOrStdin(file) => {
+                let br = file.open("an OpenPGP certificate")?;
+                let cert = Cert::from_buffered_reader(br)?;
+                (cert.key_handle(), vec![ cert ])
+            }
+            FileStdinOrKeyHandle::KeyHandle(kh) => {
+                let certs = sequoia.cert_store_or_else()?
+                    .lookup_by_cert_or_subkey(&kh)
+                    .with_context(|| {
+                        format!("Failed to load {} from certificate store", kh)
+                    })?
+                    .into_iter()
+                    .filter_map(|cert| {
+                        match cert.to_cert() {
+                            Ok(cert) => Some(cert.clone()),
+                            Err(err) => {
+                                let err = err.context(
+                                    format!("Failed to parse {} as loaded \
+                                             from certificate store", kh));
+                                print_error_chain(&err);
+                                None
                             }
                         }
+                    })
+                    .collect::<Vec<Cert>>();
+
+                (kh.clone(), certs)
+            }
+        };
+
+        if let Some(keyflags) = keyflags.as_ref() {
+            certs.retain(|cert| {
+                let vc = match cert.with_policy(policy, time)
+                {
+                    Ok(vc) => vc,
+                    Err(err) => {
+                        let err = err.context(
+                            format!("{} is not valid according \
+                                     to the current policy, ignoring",
+                                    kh));
+                        print_error_chain(&err);
+                        return false;
                     }
+                };
 
-                    if checked_id {
-                        weprintln!("Error: {} does not have a key with \
-                                    the required capabilities ({:?})",
-                                   cert.keyid(), keyflags);
-                    } else {
-                        weprintln!("Error: The subkey {} (cert: {}) \
-                                    does not have the required capabilities \
-                                    ({:?})",
-                                   kh, cert.keyid(), keyflags);
+                let checked_id = or_by_primary
+                    && vc.cert().key_handle().aliases(&kh);
+
+                for ka in vc.keys() {
+                    if checked_id || ka.key().key_handle().aliases(&kh) {
+                        if &ka.key_flags().unwrap_or(KeyFlags::empty())
+                            & keyflags
+                            != KeyFlags::empty()
+                        {
+                            return true;
+                        }
                     }
-                    return false;
-                })
-            }
+                }
 
-            if ! allow_ambiguous && certs.len() > 1 {
-                return Err(anyhow::anyhow!(
-                    "{} is ambiguous; it matches: {}",
-                    kh,
-                    certs.into_iter()
-                        .map(|cert| cert.fingerprint().to_string())
-                        .collect::<Vec<String>>()
-                        .join(", ")));
-            }
-
-            if certs.len() == 0 {
-                return Err(StoreError::NotFound(kh.clone()).into());
-            }
-
-            results.extend(certs);
+                if checked_id {
+                    weprintln!("Error: {} does not have a key with \
+                                the required capabilities ({:?})",
+                               cert.keyid(), keyflags);
+                } else {
+                    weprintln!("Error: The subkey {} (cert: {}) \
+                                does not have the required capabilities \
+                                ({:?})",
+                               kh, cert.keyid(), keyflags);
+                }
+                return false;
+            })
         }
 
-        Ok(results)
+        if ! allow_ambiguous && certs.len() > 1 {
+            return Err(anyhow::anyhow!(
+                "{} is ambiguous; it matches: {}",
+                kh,
+                certs.into_iter()
+                    .map(|cert| cert.fingerprint().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")));
+        }
+
+        if certs.len() == 0 {
+            return Err(StoreError::NotFound(kh.clone()).into());
+        }
+
+        Ok(certs)
     }
 
     /// Looks up a certificate.
@@ -288,8 +288,8 @@ impl<'sequoia> Builder<'sequoia>
         -> Result<Cert>
     where H: Into<FileStdinOrKeyHandle>
     {
-        self.lookup_with_policy(std::iter::once(handle.into()), false,
-                                policy, time)
+        self.lookup_with_policy_(handle.into(), false,
+                                 policy, time)
             .map(|certs| {
                 assert_eq!(certs.len(), 1);
                 certs.into_iter().next().expect("have one")

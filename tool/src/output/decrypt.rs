@@ -167,7 +167,7 @@ impl decrypt::Stream for Stream<'_> {
                                                .set_storage_encryption()
                                                .set_transport_encryption()))
                                 .or_by_primary(false)
-                                .lookup(std::iter::once(&r), true);
+                                .lookup(&r);
 
                             match certs {
                                 Ok(certs) => {

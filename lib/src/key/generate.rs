@@ -1172,11 +1172,10 @@ mod tests {
     {
         // Check if the cert was import into the cert store.
         let found = sequoia.lookup()
-            .lookup(Some(cert.key_handle()), false);
+            .lookup_one(cert.key_handle());
         if imported {
             let found = found.expect("Can lookup certificate that was imported");
-            assert_eq!(found.len(), 1);
-            assert_eq!(found[0].fingerprint(), cert.fingerprint());
+            assert_eq!(found.fingerprint(), cert.fingerprint());
         } else {
             assert!(found.is_err());
         }

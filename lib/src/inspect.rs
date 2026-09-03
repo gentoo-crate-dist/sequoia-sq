@@ -193,12 +193,12 @@ where
                 if let Ok(certs) = sq.lookup()
                     .keyflags(None)
                     .or_by_primary(true)
-                    .lookup(Some(&recipient), true)
+                    .lookup(&recipient)
                     .or_else(|_| {
                         sq.lookup()
                             .keyflags(None)
                             .or_by_primary(true)
-                            .lookup_with_policy(Some(&recipient), true,
+                            .lookup_with_policy(&recipient,
                                                 NULL_POLICY, sq.time())
                     })
                 {

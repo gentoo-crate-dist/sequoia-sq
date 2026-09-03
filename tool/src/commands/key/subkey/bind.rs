@@ -51,7 +51,7 @@ pub fn bind(sq: Sq, command: cli::key::subkey::bind::Command) -> Result<()>
         .into_iter()
         .map(|kh| {
             let cert = match sq.lookup_with_policy(
-                std::iter::once(kh.clone()), None, false, true,
+                kh.clone(), None, false,
                 adoptee_policy, sq.time())
             {
                 Ok(certs) => certs.into_iter().next().unwrap(),

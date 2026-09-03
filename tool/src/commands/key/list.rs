@@ -343,7 +343,7 @@ pub fn list(sq: Sq, mut cmd: cli::key::list::Command) -> Result<()> {
                 };
 
                 let associations = if let Ok(certs)
-                    = sq.lookup(vec![&fpr], None, true, true)
+                    = sq.lookup(&fpr, None, true)
                 {
                     certs.into_iter().map(|c| Association::Bound(c)).collect()
                 } else {

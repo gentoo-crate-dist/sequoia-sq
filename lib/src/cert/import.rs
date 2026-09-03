@@ -1484,7 +1484,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             let certs = if let Ok(certs) = params.sequoia.lookup()
                 .keyflags(None)
                 .or_by_primary(false)
-                .lookup(std::iter::once(issuer), true)
+                .lookup(issuer)
             {
                 certs
             } else {
