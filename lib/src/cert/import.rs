@@ -1482,7 +1482,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let mut bad = Vec::new();
         for issuer in issuers.iter() {
             let certs = if let Ok(certs) = params.sequoia.lookup()
-                .keyflags(None)
                 .lookup(issuer)
             {
                 certs

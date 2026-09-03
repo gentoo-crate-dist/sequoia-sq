@@ -2360,7 +2360,6 @@ Failed:              {:8}{:8}",
 
             let bob2 = sequoia
                 .lookup()
-                .keyflags(None)
                 .lookup_one(bob.key_handle())
                 .expect("Certificate for bob is in cert store");
 

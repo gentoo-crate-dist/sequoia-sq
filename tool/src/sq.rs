@@ -207,7 +207,7 @@ impl Sq {
         H: Into<FileStdinOrKeyHandle>,
     {
         self.sequoia.lookup()
-            .keyflags(keyflags)
+            .key_capabilities(keyflags)
             .lookup(handle)
     }
 
@@ -220,7 +220,7 @@ impl Sq {
         H: Into<FileStdinOrKeyHandle>,
     {
         self.sequoia.lookup()
-            .keyflags(keyflags)
+            .key_capabilities(keyflags)
             .lookup_with_policy(handle, policy, time)
     }
 
@@ -230,7 +230,7 @@ impl Sq {
     where H: Into<FileStdinOrKeyHandle>
     {
         self.sequoia.lookup()
-            .keyflags(keyflags)
+            .key_capabilities(keyflags)
             .lookup_one(handle)
     }
 
@@ -242,7 +242,7 @@ impl Sq {
     where H: Into<FileStdinOrKeyHandle>
     {
         self.sequoia.lookup()
-            .keyflags(keyflags)
+            .key_capabilities(keyflags)
             .lookup_one_with_policy(handle, policy, time)
     }
 

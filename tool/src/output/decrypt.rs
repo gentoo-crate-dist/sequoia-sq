@@ -115,7 +115,7 @@ impl decrypt::Stream for Stream<'_> {
                         if ! quiet && self.context != DecryptContext::PacketDecrypt {
                             if let Ok(cert) = self.vstream.sq.sequoia
                                 .lookup()
-                                .keyflags(None)
+                                .key_capabilities(None)
                                 .lookup_one(key.key_handle())
                             {
                                 qprintln!("Decrypted by {}, {}",
@@ -162,9 +162,10 @@ impl decrypt::Stream for Stream<'_> {
                         if let Some(r) = recipient {
                             let certs = self.vstream.sq.sequoia
                                 .lookup()
-                                .keyflags(Some(KeyFlags::empty()
-                                               .set_storage_encryption()
-                                               .set_transport_encryption()))
+                                .key_capabilities(
+                                    Some(KeyFlags::empty()
+                                         .set_storage_encryption()
+                                         .set_transport_encryption()))
                                 .lookup(&r);
 
                             match certs {

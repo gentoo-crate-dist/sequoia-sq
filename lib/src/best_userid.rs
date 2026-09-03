@@ -154,7 +154,7 @@ impl Sequoia {
         F: Into<Option<KeyFlags>>,
     {
         let certs = self.lookup()
-            .keyflags(keyflags.into())
+            .key_capabilities(keyflags.into())
             .lookup(key_handle);
 
         match certs {

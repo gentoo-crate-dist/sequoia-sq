@@ -36,7 +36,7 @@ impl Sequoia {
         Builder {
             params: Params {
                 sequoia: self,
-                keyflags: None,
+                key_capabilities: None,
             }
         }
     }
@@ -49,7 +49,16 @@ impl Sequoia {
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
 
-    keyflags: Option<KeyFlags>,
+    /// A key flags restriction.
+    ///
+    /// If the boolean is `true`, then the restriction applies to the
+    /// whole cert.  If `false` it applies to the specified key.
+    ///
+    /// Consider a certificate with a signing-capable subkey.  If the
+    /// caller designates the primary key and specifies signing,
+    /// looking up the for a signing-capable key and specifying the
+    /// primary key
+    key_capabilities: Option<KeyFlags>,
 }
 
 impl<'sequoia> Params<'sequoia> {
@@ -58,12 +67,29 @@ impl<'sequoia> Params<'sequoia> {
         &self.sequoia
     }
 
-    /// Returns the key flag restrictions.
+    /// Returns the key capabilities restriction.
     ///
-    /// If `keyflags` is `Some`, then only returns certificates where
-    /// the matching key has at least one of the specified key flags.
-    pub fn keyflags(&self) -> Option<&KeyFlags> {
-        self.keyflags.as_ref()
+    /// If the key capabilities parameter is `Some`, then only returns
+    /// a certificate if the designated key has at least one of the
+    /// specified capabilities.
+    ///
+    /// Note: this restriction applies to the designated key.  Thus,
+    /// if you specify a certificate's fingerprint (i.e., its primary
+    /// key), and only a subkey has the specified key flags, then the
+    /// certificate will be ignored.
+    ///
+    /// This function is useful when examining a signature, and
+    /// looking up the issuer: you know the signing key's fingerprint
+    /// (not the certificate's fingerprint), and you know that the
+    /// subkey must be signing capable.
+    ///
+    /// Because key flags can only available with a [`ValidCert`],
+    /// using this restriction means that only valid certificates will
+    /// be considered.
+    ///
+    /// [`ValidCert`]: https://docs.rs/sequoia-openpgp/latest/sequoia_openpgp/cert/struct.ValidCert.html
+    pub fn key_capabilities(&self) -> Option<&KeyFlags> {
+        self.key_capabilities.as_ref()
     }
 }
 
@@ -83,15 +109,32 @@ impl<'sequoia> Builder<'sequoia>
         &self.params
     }
 
-    /// Sets the key flag restrictions.
+    /// Sets the key capability restriction.
     ///
-    /// If `keyflags` is `Some`, then only returns certificates where
-    /// the matching key has at least one of the specified key flags.
-    pub fn keyflags<K>(mut self, keyflags: K) -> Self
+    /// If `keyflags` is `Some`, then only returns a certificate if
+    /// the designated key has at least one of the specified
+    /// capabilities.
+    ///
+    /// Note: this restriction applies to the designated key.  Thus,
+    /// if you specify a certificate's fingerprint (i.e., its primary
+    /// key), and only a subkey has the specified key flags, then the
+    /// certificate will be ignored.
+    ///
+    /// This function is useful when examining a signature, and
+    /// looking up the issuer: you know the signing key's fingerprint
+    /// (not the certificate's fingerprint), and you know that the
+    /// subkey must be signing capable.
+    ///
+    /// Because key flags can only available with a [`ValidCert`],
+    /// using this restriction means that only valid certificates will
+    /// be considered.
+    ///
+    /// [`ValidCert`]: https://docs.rs/sequoia-openpgp/latest/sequoia_openpgp/cert/struct.ValidCert.html
+    pub fn key_capabilities<K>(mut self, key_flags: K) -> Self
     where
         K: Into<Option<KeyFlags>>
     {
-        self.params.keyflags = keyflags.into();
+        self.params.key_capabilities = key_flags.into();
         self
     }
 
@@ -136,22 +179,22 @@ impl<'sequoia> Builder<'sequoia>
         let &Builder {
             params: Params {
                 sequoia,
-                ref keyflags,
+                ref key_capabilities,
             },
         } = self;
 
         let (kh, mut certs) = match handle.into() {
             FileStdinOrKeyHandle::FileOrStdin(file) => {
-                t!("Reading file {}, keyflags: {:?}",
-                   file, keyflags);
+                t!("Reading file {}, key_capabilities: {:?}",
+                   file, key_capabilities);
 
                 let br = file.open("an OpenPGP certificate")?;
                 let cert = Cert::from_buffered_reader(br)?;
                 (cert.key_handle(), vec![ cert ])
             }
             FileStdinOrKeyHandle::KeyHandle(kh) => {
-                t!("Looking up {}, keyflags: {:?}",
-                   kh, keyflags);
+                t!("Looking up {}, key_capabilities: {:?}",
+                   kh, key_capabilities);
 
                 let certs = sequoia.cert_store_or_else()?
                     .lookup_by_cert_or_subkey(&kh)
@@ -183,8 +226,8 @@ impl<'sequoia> Builder<'sequoia>
             }
         };
 
-        if let Some(keyflags) = keyflags.as_ref() {
-            t!("Checking key flags constraint: {:?}", keyflags);
+        if let Some(key_capabilities) = key_capabilities.as_ref() {
+            t!("Checking key flags constraint: {:?}", key_capabilities);
             certs.retain(|cert| {
                 let vc = match cert.with_policy(policy, time)
                 {
@@ -202,10 +245,10 @@ impl<'sequoia> Builder<'sequoia>
                 for ka in vc.keys() {
                     let ka_keyflags = ka.key_flags().unwrap_or(KeyFlags::empty());
                     if ka.key().key_handle().aliases(&kh) {
-                        if ! (&ka_keyflags & keyflags).is_empty() {
+                        if ! (&ka_keyflags & key_capabilities).is_empty() {
                             t!("{} ({:?}) matches key flags constraint ({:?})",
                                ka.key().fingerprint(), ka_keyflags,
-                               keyflags);
+                               key_capabilities);
                             return true;
                         }
                     }
@@ -214,7 +257,7 @@ impl<'sequoia> Builder<'sequoia>
                 weprintln!("Error: The subkey {} (cert: {}) \
                             does not have the required capabilities \
                             ({:?})",
-                           kh, cert.keyid(), keyflags);
+                           kh, cert.keyid(), key_capabilities);
                 return false;
             })
         } else {
@@ -344,7 +387,7 @@ mod test {
                           k.key().fingerprint(), kf);
 
                 let ret = sq.lookup()
-                    .keyflags(kf.clone())
+                    .key_capabilities(kf.clone())
                     .lookup_one(k.key().fingerprint());
 
                 if check(&k_key_flags) {

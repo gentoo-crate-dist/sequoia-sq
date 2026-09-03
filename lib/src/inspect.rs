@@ -191,11 +191,9 @@ where
                 // binding that is valid according to the current
                 // policy.  Otherwise, fall back to the NULL policy.
                 if let Ok(certs) = sq.lookup()
-                    .keyflags(None)
                     .lookup(&recipient)
                     .or_else(|_| {
                         sq.lookup()
-                            .keyflags(None)
                             .lookup_with_policy(&recipient,
                                                 NULL_POLICY, sq.time())
                     })
