@@ -268,32 +268,31 @@ impl search::Stream for Stream<'_> {
                                     }
 
                                     let mut certs = Vec::new();
-                                    let mut err = None;
+                                    let mut fprs = Vec::new();
                                     for issuer in s.get_issuers() {
                                         match sq.sequoia.lookup()
                                             .keyflags(None)
                                             .or_by_primary(false)
-                                            .lookup(issuer)
+                                            .lookup(&issuer)
                                         {
                                             Ok(c) => certs.extend(c),
-                                            Err(e) => {
-                                                err = Some(e);
-                                                break;
-                                            }
+                                            Err(_) => fprs.push(issuer),
                                         }
                                     }
 
-                                    if let Some(_) = err {
+                                    certs.sort_by_key(|c| c.fingerprint());
+                                    certs.dedup_by_key(|c| c.fingerprint());
+                                    for issuer in certs {
                                         qprintln!(initial_indent = "     - ",
-                                                  "by {}", s.get_issuers()[0]);
-                                    } else {
-                                        for issuer in certs {
-                                            qprintln!(initial_indent = "     - ",
-                                                      "by {}, {}",
-                                                      issuer.fingerprint(),
-                                                      sq.sequoia.best_userid(&issuer, true)
-                                                      .display());
-                                        }
+                                                  "by {}, {}",
+                                                  issuer.fingerprint(),
+                                                  sq.sequoia.best_userid(&issuer, true)
+                                                  .display());
+                                    }
+
+                                    for issuer in fprs {
+                                        qprintln!(initial_indent = "     - ",
+                                                  "by {}", issuer);
                                     }
                                 },
 
