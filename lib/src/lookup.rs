@@ -1,10 +1,130 @@
 //! Lookup certificates.
 //!
-//! Functionality for looking up certificates in the certificate store
-//! or a keyring.
+//! # Fingerprints
 //!
-//! To locate a certificate by user ID or email address, you should
-//! use [`Sequoia::cert_list`].
+//! Certificates are often designated using their so-called
+//! fingerprint.  The fingerprint is a hash of the primary key.  Since
+//! the primary key does not change, the fingerprint is stable even if
+//! the certificate is modified.  The fingerprint is also self
+//! authenticating: assuming the hash function is secure, the
+//! fingerprint is sufficient to authenticate the primary key (which
+//! can in turn be used to verify the certificate's other components).
+//!
+//! # Identifiers
+//!
+//! The main issue with fingerprints is that they are hard to
+//! remember: people are better at remembering names and addresses
+//! than long strings of hexadecimal numbers.  Unfortunately, names do
+//! not unambiguously identify certificates and they are not self
+//! authenticating.
+//!
+//! To work around this, fingerprints are sometimes used to bootstrap
+//! communication.  Then the association between the name and the
+//! certificate is saved.  This can be done using certifications, see
+//! [`Sequoia::pki_certify`](crate::pki::certify).
+//!
+//! # Pointers
+//!
+//! Fingerprints (and their abbreviated form, key IDs) are also used
+//! in OpenPGP data structures.  For instance, a signature packet
+//! usually contains the issuer, which is either the fingerprint or the
+//! key ID of the key that made the signature.
+//!
+//! # Examples
+//!
+//! The functionality in this module provides a convenient way to
+//! lookup a certificate by fingerprint, key ID, or by file.
+//!
+//! To find a certificate given a fingerprint, you can use
+//! [`Builder::lookup_one`].  This will error out if there are
+//! multiple matches.  But since we are looking for the certificate
+//! fingerprint, they can only ever be a single match:
+//!
+//! ```
+//! use sequoia::openpgp::Fingerprint;
+//! # use sequoia::Sequoia;
+//! # use sequoia::prompt::Cancel;
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral()?.build()?;
+//! #
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new())
+//! #     .unwrap()
+//! #     .into_cert();
+//! #
+//! let alice_fpr = "FA5AFFA9E895BEF29FEA01BF00EBC78F34CF4289".parse::<Fingerprint>()?;
+//! # let alice_fpr = alice.fingerprint();
+//! let cert = sq.lookup().lookup_one(&alice_fpr)?;
+//! #
+//! # assert_eq!(alice_fpr, cert.fingerprint());
+//! # Ok(()) }
+//! ```
+//!
+//! If you have a signature packet and want to lookup the issuer, then
+//! you need to specify that you want to also match on subkeys.  You
+//! should also specify that you are looking for a singing-capable
+//! subkey.  Whereas signing keys have a so-called back-signature,
+//! which prevents anyone from binding a signing subkey to another
+//! certificate without the owners cooperation, encryption keys can't
+//! create signatures so they don't have a back signature and anyone
+//! can attach any subkey to a certificate they control.
+//!
+//! ```
+//! use sequoia::openpgp;
+//! use openpgp::Fingerprint;
+//! use openpgp::packet::Packet;
+//! use openpgp::parse::Parse;
+//! use openpgp::types::KeyFlags;
+//! #
+//! # use sequoia::Sequoia;
+//! # use sequoia::prompt::Cancel;
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral()?.build()?;
+//! #
+//! # let alice = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate(Cancel::new())
+//! #     .unwrap()
+//! #     .into_cert();
+//! # let mut detached_sig_bytes = Vec::new();
+//! # sq.sign()
+//! #     .detached()
+//! #     .add_signer(alice.clone())
+//! #     .sign(
+//! #         &b"hi"[..],
+//! #         &mut detached_sig_bytes,
+//! #         Cancel::new())
+//! #     .expect("can sign");
+//! #
+//!
+//! // Read a detached signature.
+//! let Packet::Signature(sig) = Packet::from_bytes(&detached_sig_bytes)? else {
+//!     return Err(anyhow::anyhow!("Not a signature packet"));
+//! };
+//!
+//! // Iterate over the issuers and see if we have the corresponding certificate.
+//! let issuer_cert = sig.get_issuers()
+//!     .iter()
+//!     .find_map(|issuer| {
+//!         // Match against signing-capable subkeys.
+//!         sq.lookup()
+//!             .subkeys(true)
+//!             .key_capabilities(KeyFlags::signing())
+//!             .lookup_one(issuer).ok()
+//!     });
+//!
+//! if let Some(cert) = issuer_cert {
+//!     println!("Alleged issuer's certificate: {}", cert.fingerprint());
+//! #   assert_eq!(cert.fingerprint(), alice.fingerprint());
+//! } else {
+//!     println!("Alleged issuer's certificate was not found.");
+//! #   panic!("Should have found certificate.");
+//! }
+//! # Ok(()) }
+//! ```
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -348,8 +468,19 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// Returns all matching certificates.
     ///
-    /// An error is also returned if the identifier does not match at
-    /// least one certificate.
+    /// When looking up a certificate by key handle (fingerprint or
+    /// key ID), this only matches on certificate fingerprint by
+    /// default.  To also match on subkey fingerprints, set
+    /// [`Builder::subkeys`].  This can result in multiple matches for
+    /// a given fingerprint as the same key can be bound to multiple
+    /// certificates.
+    ///
+    /// Searching by key ID may also result in multiple matches as it
+    /// is possible to construct two different keys with the same key
+    /// ID.
+    ///
+    /// An error is returned if the identifier does not match at least
+    /// one certificate.
     pub fn lookup_all<'a, H>(&self, handle: H)
         -> Result<Vec<Cert>, Error>
     where
@@ -540,8 +671,8 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up a certificate.
     ///
-    /// Like [`Builder::lookup_all`], but looks up a certificate,
-    /// which must be uniquely identified by `handle` and `keyflags`.
+    /// Like [`Builder::lookup_all`], but looks up a single
+    /// certificate, which must be uniquely identified by `handle`.
     pub fn lookup_one<H>(&self, handle: H)
         -> Result<Cert, Error>
     where H: Into<FileStdinOrKeyHandle>
