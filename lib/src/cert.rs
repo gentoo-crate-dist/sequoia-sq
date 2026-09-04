@@ -19,6 +19,18 @@ pub mod list;
 pub mod problem {
     use super::*;
 
+    /// There was a problem parsing the certificate.
+    ///
+    /// A possible cause is converting a `LazyCert` to a `Cert`.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("{} is revoked", .cert)]
+    pub struct ParseError {
+        pub cert: Fingerprint,
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
     /// The certificate is revoked.
     ///
     /// The signatures are validated revocations.
@@ -204,6 +216,12 @@ pub mod problem {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum CertProblem {
+    /// There was a problem parsing the certificate.
+    ///
+    /// This could be because the certificate is corrupt on disk.
+    #[error(transparent)]
+    ParseError(#[from] problem::ParseError),
+
     /// The certificate is revoked.
     ///
     /// The signatures are validated revocations.
