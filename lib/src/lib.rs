@@ -115,11 +115,13 @@
 //!
 //! ## Certificate Management
 //!
-//! | Functionality       | Module                    | Function                 | `sq` equivalent |
-//! |---------------------|---------------------------|--------------------------|-|
-//! | Import certificates | [`sequoia::cert::import`] | [`Sequoia::cert_import`] | [`sq cert import`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-cert-import.1.html) |
-//! | List certificates   | [`sequoia::cert::list`]   | [`Sequoia::cert_list`]   | [`sq cert list`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-cert-list.1.html), [`sq pki authenticate`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-authenticate.1.html), [`sq pki lookup`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-lookup.1.html), [`sq pki identify`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-identify.1.html), and [`sq pki path`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-path.1.html) |
-//! | Lookup a certificate | -                        | [`Sequoia::lookup`]      | - |
+//! | Functionality             | Module                    | Function                 | `sq` equivalent |
+//! |---------------------      |---------------------------|--------------------------|-|
+//! | Import certificates       | [`sequoia::cert::import`] | [`Sequoia::cert_import`] | [`sq cert import`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-cert-import.1.html) |
+//! | List certificates         | [`sequoia::cert::list`]   | [`Sequoia::cert_list`]   | [`sq cert list`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-cert-list.1.html), [`sq pki authenticate`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-authenticate.1.html), [`sq pki lookup`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-lookup.1.html), [`sq pki identify`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-identify.1.html), and [`sq pki path`](https://sequoia-pgp.gitlab.io/sequoia-sq/man/sq-pki-path.1.html) |
+//! | Lookup a certificate...   |
+//! | &nbsp;...by fingerprint   | [`sequoia::lookup`]      | [`Sequoia::lookup`] | - |
+//! | &nbsp;...by email address | [`sequoia::lookup_by`] | [`Sequoia::lookup_by`] | - |
 //!
 //! ## PKI
 //!
@@ -258,6 +260,7 @@ mod keys;
 pub use keys::GetKeysOptions;
 pub use keys::KeyType;
 pub mod lookup;
+pub mod lookup_by;
 pub mod packet;
 pub mod prompt;
 mod password_cache;
@@ -354,6 +357,13 @@ impl Sequoia {
     pub fn cert_list(&self) -> cert::list::Builder<'_>
     {
         cert::list::Builder::new(self)
+    }
+
+    /// Lookup a certificate by a human-meaningful identifier.
+    ///
+    /// See [`lookup_by`] for details.
+    pub fn lookup_by(&self) -> lookup_by::Builder<'_> {
+        lookup_by::Builder::new(self)
     }
 
     /// Returns a builder for decrypting and verifying messages.

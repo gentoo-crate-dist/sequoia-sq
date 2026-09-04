@@ -68,9 +68,10 @@
 //! use sequoia::prompt::Cancel;
 //! use sequoia::sign;
 //!
-//! use openpgp::cert::amalgamation::ValidAmalgamation;
-//! use openpgp::types::RevocationStatus;
 //! use sequoia_openpgp as openpgp;
+//! use openpgp::cert::amalgamation::ValidAmalgamation;
+//! use openpgp::types::KeyFlags;
+//! use openpgp::types::RevocationStatus;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! // A stateless Sequoia instance.
@@ -94,50 +95,15 @@
 //! let message = b"I love you";
 //!
 //! // Find a certificate for Bob.
-//! let mut output = Vec::new();
-//! sequoia.cert_list()
-//!     .query(Query::email("bob@example.org"))
-//!     .list(&mut output)?;
-//!
+//! //
 //! // If there are multiple certificates that we can authenticate for
 //! // "bob@example.org" we take the first one (arbitrarily) that is valid
 //! // (live, not revoked, has an encryption capable subkey).
-//! let bob = output.into_iter().find_map(|o| {
-//!     let cert::list::Output::Binding(binding) = o else {
-//!         return None;
-//!     };
-//!     let cert = binding.cert(&sequoia).ok()?;
-//!     let Ok(vc) = cert.with_policy(sequoia.policy(), sequoia.time()) else {
-//!         return None;
-//!     };
-//!     if vc.alive().is_err() {
-//!         // Not live.
-//!         return None;
-//!     }
-//!     if let RevocationStatus::NotAsFarAsWeKnow = vc.revocation_status() {
-//!     } else {
-//!         return None;
-//!     }
-//!     // Check for an encryption-capable subkey.
-//!     for k in vc.keys().for_transport_encryption() {
-//!         if ! k.key().pk_algo().is_supported() {
-//!             return None;
-//!         }
-//!         if k.alive().is_err() {
-//!             // Not live.
-//!             return None;
-//!         }
-//!         if let RevocationStatus::NotAsFarAsWeKnow = k.revocation_status() {
-//!         } else {
-//!             continue;
-//!         }
-//!         return Some(cert.clone());
-//!     }
-//!
-//!     None
-//! });
-//!
-//! let Some(bob) = bob else {
+//! let certs = sequoia.lookup_by()
+//!     .cert_capabilities(KeyFlags::storage_encryption()
+//!                        .set_transport_encryption())
+//!     .lookup_all_by_email("alice@example.org")?;
+//! let Some(bob) = certs.into_iter().next() else {
 //!     panic!("Could not find an authenticated certificate for Bob");
 //! };
 //!

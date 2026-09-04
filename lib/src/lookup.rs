@@ -23,6 +23,9 @@
 //! certificate is saved.  This can be done using certifications, see
 //! [`Sequoia::pki_certify`](crate::pki::certify).
 //!
+//! To lookup a certificate by a human-meaningful identifier, use
+//! [`Sequoia::lookup_by`](crate::lookup_by).
+//!
 //! # Pointers
 //!
 //! Fingerprints (and their abbreviated form, key IDs) are also used
