@@ -230,7 +230,11 @@ pub mod output {
             if let Some(cert) = self.cert.get() {
                 cert.to_cert()
             } else {
-                match sequoia.lookup().lookup_one(self.fingerprint.clone()) {
+                match sequoia
+                    .lookup()
+                    .subkeys(true)
+                    .lookup_one(self.fingerprint.clone())
+                {
                     Ok(cert) => {
                         let _ = self.cert.set(Arc::new(LazyCert::from(cert)));
                         self.cert.get().expect("just set").to_cert()

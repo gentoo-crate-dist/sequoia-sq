@@ -271,6 +271,7 @@ impl search::Stream for Stream<'_> {
                                     let mut fprs = Vec::new();
                                     for issuer in s.get_issuers() {
                                         match sq.sequoia.lookup()
+                                            .subkeys(true)
                                             .key_capabilities(None)
                                             .lookup(&issuer)
                                         {

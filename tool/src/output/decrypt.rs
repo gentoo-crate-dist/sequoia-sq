@@ -115,6 +115,7 @@ impl decrypt::Stream for Stream<'_> {
                         if ! quiet && self.context != DecryptContext::PacketDecrypt {
                             if let Ok(cert) = self.vstream.sq.sequoia
                                 .lookup()
+                                .subkeys(true)
                                 .key_capabilities(None)
                                 .lookup_one(key.key_handle())
                             {
@@ -162,6 +163,7 @@ impl decrypt::Stream for Stream<'_> {
                         if let Some(r) = recipient {
                             let certs = self.vstream.sq.sequoia
                                 .lookup()
+                                .subkeys(true)
                                 .key_capabilities(
                                     Some(KeyFlags::empty()
                                          .set_storage_encryption()

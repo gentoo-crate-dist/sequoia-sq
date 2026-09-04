@@ -32,10 +32,15 @@ impl Sequoia {
     ///
     /// Looks up a certificate by fingerprint or key ID in the
     /// certificate store and any configured keyrings.
+    ///
+    /// By default, when given a key handle, this only matches on the
+    /// certificate's key handle.  To also match on the subkeys, set
+    /// [`Builder::subkeys`].
     pub fn lookup(&self) -> Builder<'_> {
         Builder {
             params: Params {
                 sequoia: self,
+                subkeys: false,
                 key_capabilities: None,
             }
         }
@@ -59,12 +64,29 @@ pub struct Params<'sequoia> {
     /// looking up the for a signing-capable key and specifying the
     /// primary key
     key_capabilities: Option<KeyFlags>,
+
+    /// Whether to also match on subkeys.
+    subkeys: bool,
 }
 
 impl<'sequoia> Params<'sequoia> {
     /// Returns the `Sequoia` instance.
     pub fn sequoia(&self) -> &'sequoia Sequoia {
         &self.sequoia
+    }
+
+    /// Returns whether to match on subkeys.
+    ///
+    /// By default, `lookup` only matches on a certificate's
+    /// fingerprint (i.e., the fingerprint of its primary key).  If
+    /// the `subkeys` parameter is set, then subkeys are also
+    /// considered.
+    ///
+    /// Note: a key can be bound to multiple certificates.  As such,
+    /// matching on subkeys can unexpectedly result in multiple
+    /// matches when searching by fingerprint.
+    pub fn subkeys(&self) -> bool {
+        self.subkeys
     }
 
     /// Returns the key capabilities restriction.
@@ -109,11 +131,31 @@ impl<'sequoia> Builder<'sequoia>
         &self.params
     }
 
+    /// Sets whether to match on subkeys.
+    ///
+    /// By default, `lookup` only matches on a certificate's
+    /// fingerprint (i.e., the fingerprint of its primary key).  If
+    /// the `subkeys` parameter is set, then subkeys are also
+    /// considered.
+    ///
+    /// Note: a key can be bound to multiple certificates.  As such,
+    /// matching on subkeys can unexpectedly result in multiple
+    /// matches when searching by fingerprint.
+    pub fn subkeys(mut self, subkeys: bool) -> Self {
+        self.params.subkeys = subkeys;
+        self
+    }
+
     /// Sets the key capability restriction.
     ///
     /// If `keyflags` is `Some`, then only returns a certificate if
     /// the designated key has at least one of the specified
     /// capabilities.
+    ///
+    /// By default `lookup` only matches on the certificate's
+    /// fingerprint (i.e., its primary key's fingerprint) as such if
+    /// you set this parameter, you probably also want to set
+    /// [`Builder::subkeys`].
     ///
     /// Note: this restriction applies to the designated key.  Thus,
     /// if you specify a certificate's fingerprint (i.e., its primary
@@ -179,6 +221,7 @@ impl<'sequoia> Builder<'sequoia>
         let &Builder {
             params: Params {
                 sequoia,
+                subkeys,
                 ref key_capabilities,
             },
         } = self;
@@ -196,8 +239,13 @@ impl<'sequoia> Builder<'sequoia>
                 t!("Looking up {}, key_capabilities: {:?}",
                    kh, key_capabilities);
 
-                let certs = sequoia.cert_store_or_else()?
-                    .lookup_by_cert_or_subkey(&kh)
+                let cert_store = sequoia.cert_store_or_else()?;
+                let result = if subkeys {
+                    cert_store.lookup_by_cert_or_subkey(&kh)
+                } else {
+                    cert_store.lookup_by_cert(&kh)
+                };
+                let certs = result
                     .with_context(|| {
                         format!("Failed to load {} from certificate store", kh)
                     })?
@@ -251,6 +299,11 @@ impl<'sequoia> Builder<'sequoia>
                                key_capabilities);
                             return true;
                         }
+                    }
+
+                    if ! subkeys {
+                        // We're only considering the primary key.
+                        break;
                     }
                 }
 
@@ -354,10 +407,14 @@ mod test {
 
             eprintln!("- Looking up {}", k.key().fingerprint());
             let ret = sq.lookup()
+                .subkeys(true)
                 .lookup_one(k.key().fingerprint())
                 .expect("have certificate");
-
             assert_eq!(ret.fingerprint(), cert.fingerprint());
+
+            sq.lookup()
+                .lookup_one(k.key().fingerprint())
+                .expect_err("didn't specify matching by subkey");
         }
 
         let keyflags = [
@@ -383,14 +440,31 @@ mod test {
                       k.key().fingerprint(), k_key_flags);
 
             for (check, kf) in keyflags.iter() {
-                eprintln!("- Looking up {}, key flags: {:?}",
+                eprintln!("- Looking up {}, subkeys: true, key flags: {:?}",
                           k.key().fingerprint(), kf);
 
                 let ret = sq.lookup()
+                    .subkeys(true)
                     .key_capabilities(kf.clone())
                     .lookup_one(k.key().fingerprint());
 
                 if check(&k_key_flags) {
+                    eprintln!("  - Expecting a match.");
+                    assert_eq!(ret.expect("have a certificate").fingerprint(),
+                               cert.fingerprint());
+                } else {
+                    eprintln!("  - Expecting not found.");
+                    assert!(ret.is_err());
+                }
+
+                eprintln!("- Looking up {}, subkeys: false, key flags: {:?}",
+                          k.key().fingerprint(), kf);
+
+                // Don't consider subkeys.
+                let ret = sq.lookup()
+                    .key_capabilities(kf.clone())
+                    .lookup_one(k.key().fingerprint());
+                if k.key().fingerprint() == vc.fingerprint() && check(&k_key_flags) {
                     eprintln!("  - Expecting a match.");
                     assert_eq!(ret.expect("have a certificate").fingerprint(),
                                cert.fingerprint());
