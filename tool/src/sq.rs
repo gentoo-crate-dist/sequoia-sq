@@ -202,7 +202,7 @@ impl Sq {
 
     pub fn lookup<'a, H>(&self, handle: H,
                          keyflags: Option<KeyFlags>)
-        -> Result<Vec<Cert>>
+        -> Result<Vec<Cert>, sequoia::lookup::Error>
     where
         H: Into<FileStdinOrKeyHandle>,
     {
@@ -216,7 +216,7 @@ impl Sq {
                                      keyflags: Option<KeyFlags>,
                                      policy: &dyn Policy,
                                      time: SystemTime)
-        -> Result<Vec<Cert>>
+        -> Result<Vec<Cert>, sequoia::lookup::Error>
     where
         H: Into<FileStdinOrKeyHandle>,
     {
@@ -228,7 +228,7 @@ impl Sq {
 
     pub fn lookup_one<H>(&self, handle: H,
                          keyflags: Option<KeyFlags>)
-        -> Result<Cert>
+        -> Result<Cert, sequoia::lookup::Error>
     where H: Into<FileStdinOrKeyHandle>
     {
         self.sequoia.lookup()
@@ -241,7 +241,7 @@ impl Sq {
                                      keyflags: Option<KeyFlags>,
                                      policy: &dyn Policy,
                                      time: SystemTime)
-        -> Result<Cert>
+        -> Result<Cert, sequoia::lookup::Error>
     where H: Into<FileStdinOrKeyHandle>
     {
         self.sequoia.lookup()

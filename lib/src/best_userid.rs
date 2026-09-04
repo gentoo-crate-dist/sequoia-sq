@@ -8,13 +8,11 @@ use openpgp::packet::prelude::*;
 use openpgp::policy::Policy;
 use openpgp::types::KeyFlags;
 
-use sequoia_cert_store as cert_store;
-use cert_store::store::StoreError;
-
 use sequoia_wot as wot;
 
 use crate::NULL_POLICY;
 use crate::Sequoia;
+use crate::lookup;
 use crate::types::PreferredUserID;
 
 impl Sequoia {
@@ -180,15 +178,15 @@ impl Sequoia {
                 (best.0, Ok(best.1))
             }
             Err(err) => {
-                if let Some(StoreError::NotFound(_))
-                    = err.downcast_ref()
+                if let lookup::Error::OperationalError(
+                    lookup::error::OperationalError::NotFound(_)) = &err
                 {
                     (PreferredUserID::from_string("(certificate not found)", 0),
-                     Err(err))
+                     Err(err.into()))
                 } else {
                     (PreferredUserID::from_string(
                         format!("(error looking up certificate: {})", err), 0),
-                     Err(err))
+                     Err(err.into()))
                 }
             }
         }

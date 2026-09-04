@@ -226,9 +226,19 @@ pub mod output {
         /// Note: this is often faster than looking it up manually
         /// using [`Sequoia::lookup`] as the certificate may be cached
         /// in the binding.
-        pub fn cert(&self, sequoia: &Sequoia) -> Result<&Cert> {
+        pub fn cert(&self, sequoia: &Sequoia)
+            -> Result<&Cert, crate::lookup::Error>
+        {
+            let to_cert_error = |err: anyhow::Error| {
+                crate::lookup::Error::OperationalError(
+                    crate::lookup::error::OperationalError::CertError(
+                        crate::lookup::error::CertError {
+                            error: err.into(),
+                        }))
+            };
+
             if let Some(cert) = self.cert.get() {
-                cert.to_cert()
+                cert.to_cert().map_err(to_cert_error)
             } else {
                 match sequoia
                     .lookup()
@@ -237,6 +247,7 @@ pub mod output {
                     Ok(cert) => {
                         let _ = self.cert.set(Arc::new(LazyCert::from(cert)));
                         self.cert.get().expect("just set").to_cert()
+                            .map_err(to_cert_error)
                     }
                     Err(err) => {
                         Err(err)

@@ -55,7 +55,7 @@ pub fn bind(sq: Sq, command: cli::key::subkey::bind::Command) -> Result<()>
                 adoptee_policy, sq.time())
             {
                 Ok(certs) => certs.into_iter().next().unwrap(),
-                Err(err) => return (kh, Err(err)),
+                Err(err) => return (kh, Err(err.into())),
             };
 
 

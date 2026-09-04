@@ -6,13 +6,12 @@
 //! To locate a certificate by user ID or email address, you should
 //! use [`Sequoia::cert_list`].
 
+use std::sync::Arc;
 use std::time::SystemTime;
-
-use anyhow::Context as _;
 
 use sequoia_openpgp as openpgp;
 use openpgp::Cert;
-use openpgp::Result;
+use openpgp::KeyHandle;
 use openpgp::parse::Parse;
 use openpgp::policy::Policy;
 use openpgp::types::KeyFlags;
@@ -21,7 +20,9 @@ use sequoia_cert_store as cert_store;
 use cert_store::Store;
 use cert_store::store::StoreError;
 
+use crate::Result;
 use crate::Sequoia;
+use crate::SystemError;
 use crate::transitional::print_error_chain;
 use crate::types::FileStdinOrKeyHandle;
 
@@ -45,6 +46,139 @@ impl Sequoia {
             }
         }
     }
+}
+
+/// Errors related to looking up certificates.
+///
+/// The errors are divided into categories, and the categories contain
+/// more precise errors.  In this way, if you match on a category, and
+/// a new error is added you can still react.
+///
+/// These errors are usually wrapped in an [`Error`].
+pub mod error {
+    use super::*;
+
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum ArgumentError {
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+
+    /// Failed to open the file.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Opening file")]
+    pub struct OpenError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// File parse error.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parsing input as a certificate")]
+    pub struct ParseError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// Cert parse error.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Parsing certificate")]
+    pub struct CertError {
+        #[source]
+        pub error: Arc<anyhow::Error>,
+    }
+
+    /// A certificate corresponding to the handle was not found.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Failed to load {} from certificate store", .handle)]
+    pub struct NotFound {
+        pub handle: KeyHandle,
+    }
+
+    /// The query was ambiguous.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("{} is ambiguous; it matches: {}",
+            .handle,
+            .certs.into_iter()
+                .map(|cert| cert.fingerprint().to_string())
+                .collect::<Vec<String>>()
+                .join(", "))]
+    pub struct Ambiguous {
+        pub handle: KeyHandle,
+        pub certs: Vec<Cert>,
+    }
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    pub enum OperationalError {
+        #[error(transparent)]
+        OpenError(OpenError),
+
+        #[error(transparent)]
+        ParseError(ParseError),
+
+        #[error(transparent)]
+        CertError(CertError),
+
+        #[error(transparent)]
+        NotFound(NotFound),
+
+        #[error(transparent)]
+        Ambiguous(Ambiguous),
+
+        #[error(transparent)]
+        Other(Arc<anyhow::Error>),
+    }
+}
+
+/// Errors related to looking up a certificate.
+///
+/// Errors are divided into categories and each category contains more
+/// precise errors.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub enum Error {
+    /// An error related to the arguments.
+    ///
+    /// Argument errors are fatal and cause processing to abort.
+    ArgumentError(#[from] error::ArgumentError),
+
+    /// A system error that prevents processing from continuing.
+    ///
+    /// System errors are fatal and cause processing to abort.
+    ///
+    /// System errors are related to the system.  An example of a
+    /// system error is that a key store is not available, but is
+    /// needed to complete the operation.
+    #[error(transparent)]
+    SystemError(#[from] SystemError),
+
+    /// An operational error that prevents processing from continuing.
+    ///
+    /// Operational errors are fatal and cause processing to abort.
+    ///
+    /// Operational errors are related to the operation.  An example
+    /// of an operational error is that the operation needs to create
+    /// a signature, but the secret key material is not available.
+    #[error(transparent)]
+    OperationalError(#[from] error::OperationalError),
 }
 
 /// Look up certificates.
@@ -187,7 +321,7 @@ impl<'sequoia> Builder<'sequoia>
     /// An error is also returned if the identifier does not match at
     /// least one certificate.
     pub fn lookup<'a, H>(&self, handle: H)
-        -> Result<Vec<Cert>>
+        -> Result<Vec<Cert>, Error>
     where
         H: Into<FileStdinOrKeyHandle>,
     {
@@ -203,7 +337,7 @@ impl<'sequoia> Builder<'sequoia>
     pub fn lookup_with_policy<'a, H>(&self, handle: H,
                                      policy: &dyn Policy,
                                      time: SystemTime)
-        -> Result<Vec<Cert>>
+        -> Result<Vec<Cert>, Error>
     where
         H: Into<FileStdinOrKeyHandle>,
     {
@@ -214,7 +348,7 @@ impl<'sequoia> Builder<'sequoia>
                            allow_ambiguous: bool,
                            policy: &dyn Policy,
                            time: SystemTime)
-        -> Result<Vec<Cert>>
+        -> Result<Vec<Cert>, Error>
     {
         tracer!(TRACE, "lookup_with_policy");
 
@@ -231,8 +365,22 @@ impl<'sequoia> Builder<'sequoia>
                 t!("Reading file {}, key_capabilities: {:?}",
                    file, key_capabilities);
 
-                let br = file.open("an OpenPGP certificate")?;
-                let cert = Cert::from_buffered_reader(br)?;
+                let br = file.open("an OpenPGP certificate")
+                    .map_err(|err| {
+                        Error::OperationalError(
+                            error::OperationalError::OpenError(
+                                error::OpenError {
+                                    error: err.into(),
+                                }))
+                    })?;
+                let cert = Cert::from_buffered_reader(br)
+                    .map_err(|err| {
+                        Error::OperationalError(
+                            error::OperationalError::ParseError(
+                                error::ParseError {
+                                    error: err.into(),
+                                }))
+                    })?;
                 (cert.key_handle(), vec![ cert ])
             }
             FileStdinOrKeyHandle::KeyHandle(kh) => {
@@ -246,8 +394,20 @@ impl<'sequoia> Builder<'sequoia>
                     cert_store.lookup_by_cert(&kh)
                 };
                 let certs = result
-                    .with_context(|| {
-                        format!("Failed to load {} from certificate store", kh)
+                    .map_err(|err| {
+                        if let Some(StoreError::NotFound(_))
+                            = err.downcast_ref()
+                        {
+                            Error::OperationalError(
+                                error::OperationalError::NotFound(
+                                    error::NotFound {
+                                        handle: kh.clone(),
+                                    }))
+                        } else {
+                            Error::OperationalError(
+                                error::OperationalError::Other(
+                                    err.into()))
+                        }
                     })?
                     .into_iter()
                     .filter_map(|cert| {
@@ -318,17 +478,20 @@ impl<'sequoia> Builder<'sequoia>
         }
 
         if ! allow_ambiguous && certs.len() > 1 {
-            return Err(anyhow::anyhow!(
-                "{} is ambiguous; it matches: {}",
-                kh,
-                certs.into_iter()
-                    .map(|cert| cert.fingerprint().to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")));
+            return Err(Error::OperationalError(
+                error::OperationalError::Ambiguous(
+                    error::Ambiguous {
+                        handle: kh.clone(),
+                        certs,
+                    })));
         }
 
         if certs.len() == 0 {
-            return Err(StoreError::NotFound(kh.clone()).into());
+            return Err(Error::OperationalError(
+                error::OperationalError::NotFound(
+                    error::NotFound {
+                        handle: kh.clone(),
+                    })));
         }
 
         Ok(certs)
@@ -339,7 +502,7 @@ impl<'sequoia> Builder<'sequoia>
     /// Like [`Builder::lookup`], but looks up a certificate, which
     /// must be uniquely identified by `handle` and `keyflags`.
     pub fn lookup_one<H>(&self, handle: H)
-        -> Result<Cert>
+        -> Result<Cert, Error>
     where H: Into<FileStdinOrKeyHandle>
     {
         self.lookup_one_with_policy(
@@ -353,7 +516,7 @@ impl<'sequoia> Builder<'sequoia>
     pub fn lookup_one_with_policy<H>(&self, handle: H,
                                      policy: &dyn Policy,
                                      time: SystemTime)
-        -> Result<Cert>
+        -> Result<Cert, Error>
     where H: Into<FileStdinOrKeyHandle>
     {
         self.lookup_with_policy_(handle.into(), false,

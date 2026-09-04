@@ -4,9 +4,6 @@ use sequoia::openpgp;
 use openpgp::fmt::hex;
 use openpgp::types::KeyFlags;
 
-use sequoia::cert_store as cert_store;
-use cert_store::store::StoreError;
-
 use sequoia::decrypt;
 use sequoia::decrypt::output::Decryptor;
 use sequoia::verify::Stream as _;
@@ -178,8 +175,8 @@ impl decrypt::Stream for Stream<'_> {
                                     }
                                 }
                                 Err(err) => {
-                                    if let Some(StoreError::NotFound(_))
-                                        = err.downcast_ref()
+                                    if let sequoia::lookup::Error::OperationalError(
+                                        sequoia::lookup::error::OperationalError::NotFound(_)) = &err
                                     {
                                         weprintln!(initial_indent = " - ",
                                                    "{}, certificate not found", r);
