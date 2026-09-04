@@ -232,7 +232,6 @@ pub mod output {
             } else {
                 match sequoia
                     .lookup()
-                    .subkeys(true)
                     .lookup_one(self.fingerprint.clone())
                 {
                     Ok(cert) => {
