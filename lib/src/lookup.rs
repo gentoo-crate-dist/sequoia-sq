@@ -6,6 +6,7 @@
 //! To locate a certificate by user ID or email address, you should
 //! use [`Sequoia::cert_list`].
 
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -23,6 +24,9 @@ use cert_store::store::StoreError;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
+use crate::cert::CertProblem;
+use crate::cert::problem::CertInvalid;
+use crate::cert::problem::NoUsableKeys;
 use crate::transitional::print_error_chain;
 use crate::types::FileStdinOrKeyHandle;
 
@@ -98,9 +102,35 @@ pub mod error {
     /// A certificate corresponding to the handle was not found.
     #[non_exhaustive]
     #[derive(thiserror::Error, Debug, Clone)]
-    #[error("Failed to load {} from certificate store", .handle)]
+    #[error("Failed to load {} from certificate store{}",
+            .handle,
+            if .lints.is_empty() {
+                Cow::Borrowed("")
+            } else {
+                Cow::Owned(
+                    format!(" ({}{})",
+                            .lints
+                                .iter()
+                                .take(5)
+                                .map(|lint| {
+                                    lint.to_string()
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                            if .lints.len() > 5 {
+                                Cow::Owned(
+                                    format!(", {} more lints",
+                                            .lints.len() - 5))
+                            } else {
+                                Cow::Borrowed("")
+                            }))
+            }
+    )]
     pub struct NotFound {
         pub handle: KeyHandle,
+
+        /// Reasons why candidate certificates were rejected.
+        pub lints: Vec<CertProblem>,
     }
 
     /// The query was ambiguous.
@@ -402,6 +432,7 @@ impl<'sequoia> Builder<'sequoia>
                                 error::OperationalError::NotFound(
                                     error::NotFound {
                                         handle: kh.clone(),
+                                        lints: Vec::new(),
                                     }))
                         } else {
                             Error::OperationalError(
@@ -434,6 +465,8 @@ impl<'sequoia> Builder<'sequoia>
             }
         };
 
+        let mut lints = Vec::new();
+
         if let Some(key_capabilities) = key_capabilities.as_ref() {
             t!("Checking key flags constraint: {:?}", key_capabilities);
             certs.retain(|cert| {
@@ -441,11 +474,15 @@ impl<'sequoia> Builder<'sequoia>
                 {
                     Ok(vc) => vc,
                     Err(err) => {
-                        let err = err.context(
-                            format!("{} is not valid according \
-                                     to the current policy, ignoring",
-                                    kh));
-                        print_error_chain(&err);
+                        lints.push(
+                            CertProblem::CertInvalid(
+                                CertInvalid {
+                                    cert: cert.fingerprint(),
+                                    error: Arc::new(err.context(
+                                        format!("{} is not valid according \
+                                                 to the current policy, ignoring",
+                                                kh))),
+                                }));
                         return false;
                     }
                 };
@@ -467,10 +504,13 @@ impl<'sequoia> Builder<'sequoia>
                     }
                 }
 
-                weprintln!("Error: The subkey {} (cert: {}) \
-                            does not have the required capabilities \
-                            ({:?})",
-                           kh, cert.keyid(), key_capabilities);
+                lints.push(
+                    CertProblem::NoUsableKeys(
+                        NoUsableKeys {
+                            cert: cert.fingerprint(),
+                            capabilities: key_capabilities.clone(),
+                            unusable: 0,
+                        }));
                 return false;
             })
         } else {
@@ -491,6 +531,7 @@ impl<'sequoia> Builder<'sequoia>
                 error::OperationalError::NotFound(
                     error::NotFound {
                         handle: kh.clone(),
+                        lints,
                     })));
         }
 
