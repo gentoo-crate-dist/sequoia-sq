@@ -273,7 +273,7 @@ impl search::Stream for Stream<'_> {
                                         match sq.sequoia.lookup()
                                             .subkeys(true)
                                             .key_capabilities(None)
-                                            .lookup(&issuer)
+                                            .lookup_all(&issuer)
                                         {
                                             Ok(c) => certs.extend(c),
                                             Err(_) => fprs.push(issuer),

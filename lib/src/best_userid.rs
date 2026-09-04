@@ -154,7 +154,7 @@ impl Sequoia {
         let certs = self.lookup()
             .subkeys(true)
             .key_capabilities(keyflags.into())
-            .lookup(key_handle);
+            .lookup_all(key_handle);
 
         match certs {
             Ok(certs) => {

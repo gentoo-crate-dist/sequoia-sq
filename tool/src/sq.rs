@@ -209,7 +209,7 @@ impl Sq {
         self.sequoia.lookup()
             .subkeys(true)
             .key_capabilities(keyflags)
-            .lookup(handle)
+            .lookup_all(handle)
     }
 
     pub fn lookup_with_policy<'a, H>(&self, handle: H,
@@ -223,7 +223,7 @@ impl Sq {
         self.sequoia.lookup()
             .subkeys(true)
             .key_capabilities(keyflags)
-            .lookup_with_policy(handle, policy, time)
+            .lookup_all_with_policy(handle, policy, time)
     }
 
     pub fn lookup_one<H>(&self, handle: H,

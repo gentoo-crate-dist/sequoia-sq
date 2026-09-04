@@ -192,12 +192,12 @@ where
                 // policy.  Otherwise, fall back to the NULL policy.
                 if let Ok(certs) = sq.lookup()
                     .subkeys(true)
-                    .lookup(&recipient)
+                    .lookup_all(&recipient)
                     .or_else(|_| {
                         sq.lookup()
                             .subkeys(true)
-                            .lookup_with_policy(&recipient,
-                                                NULL_POLICY, sq.time())
+                            .lookup_all_with_policy(&recipient,
+                                                    NULL_POLICY, sq.time())
                     })
                 {
                     if certs.len() == 1 {

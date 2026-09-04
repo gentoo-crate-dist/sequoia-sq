@@ -350,7 +350,7 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// An error is also returned if the identifier does not match at
     /// least one certificate.
-    pub fn lookup<'a, H>(&self, handle: H)
+    pub fn lookup_all<'a, H>(&self, handle: H)
         -> Result<Vec<Cert>, Error>
     where
         H: Into<FileStdinOrKeyHandle>,
@@ -362,9 +362,9 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up certificates.
     ///
-    /// Like [`Builder::lookup`], but uses an alternate policy and an
-    /// alternate reference time.
-    pub fn lookup_with_policy<'a, H>(&self, handle: H,
+    /// Like [`Builder::lookup_all`], but uses an alternate policy and
+    /// an alternate reference time.
+    pub fn lookup_all_with_policy<'a, H>(&self, handle: H,
                                      policy: &dyn Policy,
                                      time: SystemTime)
         -> Result<Vec<Cert>, Error>
@@ -540,8 +540,8 @@ impl<'sequoia> Builder<'sequoia>
 
     /// Looks up a certificate.
     ///
-    /// Like [`Builder::lookup`], but looks up a certificate, which
-    /// must be uniquely identified by `handle` and `keyflags`.
+    /// Like [`Builder::lookup_all`], but looks up a certificate,
+    /// which must be uniquely identified by `handle` and `keyflags`.
     pub fn lookup_one<H>(&self, handle: H)
         -> Result<Cert, Error>
     where H: Into<FileStdinOrKeyHandle>

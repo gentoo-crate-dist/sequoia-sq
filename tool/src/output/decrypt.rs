@@ -165,7 +165,7 @@ impl decrypt::Stream for Stream<'_> {
                                     Some(KeyFlags::empty()
                                          .set_storage_encryption()
                                          .set_transport_encryption()))
-                                .lookup(&r);
+                                .lookup_all(&r);
 
                             match certs {
                                 Ok(certs) => {
