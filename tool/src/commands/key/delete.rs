@@ -110,11 +110,12 @@ pub fn dispatch(sq: Sq, command: cli::key::delete::Command)
 
         // Make sure this is not ambiguous.
         for (ka, _remote) in to_delete.iter() {
-            if let Ok(certs) = sq.lookup_with_policy(
-                ka.key().key_handle(),
-                None,
-                NULL_POLICY,
-                sq.time())
+            if let Ok(certs) = sq.sequoia.lookup()
+                .subkeys(true)
+                .lookup_all_with_policy(
+                    ka.key().key_handle(),
+                    NULL_POLICY,
+                    sq.time())
             {
                 if certs.len() > 1 {
                     die = true;

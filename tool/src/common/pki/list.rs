@@ -109,8 +109,10 @@ pub fn list_certifications(sq: &Sq,
                     // The user wants to know about any certifier.
 
                     for kh in key_handle_dealias(&issuers) {
-                        if let Ok(certifiers)
-                            = sq.lookup(&kh, Some(KeyFlags::certification()))
+                        if let Ok(certifiers) = sq.sequoia.lookup()
+                            .subkeys(true)
+                            .key_capabilities(KeyFlags::certification())
+                            .lookup_all(&kh)
                         {
                             for certifier in certifiers.into_iter() {
                                 t!("  Possible certification of {}, {:?} by {}, {}",

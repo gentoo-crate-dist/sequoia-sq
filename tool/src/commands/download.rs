@@ -397,8 +397,10 @@ pub fn dispatch(sq: Sq, c: download::Command)
                                             cert.fingerprint());
                                     })
                                 }
-                            } else if let Ok(cert)
-                                = sq.lookup_one(issuer, Some(KeyFlags::signing()))
+                            } else if let Ok(cert) = sq.sequoia.lookup()
+                                .subkeys(true)
+                                .key_capabilities(KeyFlags::signing())
+                                .lookup_one(issuer)
                             {
                                 if seen.contains_key(&cert.fingerprint()) {
                                     // Already saw that certificate.

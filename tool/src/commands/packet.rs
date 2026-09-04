@@ -246,7 +246,10 @@ pub fn split(sq: Sq, c: SplitCommand) -> Result<()>
                         if let Some(i) = s.get_issuers().get(0) {
                             headers.push(
                                 ("Comment", format!("Issuer: {}", i)));
-                            if let Ok(cert) = sq.lookup_one(i, None) {
+                            if let Ok(cert) = sq.sequoia.lookup()
+                                .subkeys(true)
+                                .lookup_one(i)
+                            {
                                 headers.push(
                                     ("Comment",
                                      format!("Issuer: {}",

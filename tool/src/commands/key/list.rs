@@ -342,7 +342,10 @@ pub fn list(sq: Sq, mut cmd: cli::key::list::Command) -> Result<()> {
                     },
                 };
 
-                let associations = if let Ok(certs) = sq.lookup(&fpr, None) {
+                let associations = if let Ok(certs) = sq.sequoia.lookup()
+                    .subkeys(true)
+                    .lookup_all(&fpr)
+                {
                     certs.into_iter().map(|c| Association::Bound(c)).collect()
                 } else {
                     vec![Association::Bare(key.public_key().clone())]

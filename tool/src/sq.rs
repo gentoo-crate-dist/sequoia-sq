@@ -25,7 +25,6 @@ use openpgp::cert::prelude::*;
 use openpgp::packet::key::PublicParts;
 use openpgp::packet::prelude::*;
 use openpgp::parse::Parse;
-use openpgp::policy::Policy;
 use openpgp::policy::StandardPolicy;
 use openpgp::policy::NullPolicy;
 use openpgp::types::KeyFlags;
@@ -199,56 +198,6 @@ impl Sq {
         self.sequoia.keyring_tsks()
     }
 
-
-    pub fn lookup<'a, H>(&self, handle: H,
-                         keyflags: Option<KeyFlags>)
-        -> Result<Vec<Cert>, sequoia::lookup::Error>
-    where
-        H: Into<FileStdinOrKeyHandle>,
-    {
-        self.sequoia.lookup()
-            .subkeys(true)
-            .key_capabilities(keyflags)
-            .lookup_all(handle)
-    }
-
-    pub fn lookup_with_policy<'a, H>(&self, handle: H,
-                                     keyflags: Option<KeyFlags>,
-                                     policy: &dyn Policy,
-                                     time: SystemTime)
-        -> Result<Vec<Cert>, sequoia::lookup::Error>
-    where
-        H: Into<FileStdinOrKeyHandle>,
-    {
-        self.sequoia.lookup()
-            .subkeys(true)
-            .key_capabilities(keyflags)
-            .lookup_all_with_policy(handle, policy, time)
-    }
-
-    pub fn lookup_one<H>(&self, handle: H,
-                         keyflags: Option<KeyFlags>)
-        -> Result<Cert, sequoia::lookup::Error>
-    where H: Into<FileStdinOrKeyHandle>
-    {
-        self.sequoia.lookup()
-            .subkeys(true)
-            .key_capabilities(keyflags)
-            .lookup_one(handle)
-    }
-
-    pub fn lookup_one_with_policy<H>(&self, handle: H,
-                                     keyflags: Option<KeyFlags>,
-                                     policy: &dyn Policy,
-                                     time: SystemTime)
-        -> Result<Cert, sequoia::lookup::Error>
-    where H: Into<FileStdinOrKeyHandle>
-    {
-        self.sequoia.lookup()
-            .subkeys(true)
-            .key_capabilities(keyflags)
-            .lookup_one_with_policy(handle, policy, time)
-    }
 
     /// Returns the local trust root, creating it if necessary.
     pub fn local_trust_root(&self) -> Result<Arc<LazyCert<'static>>> {

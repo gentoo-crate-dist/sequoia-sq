@@ -50,9 +50,9 @@ pub fn bind(sq: Sq, command: cli::key::subkey::bind::Command) -> Result<()>
     )> = command.key
         .into_iter()
         .map(|kh| {
-            let cert = match sq.lookup_with_policy(
-                kh.clone(), None,
-                adoptee_policy, sq.time())
+            let cert = match sq.sequoia.lookup()
+                .subkeys(true)
+                .lookup_all_with_policy(kh.clone(), adoptee_policy, sq.time())
             {
                 Ok(certs) => certs.into_iter().next().unwrap(),
                 Err(err) => return (kh, Err(err.into())),
