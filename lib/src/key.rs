@@ -64,7 +64,7 @@ where
 
     // let prompt = crate::common::password::Prompt::new(sequoia, true);
 
-    Ok(certify_downloads(sequoia, false, ca, vec![cert.clone()], None,
+    Ok(certify_downloads(sequoia, false, &ca, vec![cert.clone()], None,
                          prompt)
        .into_iter().next().expect("exactly one"))
 }

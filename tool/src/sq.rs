@@ -200,7 +200,7 @@ impl Sq {
 
 
     /// Returns the local trust root, creating it if necessary.
-    pub fn local_trust_root(&self) -> Result<Arc<LazyCert<'static>>> {
+    pub fn local_trust_root(&self) -> Result<Cert> {
         self.sequoia.local_trust_root().map(|ca| ca.into_cert())
     }
 

@@ -1,25 +1,22 @@
 //! Routines for looking up shadow CAs.
 
 use std::ops::Deref;
-use std::sync::Arc;
 
 use sequoia_openpgp as openpgp;
 use openpgp::packet::UserID;
-
-use sequoia_cert_store as cert_store;
-use cert_store::LazyCert;
+use openpgp::Cert;
 
 use crate::Result;
 use crate::Sequoia;
 
 #[derive(Debug, Clone)]
 pub struct Ca {
-    cert: Arc<LazyCert<'static>>,
+    cert: Cert,
     created: bool,
 }
 
 impl Deref for Ca {
-    type Target = Arc<LazyCert<'static>>;
+    type Target = Cert;
 
     fn deref(&self) -> &Self::Target {
         &self.cert
@@ -28,12 +25,12 @@ impl Deref for Ca {
 
 impl Ca {
     /// Returns the certificate.
-    pub fn cert(&self) -> Arc<LazyCert<'static>> {
-        Arc::clone(&self.cert)
+    pub fn cert(&self) -> &Cert {
+        &self.cert
     }
 
     /// Returns the certificate.
-    pub fn into_cert(self) -> Arc<LazyCert<'static>> {
+    pub fn into_cert(self) -> Cert {
         self.cert
     }
 
@@ -57,6 +54,8 @@ impl Sequoia {
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
         let (cert, created) = certd.trust_root()?;
+
+        let cert = cert.to_cert()?.clone();
 
         Ok(Ca {
             cert,
@@ -86,6 +85,8 @@ impl Sequoia {
 
         let (cert, created) = certd.shadow_ca_wkd()?;
 
+        let cert = cert.to_cert()?.clone();
+
         Ok(Ca {
             cert,
             created,
@@ -99,6 +100,8 @@ impl Sequoia {
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
         let (cert, created) = certd.shadow_ca_dane()?;
+
+        let cert = cert.to_cert()?.clone();
 
         Ok(Ca {
             cert,
@@ -114,6 +117,8 @@ impl Sequoia {
 
         let (cert, created) = certd.shadow_ca_autocrypt()?;
 
+        let cert = cert.to_cert()?.clone();
+
         Ok(Ca {
             cert,
             created,
@@ -127,6 +132,8 @@ impl Sequoia {
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
         let (cert, created) = certd.shadow_ca_proton_me()?;
+
+        let cert = cert.to_cert()?.clone();
 
         Ok(Ca {
             cert,
@@ -142,6 +149,8 @@ impl Sequoia {
 
         let (cert, created) = certd.shadow_ca_keys_openpgp_org()?;
 
+        let cert = cert.to_cert()?.clone();
+
         Ok(Ca {
             cert,
             created,
@@ -155,6 +164,8 @@ impl Sequoia {
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
         let (cert, created) = certd.shadow_ca_keys_mailvelope_com()?;
+
+        let cert = cert.to_cert()?.clone();
 
         Ok(Ca {
             cert,
@@ -174,6 +185,8 @@ impl Sequoia {
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
         if let Some((cert, created)) = certd.shadow_ca_keyserver(uri)? {
+            let cert = cert.to_cert()?.clone();
+
             Ok(Some(Ca {
                 cert,
                 created,
@@ -200,6 +213,8 @@ impl Sequoia {
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
         if let Some((cert, created)) = certd.shadow_ca_keyserver(uri)? {
+            let cert = cert.to_cert()?.clone();
+
             Ok(Some(Ca {
                 cert,
                 created,
@@ -228,6 +243,8 @@ impl Sequoia {
 
         let (cert, created) = certd.shadow_ca(
                     name, create, userid, trust_amount, intermediaries)?;
+
+        let cert = cert.to_cert()?.clone();
 
         Ok(Ca {
             cert,

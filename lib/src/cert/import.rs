@@ -1739,25 +1739,16 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
         // Get the autocrypt shadow CA.  Be careful to do it at most
         // once.
-        let mut autocrypt_ca: Option<Option<Arc<LazyCert>>> = None;
-        let mut autocrypt_ca = || {
-            if let Some(autocrypt_ca) = autocrypt_ca.as_ref() {
-                if let Some(autocrypt_ca) = autocrypt_ca {
-                    Some(Arc::clone(autocrypt_ca))
-                } else {
-                    None
-                }
-            } else {
-                if let Ok(ca) = sequoia.shadow_ca_autocrypt()
-                    .map(|ca| ca.into_cert())
-                {
-                    autocrypt_ca = Some(Some(Arc::clone(&ca)));
-                    Some(ca)
-                } else {
-                    autocrypt_ca = Some(None);
-                    None
-                }
-            }
+        let autocrypt_ca: std::cell::OnceCell<Option<Cert>>
+            = Default::default();
+        let autocrypt_ca = || -> Option<&Cert> {
+            autocrypt_ca
+                .get_or_init(|| {
+                    sequoia.shadow_ca_autocrypt()
+                        .ok()
+                        .map(|ca| ca.into_cert())
+                })
+                .as_ref()
         };
 
         use autocrypt::AutocryptHeaderType::*;
@@ -1778,7 +1769,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                 if let Some(cert) = h.key {
                     let (cert, ca) = if let Some(ca) = autocrypt_ca() {
                         let cert = certify_downloads(
-                            sequoia, false, ca.clone(),
+                            sequoia, false, ca,
                             vec![cert], Some(&addr[..]),
                             prompt);
                         (cert.into_iter().next().expect("have cert"),
@@ -1802,13 +1793,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                                 sender_attributes: attributes,
                             }),
                         if let Some(ca) = ca {
-                            if let Ok(ca)
-                                = Arc::unwrap_or_clone(ca).into_cert()
-                            {
-                                vec![ Arc::new(ca) ]
-                            } else {
-                                Vec::new()
-                            }
+                            vec![ Arc::new(ca.clone()) ]
                         } else {
                             Vec::new()
                         },

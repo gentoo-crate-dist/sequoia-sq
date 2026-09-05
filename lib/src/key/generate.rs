@@ -1105,8 +1105,8 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                 let certify = || -> Result<(), anyhow::Error> {
                     // Now certify the user IDs, and if this is our own
                     // key, mark it as trusted introducer.
-                    let trust_root = sequoia.local_trust_root()?;
-                    let trust_root = trust_root.to_cert()?;
+                    let trust_root = sequoia.local_trust_root()?
+                        .into_cert();
 
                     if own_key && have_userids {
                         // Mark all user IDs as authenticated, and mark

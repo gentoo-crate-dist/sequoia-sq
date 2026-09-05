@@ -331,7 +331,7 @@ impl<'sequoia> Builder<'sequoia>
         // certificate to the cert store (a local trust root is
         // available).
         if let Ok(trust_root) = sequoia.local_trust_root() {
-            let trust_root = trust_root.to_cert()?;
+            let trust_root = trust_root.into_cert();
 
             sequoia.pki_certify()
                 .recreate(false)

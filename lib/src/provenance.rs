@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 
 use sequoia_openpgp as openpgp;
@@ -15,7 +13,6 @@ use openpgp::policy::Policy;
 use openpgp::types::SignatureType;
 
 use sequoia_cert_store as cert_store;
-use cert_store::LazyCert;
 use cert_store::store::UserIDQueryParams;
 
 use crate::Result;
@@ -196,22 +193,19 @@ fn certify(sequoia: &Sequoia,
 /// this.
 pub fn certify_downloads<P>(sequoia: &Sequoia,
                             emit_provenance_messages: bool,
-                            ca: Arc<LazyCert<'static>>,
+                            ca: &Cert,
                             certs: Vec<Cert>, email: Option<&str>,
                             prompt: P)
     -> Vec<Cert>
 where
     P: prompt::Prompt,
 {
-    let ca = || -> Result<_> {
-        let ca = ca.to_cert()?;
-
-        Ok(sequoia.get_certification_key(ca, None, &prompt)?)
-    };
-    let mut ca_signer = match ca() {
+    let mut ca_signer = match sequoia.get_certification_key(
+        ca, None, &prompt)
+    {
         Ok(signer) => signer,
         Err(err) => {
-            let err = err.context(
+            let err = anyhow::Error::from(err).context(
                 "Warning: not recording provenance information, \
                  failed to load CA key");
             if sequoia.config().verbose() {

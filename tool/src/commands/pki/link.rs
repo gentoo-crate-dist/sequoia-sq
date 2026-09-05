@@ -32,7 +32,6 @@ pub fn add(sq: Sq, c: link::AddCommand)
     -> Result<()>
 {
     let trust_root = sq.local_trust_root()?;
-    let trust_root = trust_root.to_cert()?;
 
     let (cert, _source)
         = sq.resolve_cert(&c.cert, TrustThreshold::Full)?;
@@ -107,7 +106,6 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
     -> Result<()>
 {
     let trust_root = sq.local_trust_root()?;
-    let trust_root = trust_root.to_cert()?;
 
     let (cert, _source)
         = sq.resolve_cert(&c.cert, TrustThreshold::Full)?;
@@ -156,7 +154,6 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
     -> Result<()>
 {
     let trust_root = sq.local_trust_root()?;
-    let trust_root = trust_root.to_cert()?;
 
     let (cert, _source)
         = sq.resolve_cert(&c.cert, TrustThreshold::Full)?;

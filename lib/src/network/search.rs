@@ -435,12 +435,6 @@ impl Source {
             Source::CertStore => return Ok(None),
         };
 
-        // Check that the data is a valid certificate.  If not,
-        // bail sooner rather than later.
-        if let Some(ca) = result.as_ref() {
-            let _ = ca.cert().to_cert()?;
-        }
-
         Ok(result)
     }
 }

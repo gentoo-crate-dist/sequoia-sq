@@ -28,7 +28,6 @@ pub fn list(sq: Sq, c: link::ListCommand)
     cert_store.prefetch_all();
 
     let trust_root = sq.local_trust_root()?;
-    let trust_root = trust_root.to_cert()?;
 
     let mut certs = c.certs;
 

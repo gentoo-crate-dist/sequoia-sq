@@ -1667,9 +1667,7 @@ mod tests {
 
         let local_trust_root = sq.local_trust_root()
             .expect("have local trust root")
-            .to_cert()
-            .expect("local trust root is valid")
-            .clone();
+            .into_cert();
 
         // Generate a key, manually import it into the certificate
         // store, and manually mark it as a trusted introducer.
@@ -1946,10 +1944,7 @@ mod tests {
 
         assert!(local_trust_root.created());
         let local_trust_root = local_trust_root
-            .into_cert()
-            .to_cert()
-            .expect("valid cert")
-            .clone();
+            .into_cert();
 
         // Certify a binding using the local trust root.
         sequoia

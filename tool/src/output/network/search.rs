@@ -168,9 +168,10 @@ impl search::Stream for Stream<'_> {
                                              Use `sq pki link authorize --unconstrained --amount N {}` \
                                              to change how much it is trusted.  Or \
                                              `sq pki link retract {}` to disable it.",
-                                            if let Ok(uid) = ca.to_cert()
-                                                .and_then(|c| sq.best_userid(c, false).userid()
-                                                          .map(ToString::to_string))
+                                            if let Ok(uid)
+                                                = sq.best_userid(ca.cert(), false)
+                                                    .userid()
+                                                    .map(ToString::to_string)
                                             {
                                                 // We really want the self-signed, primary user
                                                 // ID.
