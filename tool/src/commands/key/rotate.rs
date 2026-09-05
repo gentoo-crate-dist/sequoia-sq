@@ -388,7 +388,7 @@ pub fn dispatch(
     }
 
     // Replay the trust root -> cert onto the new certificate.
-    let trust_root = sq.local_trust_root()?;
+    let trust_root = sq.sequoia.local_trust_root()?.into_cert();
     let mut trust_root_signer = sq.get_certification_key(&trust_root, None)?;
 
     if ! command.own_key && ! command.shared_key {

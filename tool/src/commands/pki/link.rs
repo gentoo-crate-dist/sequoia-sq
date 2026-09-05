@@ -31,7 +31,7 @@ pub fn link(sq: Sq, c: link::Command) -> Result<()> {
 pub fn add(sq: Sq, c: link::AddCommand)
     -> Result<()>
 {
-    let trust_root = sq.local_trust_root()?;
+    let trust_root = sq.sequoia.local_trust_root()?.into_cert();
 
     let (cert, _source)
         = sq.resolve_cert(&c.cert, TrustThreshold::Full)?;
@@ -105,7 +105,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
 pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
     -> Result<()>
 {
-    let trust_root = sq.local_trust_root()?;
+    let trust_root = sq.sequoia.local_trust_root()?.into_cert();
 
     let (cert, _source)
         = sq.resolve_cert(&c.cert, TrustThreshold::Full)?;
@@ -153,7 +153,7 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
 pub fn retract(sq: Sq, c: link::RetractCommand)
     -> Result<()>
 {
-    let trust_root = sq.local_trust_root()?;
+    let trust_root = sq.sequoia.local_trust_root()?.into_cert();
 
     let (cert, _source)
         = sq.resolve_cert(&c.cert, TrustThreshold::Full)?;

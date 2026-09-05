@@ -27,7 +27,7 @@ pub fn list(sq: Sq, c: link::ListCommand)
     let cert_store = sq.cert_store_or_else()?;
     cert_store.prefetch_all();
 
-    let trust_root = sq.local_trust_root()?;
+    let trust_root = sq.sequoia.local_trust_root()?.into_cert();
 
     let mut certs = c.certs;
 

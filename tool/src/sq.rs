@@ -199,11 +199,6 @@ impl Sq {
     }
 
 
-    /// Returns the local trust root, creating it if necessary.
-    pub fn local_trust_root(&self) -> Result<Cert> {
-        self.sequoia.local_trust_root().map(|ca| ca.into_cert())
-    }
-
     /// Returns the trust roots, including the cert store's trust
     /// root, if any.
     pub fn trust_roots(&self) -> Vec<Fingerprint> {
