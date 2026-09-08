@@ -54,7 +54,7 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
     let expiration = sq.config()
         .resolve_pki_vouch_expiration(&c.expiration, c.expiration_source);
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     let mut stderr = std::io::stderr();
     let stream = Stream::new(

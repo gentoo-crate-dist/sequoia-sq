@@ -84,15 +84,15 @@ impl<'sequoia> Builder<'sequoia>
     /// If `keys` is `None`, the primary key's expiration is changed.
     /// Otherwise the expiration of each of the specified keys is
     /// extended.
-    pub fn expire<P>(&self,
-                     cert: &Cert,
-                     keys: &[KeyHandle],
-                     output: Option<(&mut dyn std::io::Write, Option<&std::path::Path>)>,
-                     binary: bool,
-                     prompt: P)
+    pub fn expire<'p, P>(&self,
+                         cert: &Cert,
+                         keys: &[KeyHandle],
+                         output: Option<(&mut dyn std::io::Write, Option<&std::path::Path>)>,
+                         binary: bool,
+                         prompt: P)
         -> Result<()>
     where
-        P: prompt::Prompt
+        P: prompt::PromptFactory<'p>
     {
         let &Builder {
             params: Params {

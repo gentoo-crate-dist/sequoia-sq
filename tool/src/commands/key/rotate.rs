@@ -34,7 +34,7 @@ use cert_store::StoreUpdate;
 
 use sequoia::inspect::inspect;
 use sequoia::key::certify_generated;
-use sequoia::prompt::Prompt as _;
+use sequoia::prompt::PromptFactory as _;
 use sequoia::prompt;
 use sequoia::types::TrustThreshold;
 use sequoia::types::import_stats::ImportStatus;
@@ -249,7 +249,7 @@ pub fn dispatch(
         sq.cache_password(password.clone());
         builder = builder.set_password(Some(password));
     } else if ! command.without_password {
-        let prompt = password::Prompt::new(&sq, false);
+        let prompt = password::PromptFactory::new(&sq, false);
 
         let mut context = prompt::ContextBuilder::password(
             prompt::Reason::LockCert)
@@ -521,7 +521,7 @@ pub fn dispatch(
                 // are any user IDs to certify.
                 let have_userids = cert.userids().next().is_some();
                 if have_userids {
-                    let prompt = password::Prompt::new(&sq, true);
+                    let prompt = password::PromptFactory::new(&sq, true);
                     cert = certify_generated(&sq.sequoia, &cert, prompt)?;
                 }
 
@@ -559,7 +559,7 @@ pub fn dispatch(
                     None, // Output file.
                     &mut output);
 
-                let prompt = password::Prompt::new(&sq, true);
+                let prompt = password::PromptFactory::new(&sq, true);
 
                 // If the user provided `--own-key` or `--shared-key`,
                 // certify the user IDs using the local trust root.

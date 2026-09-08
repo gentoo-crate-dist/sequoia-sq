@@ -26,7 +26,7 @@ pub fn dispatch(sq: Sq, cmd: import::Command) -> Result<()> {
     };
 
     // Then, try to decrypt the message, and look for gossip headers.
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     let mut stats = ImportStats::default();
 

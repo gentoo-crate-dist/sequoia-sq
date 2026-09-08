@@ -39,7 +39,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
     let secret_keys =
         load_keys(command.secret_key_file.iter())?;
     let session_keys = command.session_key;
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
     let stream = Stream::new(
         &sq, DecryptContext::Decrypt, command.dump_session_key);
     let mut decryptor = sq.sequoia.decrypt()

@@ -187,7 +187,7 @@ use crate::config::DEFAULT_KEYSERVERS;
 use crate::destination::Destination;
 use crate::destination::DestinationSummary;
 use crate::network::http_client;
-use crate::prompt::Prompt;
+use crate::prompt::PromptFactory;
 use crate::provenance::certify_downloads;
 use crate::types::import_stats::ImportStats;
 
@@ -1163,12 +1163,12 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     }
 
     /// Search for certificates on the network.
-    pub async fn search<P>(mut self,
-                           queries: impl IntoIterator<Item=Query>,
-                           prompt: P)
+    pub async fn search<'p, P>(mut self,
+                               queries: impl IntoIterator<Item=Query>,
+                               prompt: P)
         -> Result<Outcome, Error>
     where
-        P: Prompt
+        P: PromptFactory<'p>
     {
         let mut report = output::Report::new();
 
@@ -1215,11 +1215,11 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     }
 
     /// Search for certificates on the network.
-    async fn search_(params: &Params<'sequoia>,
-                     params_once: &mut ParamsOnce<'writer, 'stream>,
-                     mut queries: Vec<Query>,
-                     prompt: &dyn Prompt,
-                     report: &mut output::Report)
+    async fn search_<'p>(params: &Params<'sequoia>,
+                         params_once: &mut ParamsOnce<'writer, 'stream>,
+                         mut queries: Vec<Query>,
+                         prompt: &dyn PromptFactory<'p>,
+                         report: &mut output::Report)
         -> Result<(), Error>
     {
         let &Params {

@@ -658,6 +658,10 @@ pub trait Prompt<T=()> {
     /// loop, or propagate the error to the caller, as appropriate.
     /// When a password requires confirmation, `check.check` should
     /// only be called after the password has been confirmed.
+    ///
+    /// Note: `self` is an immutable reference so that it is possible
+    /// to use the `Prompt` from multiple threads.  If you need to
+    /// modify `self`, use, e.g., a `Mutex`.
     fn prompt<'a>(&self, context: &mut Context<'a, T>,
                   check: &mut dyn Check<'a, T>)
         -> std::result::Result<Response, Error>;
@@ -684,6 +688,10 @@ pub trait Prompt<T=()> {
     /// provide the password for.
     ///
     /// See [`Prompt::prompt`] for more details.
+    ///
+    /// Note: `self` is an immutable reference so that it is possible
+    /// to use the `Prompt` from multiple threads.  If you need to
+    /// modify `self`, use, e.g., a `Mutex`.
     fn multiprompt<'a, 'c>(&self, contexts: &'c mut [Context<'a, T>],
                            check: &mut dyn Check<'a, T>)
         -> std::result::Result<(&'c Context<'a, T>, Response), Error>
@@ -848,5 +856,53 @@ impl<T> Prompt<T> for Cancel {
         -> std::result::Result<Response, Error>
     {
         Err(Error::Cancelled(None))
+    }
+}
+
+/// A [`Prompt`] factory.
+///
+/// Returns a new prompt.
+pub trait PromptFactory<'p, T=()> {
+    /// Returns a new prompt.
+    fn build<'a>(&self, context: &mut Context<'a, T>)
+        -> Box<dyn Prompt<T> + 'p>;
+
+    /// Builds a prompt and calls it.
+    fn prompt<'a>(&self, context: &mut Context<'a, T>, check: &mut dyn Check<'a, T>)
+        -> std::result::Result<Response, Error>
+    {
+        let prompt = self.build(context);
+        let response = prompt.prompt(context, check)?;
+        Ok(response)
+    }
+}
+
+impl<'p, T, P> PromptFactory<'p, T> for Box<P>
+where
+    P: PromptFactory<'p, T> + 'p
+{
+    fn build<'a>(&self, context: &mut Context<'a, T>)
+        -> Box<dyn Prompt<T> + 'p>
+    {
+        self.as_ref().build(context)
+    }
+}
+
+impl<'p, T, P> PromptFactory<'p, T> for &P
+where
+    P: PromptFactory<'p, T> + ?Sized
+{
+    fn build<'a>(&self, context: &mut Context<'a, T>)
+        -> Box<dyn Prompt<T> + 'p>
+    {
+        (*self).build(context)
+    }
+}
+
+impl<'p, T> PromptFactory<'p, T> for Cancel {
+    fn build<'a>(&self, _context: &mut Context<'a, T>)
+        -> Box<dyn Prompt<T> + 'p>
+    {
+        Box::new(Cancel::new())
     }
 }

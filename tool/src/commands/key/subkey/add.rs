@@ -36,7 +36,7 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
         PasswordPolicy::Prompt
     };
 
-    let prompt = password::Prompt::new(&sq, false);
+    let prompt = password::PromptFactory::new(&sq, false);
 
     let mut output_;
     let output = if let Some(output_path) = command.output {

@@ -23,7 +23,7 @@ struct UserIDRevocation {
 
 impl UserIDRevocation {
     /// Create a new UserIDRevocation
-    pub fn new<P>(
+    pub fn new<'p, P>(
         sequoia: &Sequoia,
         revoker: Option<Cert>,
         cert: Cert,
@@ -34,7 +34,7 @@ impl UserIDRevocation {
         prompt: P
     ) -> Result<Self>
     where
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let (revoker, mut signer)
             = get_secret_signer(sequoia, &cert, revoker.as_ref(), prompt)?;
@@ -178,17 +178,17 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// Returns an error if reading of the [`Cert`] fails, if retrieval of
     /// [`NotationData`] fails or if the eventual revocation fails.
-    pub fn revoke<P>(&self,
-                     revoker: Option<&Cert>,
-                     cert: &Cert,
-                     userid: &UserID,
-                     reason: ReasonForRevocation,
-                     message: &str,
-                     output: Option<&mut dyn std::io::Write>,
-                     prompt: P)
-                     -> Result<()>
+    pub fn revoke<'p, P>(&self,
+                         revoker: Option<&Cert>,
+                         cert: &Cert,
+                         userid: &UserID,
+                         reason: ReasonForRevocation,
+                         message: &str,
+                         output: Option<&mut dyn std::io::Write>,
+                         prompt: P)
+        -> Result<()>
     where
-        P: prompt::Prompt
+        P: prompt::PromptFactory<'p>
     {
         let &Builder {
             params: Params {

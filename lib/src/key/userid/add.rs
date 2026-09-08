@@ -170,13 +170,13 @@ impl<'sequoia> Builder<'sequoia>
     /// If `output` is `None`, then the key is saved to the key store.
     /// If `output` is `Some`, the certificate with the user user ID
     /// is written to the specified writer.
-    pub fn add<'a, P>(&self,
+    pub fn add<'p, P>(&self,
                       cert: &Cert,
                       prompt: P,
                       output: Option<&mut dyn std::io::Write>)
         -> Result<()>
     where
-        P: prompt::Prompt + 'a,
+        P: prompt::PromptFactory<'p>,
     {
         let &Builder {
             params: Params {

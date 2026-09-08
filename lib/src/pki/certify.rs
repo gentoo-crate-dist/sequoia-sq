@@ -1560,14 +1560,14 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     /// If the trust amount is 0, the operation is interpreted as a
     /// retraction of any prior certifications by the certifier over
     /// the bindings.
-    pub fn certify<'a, P>(mut self,
+    pub fn certify<'p, P>(mut self,
                           certifier: &Cert,
                           cert: &Cert,
                           userids: &[UserID],
                           prompt: P)
         -> Result<Outcome, Error>
     where
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let mut outcome = Outcome::new(cert);
 
@@ -1612,12 +1612,12 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         result.map(|_| outcome)
     }
 
-    fn certify_<'a>(params: &Params<'sequoia>,
+    fn certify_<'p>(params: &Params<'sequoia>,
                     params_once: &mut ParamsOnce<'writer, 'stream>,
                     certifier: &Cert,
                     cert: &Cert,
                     userids: &[UserID],
-                    prompt: &(dyn prompt::Prompt + 'a),
+                    prompt: &dyn prompt::PromptFactory<'p>,
                     outcome: &mut Outcome)
         -> Result<(), Error>
     {

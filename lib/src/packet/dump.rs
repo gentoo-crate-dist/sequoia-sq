@@ -23,7 +23,7 @@ use self::openpgp::parse::{
 use self::openpgp::types::Duration;
 
 use crate::Sequoia;
-use crate::prompt::Prompt;
+use crate::prompt::PromptFactory;
 use crate::types::Convert;
 use crate::types::Safe;
 use crate::types::SessionKey;
@@ -40,18 +40,18 @@ pub enum Kind {
 }
 
 #[allow(clippy::redundant_pattern_matching)]
-pub fn dump<W, P>(sq: &crate::Sequoia,
-                  secrets: Vec<Cert>,
-                  input: &mut (dyn io::Read + Sync + Send),
-                  output: &mut dyn io::Write,
-                  mpis: bool, hex: bool,
-                  session_keys: Vec<SessionKey>,
-                  width: W,
-                  prompt: P)
+pub fn dump<'p, W, P>(sq: &crate::Sequoia,
+                      secrets: Vec<Cert>,
+                      input: &mut (dyn io::Read + Sync + Send),
+                      output: &mut dyn io::Write,
+                      mpis: bool, hex: bool,
+                      session_keys: Vec<SessionKey>,
+                      width: W,
+                      prompt: P)
     -> Result<Kind>
 where
     W: Into<Option<usize>>,
-    P: Prompt,
+    P: PromptFactory<'p>,
 {
     let mut ppr
         = self::openpgp::parse::PacketParserBuilder::from_reader(input)?;

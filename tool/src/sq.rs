@@ -365,7 +365,7 @@ impl Sq {
     where R: key::KeyRole + Clone,
     {
         if may_prompt {
-            let prompt = password::Prompt::new(self, allow_skipping);
+            let prompt = password::PromptFactory::new(self, allow_skipping);
             self.sequoia.decrypt_key(cert, key, allow_skipping, prompt)
         } else {
             let prompt = prompt::Cancel::new();
@@ -387,7 +387,7 @@ impl Sq {
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
         where P: key::KeyParts + Clone, R: key::KeyRole + Clone
     {
-        let prompt = password::Prompt::new(self, true);
+        let prompt = password::PromptFactory::new(self, true);
         self.sequoia.get_signer(ka, prompt)
     }
 
@@ -410,7 +410,7 @@ impl Sq {
         -> Result<Vec<Box<dyn crypto::Signer + Send + Sync>>, CertError>
     where C: std::borrow::Borrow<Cert>
     {
-        let prompt = password::Prompt::new(self, true);
+        let prompt = password::PromptFactory::new(self, true);
         self.sequoia.get_primary_keys(certs, options, prompt)
     }
 
@@ -433,7 +433,7 @@ impl Sq {
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where C: std::borrow::Borrow<Cert>
     {
-        let prompt = password::Prompt::new(self, true);
+        let prompt = password::PromptFactory::new(self, true);
         self.sequoia.get_primary_key(cert, options, prompt)
     }
 
@@ -459,7 +459,7 @@ impl Sq {
                   CertError>
     where C: Borrow<Cert>
     {
-        let prompt = password::Prompt::new(self, true);
+        let prompt = password::PromptFactory::new(self, true);
         self.sequoia.get_signing_keys(certs, options, prompt)
     }
 
@@ -484,7 +484,7 @@ impl Sq {
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where C: std::borrow::Borrow<Cert>
     {
-        let prompt = password::Prompt::new(self, true);
+        let prompt = password::PromptFactory::new(self, true);
         self.sequoia.get_certification_key(cert, options, prompt)
     }
 

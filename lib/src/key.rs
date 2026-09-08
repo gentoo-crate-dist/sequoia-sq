@@ -55,10 +55,10 @@ pub enum PasswordPolicy {
 /// the cert listing.
 ///
 /// XXX Transitional: make this private.
-pub fn certify_generated<P>(sequoia: &Sequoia, cert: &Cert, prompt: P)
+pub fn certify_generated<'p, P>(sequoia: &Sequoia, cert: &Cert, prompt: P)
     -> Result<Cert>
 where
-    P: prompt::Prompt,
+    P: prompt::PromptFactory<'p>,
 {
     let ca = sequoia.shadow_ca_generated_on()?.into_cert();
 
@@ -158,14 +158,14 @@ trait RevocationOutput {
 /// can be derived from it.
 /// - Returns an `Error` if `secret` is `None` and no suitable certification key
 /// can be derived from `cert`.
-fn get_secret_signer<'a, P>(
+fn get_secret_signer<'a, 'p, P>(
     sequoia: &'a Sequoia,
     cert: &'a Cert,
     secret: Option<&'a Cert>,
     prompt: P)
     -> Result<(Cert, Box<dyn Signer + Send + Sync>)>
 where
-    P: prompt::Prompt
+    P: prompt::PromptFactory<'p>
 {
     let flags = Some(&[
         GetKeysOptions::AllowRevoked,

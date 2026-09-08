@@ -20,7 +20,7 @@ struct CertificateRevocation {
 
 impl CertificateRevocation {
     /// Create a new CertificateRevocation
-    pub fn new<P>(
+    pub fn new<'p, P>(
         sequoia: &Sequoia,
         cert: &Cert,
         revoker: Option<&Cert>,
@@ -30,7 +30,7 @@ impl CertificateRevocation {
         prompt: P,
     ) -> Result<Self>
     where
-        P: prompt::Prompt
+        P: prompt::PromptFactory<'p>
     {
         let (revoker, mut signer) = get_secret_signer(
             &sequoia,
@@ -161,16 +161,16 @@ impl<'sequoia> Builder<'sequoia>
     }
 
     /// Revokes a certificate.
-    pub fn revoke<P>(&self,
-                     revoker: Option<&Cert>,
-                     cert: &Cert,
-                     reason: ReasonForRevocation,
-                     message: &str,
-                     output: Option<&mut dyn std::io::Write>,
-                     prompt: P)
-                     -> Result<()>
+    pub fn revoke<'p, P>(&self,
+                         revoker: Option<&Cert>,
+                         cert: &Cert,
+                         reason: ReasonForRevocation,
+                         message: &str,
+                         output: Option<&mut dyn std::io::Write>,
+                         prompt: P)
+        -> Result<()>
     where
-        P: prompt::Prompt
+        P: prompt::PromptFactory<'p>
     {
         let &Builder {
             params: Params {

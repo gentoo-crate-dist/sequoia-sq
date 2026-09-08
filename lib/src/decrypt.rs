@@ -394,12 +394,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Returns `Ok` if the message could be decrypted and verified.
     /// See [`verify::Builder`] for details.  By default, at least one
     /// signature needs to be authenticated.
-    pub fn decrypt<'w, I, O, P>(self, mut input: I, output: O, prompt: P)
+    pub fn decrypt<'w, 'p, I, O, P>(self, mut input: I, output: O, prompt: P)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             params,
@@ -446,11 +446,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_<'w>(params: &Params, params_once: &mut ParamsOnce,
-                    input: &mut (dyn std::io::Read + Send + Sync),
-                    mut output: OptionalWriter,
-                    prompt: &dyn prompt::Prompt,
-                    report: &mut verify::output::Report)
+    fn decrypt_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
+                        input: &mut (dyn std::io::Read + Send + Sync),
+                        mut output: OptionalWriter,
+                        prompt: &dyn prompt::PromptFactory<'p>,
+                        report: &mut verify::output::Report)
         -> Result<(), Error>
     {
         let &Params {
@@ -514,14 +514,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// encryption container, it also does not verify the signatures.
     /// Thus, the signing policy parameters ([`Builder::signatures`]
     /// and [`Builder::add_designated_signer`]) are ignored.
-    pub fn decrypt_unwrap<'w, I, O, P>(self,
-                                       mut input: I, output: O,
-                                       prompt: P)
+    pub fn decrypt_unwrap<'w, 'p, I, O, P>(self,
+                                           mut input: I, output: O,
+                                           prompt: P)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             params,
@@ -569,11 +569,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_unwrap_<'w>(params: &Params, params_once: &mut ParamsOnce,
-                           input: &mut (dyn std::io::Read + Send + Sync),
-                           mut output: OptionalWriter<'w>,
-                           prompt: &dyn prompt::Prompt,
-                           report: &mut verify::output::Report)
+    fn decrypt_unwrap_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
+                               input: &mut (dyn std::io::Read + Send + Sync),
+                               mut output: OptionalWriter<'w>,
+                               prompt: &dyn prompt::PromptFactory<'p>,
+                               report: &mut verify::output::Report)
         -> Result<(), Error>
     {
         let &Params {
@@ -1042,7 +1042,7 @@ impl Stream for StreamProxy<'_>
     }
 }
 
-pub(crate) struct Helper<'c>
+pub(crate) struct Helper<'c, 'p>
 {
     sequoia: &'c Sequoia,
     stream: Option<(Rc<RefCell<Box<dyn verify::VerifyDecryptStream + 'c>>>, &'c Params<'c>)>,
@@ -1056,10 +1056,10 @@ pub(crate) struct Helper<'c>
     /// decrypted it in some other way.
     decryptor: RefCell<Option<Fingerprint>>,
 
-    prompt: &'c (dyn prompt::Prompt + 'c),
+    prompt: &'c dyn prompt::PromptFactory<'p>,
 }
 
-impl<'c> std::ops::Deref for Helper<'c> {
+impl<'c, 'p> std::ops::Deref for Helper<'c, 'p> {
     type Target = VerificationHelper<'c>;
 
     fn deref(&self) -> &Self::Target {
@@ -1067,19 +1067,19 @@ impl<'c> std::ops::Deref for Helper<'c> {
     }
 }
 
-impl<'c> std::ops::DerefMut for Helper<'c> {
+impl<'c, 'p> std::ops::DerefMut for Helper<'c, 'p> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vhelper
     }
 }
 
-impl<'c> Helper<'c> {
+impl<'c, 'p> Helper<'c, 'p> {
     pub fn new(sequoia: &'c Sequoia,
                signatures: usize,
                certs: Option<Vec<Cert>>,
                secret_keys: Vec<Cert>,
                session_keys: Vec<SessionKey>,
-               prompt: &'c (dyn prompt::Prompt + 'c),
+               prompt: &'c dyn prompt::PromptFactory<'p>,
                report: &'c mut verify::output::Report)
         -> Self
     {
@@ -1183,7 +1183,7 @@ impl<'c> Helper<'c> {
     }
 }
 
-impl<'c> stream::VerificationHelper for Helper<'c> {
+impl stream::VerificationHelper for Helper<'_, '_> {
     fn get_certs(&mut self, ids: &[openpgp::KeyHandle]) -> Result<Vec<Cert>> {
         self.vhelper.get_certs(ids)
     }
@@ -1192,7 +1192,7 @@ impl<'c> stream::VerificationHelper for Helper<'c> {
     }
 }
 
-impl<'c> DecryptionHelper for Helper<'c> {
+impl DecryptionHelper for Helper<'_, '_> {
     fn decrypt(&mut self, pkesks: &[PKESK], skesks: &[SKESK],
                sym_algo: Option<SymmetricAlgorithm>,
                decrypt: &mut dyn FnMut(Option<SymmetricAlgorithm>, &crypto::SessionKey) -> bool)
@@ -1240,7 +1240,7 @@ impl<'c> DecryptionHelper for Helper<'c> {
         // The outer Result is the error returned by the output callback.
         let mut decrypt_key = |slf: &Self, pkesk, cert, key: &Key<_, _>, may_prompt: bool| {
             let cancel_;
-            let prompt: &dyn prompt::Prompt = if may_prompt {
+            let prompt: &dyn prompt::PromptFactory = if may_prompt {
                 &slf.prompt
             } else {
                 cancel_ = prompt::Cancel::new();

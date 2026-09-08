@@ -33,7 +33,7 @@ pub fn dispatch(
         None
     };
 
-    let prompt = password::Prompt::new(&sq, false);
+    let prompt = password::PromptFactory::new(&sq, false);
 
     sq.sequoia.key_revoke()
         .add_notations(notations.into_iter())

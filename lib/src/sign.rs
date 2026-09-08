@@ -795,7 +795,7 @@ where
     fn sign_<'a, 'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
                          mut input: &mut (dyn std::io::Read + Send + Sync + 'a),
                          output: Writer<'w>,
-                         prompt: &(dyn prompt::Prompt + 'p),
+                         prompt: &dyn prompt::PromptFactory<'p>,
                          detached_signature: bool,
                          preexisting_signatures: Vec<Signature>)
         -> Result<(), Error>
@@ -933,12 +933,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
+    pub fn sign<'w, 'p, I, O, P>(mut self, mut input: I, output: O, prompt: P)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
@@ -999,7 +999,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn append<'a, 'w, I, D, O, P>(
+    pub fn append<'a, 'w, 'p, I, D, O, P>(
         mut self, mut input: I,
         detached_signatures: D,
         output: O,
@@ -1009,7 +1009,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
@@ -1065,7 +1065,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         mut input: &mut (dyn std::io::Read + Send + Sync),
         detached_signatures: Box<dyn std::io::Read + Send + Sync + 'a>,
         output: Writer<'w>,
-        prompt: &(dyn prompt::Prompt + 'p))
+        prompt: &dyn prompt::PromptFactory<'p>)
         -> Result<(), Error>
     {
         // First, read the existing signatures.
@@ -1113,12 +1113,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'w, I, O, P>(mut self, mut input: I, output: O, prompt: P)
+    pub fn sign<'w, 'p, I, O, P>(mut self, mut input: I, output: O, prompt: P)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
@@ -1189,12 +1189,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn append<I, O, P>(mut self, input: I, mut output: O, prompt: P)
+    pub fn append<'p, I, O, P>(mut self, input: I, mut output: O, prompt: P)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
@@ -1246,7 +1246,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     fn append_<'a, 'p>(params: &Params, params_once: &mut ParamsOnce,
                        input: Box<dyn std::io::Read + Send + Sync + 'a>,
                        output: &mut (dyn std::io::Write + Send + Sync),
-                       prompt: &(dyn prompt::Prompt + 'p))
+                       prompt: &(dyn prompt::PromptFactory<'p>))
         -> Result<(), Error>
     {
         let Params {
@@ -1550,12 +1550,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<I, O, P>(mut self, mut input: I, mut output: O, prompt: P)
+    pub fn sign<'p, I, O, P>(mut self, mut input: I, mut output: O, prompt: P)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
-        P: prompt::Prompt,
+        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
@@ -1603,7 +1603,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         params: &Params, params_once: &mut ParamsOnce,
         mut input: &mut (dyn std::io::Read + Send + Sync),
         mut output: &mut (dyn std::io::Write + Send + Sync),
-        prompt: &(dyn prompt::Prompt + 'p))
+        prompt: &(dyn prompt::PromptFactory<'p>))
         -> Result<(), Error>
     {
         let Params {

@@ -36,7 +36,7 @@ fn userid_add(
         None
     };
 
-    let prompt = password::Prompt::new(&sq, false);
+    let prompt = password::PromptFactory::new(&sq, false);
 
     sq.sequoia.key_userid_add()
         .names(&command.names)
@@ -94,7 +94,7 @@ pub fn userid_revoke(
         None
     };
 
-    let prompt = password::Prompt::new(&sq, false);
+    let prompt = password::PromptFactory::new(&sq, false);
 
     sq.sequoia.key_userid_revoke()
         .add_notations(notations.into_iter())

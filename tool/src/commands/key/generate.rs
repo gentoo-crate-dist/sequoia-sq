@@ -62,7 +62,7 @@ pub fn generate(
         None
     };
 
-    let prompt = password::Prompt::new(&sq, false);
+    let prompt = password::PromptFactory::new(&sq, false);
 
     if command.names.is_empty()
         && command.emails.is_empty()

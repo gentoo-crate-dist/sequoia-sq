@@ -53,7 +53,7 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
     let output = detached.as_ref().unwrap_or(output);
     let output = output.create_safe_overwrite(&sq, append)?;
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     let stream = crate::output::sign::Stream::new(&sq);
 

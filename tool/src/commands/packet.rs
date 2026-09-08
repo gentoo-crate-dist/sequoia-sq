@@ -88,7 +88,7 @@ pub fn dispatch(sq: Sq, command: Command)
             };
             let secrets =
                 load_keys(command.recipient_file.iter())?;
-            let prompt = password::Prompt::new(&sq, true);
+            let prompt = password::PromptFactory::new(&sq, true);
             dump::dump(&sq.sequoia,
                        secrets,
                        &mut input, &mut output,
@@ -112,7 +112,7 @@ pub fn dispatch(sq: Sq, command: Command)
             let stream = crate::output::decrypt::Stream::new(
                 &sq, DecryptContext::PacketDecrypt, command.dump_session_key);
 
-            let prompt = password::Prompt::new(&sq, true);
+            let prompt = password::PromptFactory::new(&sq, true);
 
             sq.sequoia.decrypt()
                 .stream(stream)

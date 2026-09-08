@@ -804,12 +804,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// [`Builder::import_autocrypt`], as appropriate.
     ///
     /// See those functions for a description of the return value.
-    pub fn import<'a, P>(self,
-                         input: impl std::io::Read + Send + Sync + 'a,
-                         prompt: P)
+    pub fn import<'a, 'p, P>(self,
+                             input: impl std::io::Read + Send + Sync + 'a,
+                             prompt: P)
         -> Result<Outcome, Error>
     where
-        P: prompt::Prompt + 'a,
+        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             params,
@@ -1635,13 +1635,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// be decrypted or the signature can't be verified, the error is
     /// propagated using [`Output::DecryptedAutocrypt`], but it does
     /// not cause the function to return an error.
-    pub fn import_autocrypt<'a, P>(
+    pub fn import_autocrypt<'p, P>(
         mut self,
         source: impl std::io::Read + Send + Sync,
         prompt: P)
         -> Result<Outcome, Error>
     where
-        P: prompt::Prompt + 'a,
+        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             ref params,
@@ -1700,7 +1700,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                              params_once: &mut ParamsOnce,
                              mut source: Box<dyn BufferedReader<Cookie> + 'a>,
                              outcome: &mut Outcome,
-                             prompt: &(dyn prompt::Prompt + 'a))
+                             prompt: &(dyn prompt::PromptFactory + 'a))
         -> Result<(), Error>
     {
         let Params {

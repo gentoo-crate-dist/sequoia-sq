@@ -80,7 +80,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
         None, // Output file.
         &mut output);
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     sq.sequoia.pki_certify()
         .stream(stream)
@@ -128,7 +128,7 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
         None, // Output file.
         &mut output);
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     sq.sequoia.pki_certify()
         .stream(stream)
@@ -176,7 +176,7 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
         None, // Output file.
         &mut output);
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     sq.sequoia.pki_certify()
         .stream(stream)

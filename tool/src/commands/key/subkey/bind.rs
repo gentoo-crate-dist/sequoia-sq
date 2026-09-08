@@ -17,7 +17,7 @@ use openpgp::Packet;
 use openpgp::Result;
 use sequoia::openpgp;
 
-use sequoia::prompt::Prompt as _;
+use sequoia::prompt::PromptFactory as _;
 use sequoia::prompt;
 use sequoia::types::EncryptPurpose;
 use sequoia::types::TrustThreshold;
@@ -252,7 +252,7 @@ pub fn bind(sq: Sq, command: cli::key::subkey::bind::Command) -> Result<()>
                     // a bit annoying, but on the plus side we don't
                     // need to ask the user again to create the
                     // primary key binding signature.
-                    let prompt = password::Prompt::new(&sq, false);
+                    let prompt = password::PromptFactory::new(&sq, false);
 
                     let mut context = prompt::ContextBuilder::password(
                         prompt::Reason::UnlockKey)

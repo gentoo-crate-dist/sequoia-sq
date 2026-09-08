@@ -109,7 +109,7 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
         (None, None)
     };
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     let rt = tokio::runtime::Runtime::new()?;
 
@@ -164,7 +164,7 @@ pub fn dispatch_keyserver(
                 (None, None)
             };
 
-            let prompt = password::Prompt::new(&sq, true);
+            let prompt = password::PromptFactory::new(&sq, true);
 
             let mut stream = Stream::new(
                 &sq,
@@ -292,7 +292,7 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
                 (None, None)
             };
 
-            let prompt = password::Prompt::new(&sq, true);
+            let prompt = password::PromptFactory::new(&sq, true);
 
             let mut stream = Stream::new(
                 &sq,
@@ -671,7 +671,7 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
                 (None, None)
             };
 
-            let prompt = password::Prompt::new(&sq, true);
+            let prompt = password::PromptFactory::new(&sq, true);
 
             let mut stream = Stream::new(
                 &sq,

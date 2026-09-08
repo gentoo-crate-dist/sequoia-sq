@@ -21,7 +21,7 @@ use sequoia_cert_store::store::MergePublicCollectStats;
 use crate::Sequoia;
 use crate::ca_creation_time;
 use crate::cert_store::Store;
-use crate::prompt::Prompt;
+use crate::prompt::PromptFactory;
 use crate::types::Safe;
 
 /// Parameters for the update of approvals.
@@ -154,14 +154,15 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    pub fn update<P>(&self,
+    pub fn update<'p, P>(
+        &self,
         cert: Cert,
         prompt: P,
         output: Option<(Box<dyn std::io::Write + Send + Sync>,
                         Option<std::path::PathBuf>)>)
         -> Result<()>
     where
-        P: Prompt
+        P: PromptFactory<'p>
     {
         let sequoia = self.params.sequoia;
         let vcert = cert.with_policy(sequoia.policy(), sequoia.time())?;
@@ -182,7 +183,7 @@ impl<'sequoia> Builder<'sequoia> {
 }
 
 // output must be created with .for_secrets().create_safe()
-fn update_internal<P>(
+fn update_internal<'p, P>(
         sequoia: &Sequoia,
         vcert: &ValidCert,
         userids: &Vec<UserID>,
@@ -195,7 +196,7 @@ fn update_internal<P>(
         output: Option<(Box<dyn std::io::Write + Send + Sync>, Option<std::path::PathBuf>)>)
     -> Result<()>
 where
-    P: Prompt
+    P: PromptFactory<'p>
 {
     let key = vcert.cert().clone();
 

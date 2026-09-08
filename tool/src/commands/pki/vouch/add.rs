@@ -64,7 +64,7 @@ pub fn add(sq: Sq, mut c: add::Command)
         output.as_ref().and_then(|(p, _)| p.clone()),
         &mut stderr);
 
-    let prompt = password::Prompt::new(&sq, true);
+    let prompt = password::PromptFactory::new(&sq, true);
 
     // XXX: Skip revoked user IDs.
 

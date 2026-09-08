@@ -15,10 +15,8 @@ use crate::Sq;
 /// Prompt to repeat a password.
 const REPEAT_PROMPT: &str = "Repeat the password";
 
-pub struct Prompt<'a> {
+pub struct PromptFactory<'a> {
     sq: &'a Sq,
-    // Adds (password n of t) to the message.
-    password: RefCell<usize>,
     password_count: usize,
     // Whether the user can skip this by entering the empty string.  If
     // so, `prompt::Error::Cancelled` is returned instead of
@@ -26,16 +24,15 @@ pub struct Prompt<'a> {
     cancel: bool,
 }
 
-impl<'a> Prompt<'a> {
+impl<'a> PromptFactory<'a> {
     /// Returns a new prompt.
     ///
     /// `cancel` means that if the user just hits enter, then we
     /// immediately return `prompt::Error::Cancel`.  Note: this is
     /// separate from allowing an empty password!
     pub fn new(sq: &'a Sq, cancel: bool) -> Self {
-        Prompt {
+        PromptFactory {
             sq,
-            password: RefCell::new(0),
             password_count: 0,
             cancel,
         }
@@ -45,13 +42,37 @@ impl<'a> Prompt<'a> {
     ///
     /// Cancel is disabled.
     pub fn npasswords(sq: &'a Sq, count: usize) -> Self {
-        Prompt {
+        PromptFactory {
             sq,
-            password: RefCell::new(0),
             password_count: count,
             cancel: false,
         }
     }
+}
+
+impl<'p> prompt::PromptFactory<'p> for PromptFactory<'p> {
+    fn build<'a>(&self, _context: &mut prompt::Context<'a>)
+        -> Box<dyn prompt::Prompt + 'p>
+    {
+        Box::new(
+            Prompt {
+                sq: self.sq,
+                password: RefCell::new(0),
+                password_count: self.password_count,
+                cancel: self.cancel,
+            })
+    }
+}
+
+pub struct Prompt<'a> {
+    sq: &'a Sq,
+    // Adds (password n of t) to the message.
+    password: RefCell<usize>,
+    password_count: usize,
+    // Whether the user can skip this by entering the empty string.  If
+    // so, `prompt::Error::Cancelled` is returned instead of
+    // `Response::NoPassword`.
+    cancel: bool,
 }
 
 impl<'a> prompt::Prompt for Prompt<'a> {

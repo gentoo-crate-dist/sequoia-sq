@@ -51,7 +51,7 @@ pub fn dispatch(sq: Sq, command: cli::encrypt::Command) -> Result<()> {
 
     let npasswords = command.recipients.with_passwords();
 
-    let prompt = password::Prompt::npasswords(&sq, npasswords);
+    let prompt = password::PromptFactory::npasswords(&sq, npasswords);
 
     qprintln!("Composing a message...");
 

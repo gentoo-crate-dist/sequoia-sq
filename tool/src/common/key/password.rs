@@ -17,7 +17,7 @@ use sequoia::key_store as keystore;
 use keystore::Protection;
 
 use sequoia::prompt;
-use sequoia::prompt::Prompt as _;
+use sequoia::prompt::PromptFactory as _;
 use sequoia::types::FileStdinOrKeyHandle;
 
 use crate::Sq;
@@ -56,7 +56,7 @@ where
             } else if let Some(path) = new_password_file.as_ref() {
                 Some(Some(std::fs::read(path)?.into()))
             } else {
-                let prompt = password::Prompt::new(&sq, false);
+                let prompt = password::PromptFactory::new(&sq, false);
 
                 let mut checker = CheckNewPassword::new();
 
@@ -118,7 +118,7 @@ where
                             weprintln!("{}", hint);
                         }
 
-                        let prompt = password::Prompt::new(&sq, false);
+                        let prompt = password::PromptFactory::new(&sq, false);
 
                         let mut context
                             = prompt::ContextBuilder::password(

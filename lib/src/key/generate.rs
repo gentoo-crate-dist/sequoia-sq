@@ -784,15 +784,15 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// "Generated on $HOST" shadow CA.  These are opportunistic and
     /// if either fails, e.g., because the certificate is not usable,
     /// the error is silently ignored.
-    pub fn generate<'a, P>(self, prompt: P)
+    pub fn generate<'p, P>(self, prompt: P)
         -> Result<Outcome, Error>
     where
-        P: prompt::Prompt + 'a,
+        P: prompt::PromptFactory<'p>,
     {
         self.generate_(&prompt)
     }
 
-    fn generate_<'a>(self, prompt: &(dyn prompt::Prompt + 'a))
+    fn generate_<'p>(self, prompt: &(dyn prompt::PromptFactory<'p>))
         -> Result<Outcome, Error>
     {
         let Builder {
