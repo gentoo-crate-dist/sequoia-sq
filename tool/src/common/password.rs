@@ -1,6 +1,6 @@
 //! Common password-related functionality such as prompting.
 
-use std::cell::RefCell;
+use std::sync::Mutex;
 
 use sequoia::openpgp as openpgp;
 use openpgp::packet::Key;
@@ -17,6 +17,8 @@ const REPEAT_PROMPT: &str = "Repeat the password";
 
 pub struct PromptFactory<'a> {
     sq: &'a Sq,
+    // Adds (password n of t) to the message.
+    password: Mutex<usize>,
     password_count: usize,
     // Whether the user can skip this by entering the empty string.  If
     // so, `prompt::Error::Cancelled` is returned instead of
@@ -33,6 +35,7 @@ impl<'a> PromptFactory<'a> {
     pub fn new(sq: &'a Sq, cancel: bool) -> Self {
         PromptFactory {
             sq,
+            password: Mutex::new(0),
             password_count: 0,
             cancel,
         }
@@ -44,6 +47,7 @@ impl<'a> PromptFactory<'a> {
     pub fn npasswords(sq: &'a Sq, count: usize) -> Self {
         PromptFactory {
             sq,
+            password: Mutex::new(0),
             password_count: count,
             cancel: false,
         }
@@ -51,13 +55,23 @@ impl<'a> PromptFactory<'a> {
 }
 
 impl<'p> prompt::PromptFactory<'p> for PromptFactory<'p> {
-    fn build<'a>(&self, _context: &mut prompt::Context<'a>)
+    fn build<'a>(&self, context: &mut prompt::Context<'a>)
         -> Box<dyn prompt::Prompt + 'p>
     {
+        let password = if self.password_count > 0
+            && context.reason() == prompt::Reason::EncryptMessage
+        {
+            let mut password = self.password.lock().unwrap();
+            *password += 1;
+            *password
+        } else {
+            0
+        };
+
         Box::new(
             Prompt {
                 sq: self.sq,
-                password: RefCell::new(0),
+                password: password,
                 password_count: self.password_count,
                 cancel: self.cancel,
             })
@@ -67,7 +81,7 @@ impl<'p> prompt::PromptFactory<'p> for PromptFactory<'p> {
 pub struct Prompt<'a> {
     sq: &'a Sq,
     // Adds (password n of t) to the message.
-    password: RefCell<usize>,
+    password: usize,
     password_count: usize,
     // Whether the user can skip this by entering the empty string.  If
     // so, `prompt::Error::Cancelled` is returned instead of
@@ -93,19 +107,15 @@ impl<'a> prompt::Prompt for Prompt<'a> {
             prompt.push_str(" (press enter to not use a password)");
         }
 
-        // Add (password n of t), if appropriate.
-        if self.password_count > 0 {
+        if self.password > 0 {
+            // Add (password n of t).
             assert_eq!(context.reason(), prompt::Reason::EncryptMessage);
-            let password = self.password.borrow();
 
-            if self.password_count > 1 && *password <= self.password_count {
+            if self.password <= self.password_count {
                 prompt.push_str(&format!(
                     " (password {} of {})",
-                    *password + 1, self.password_count));
+                    self.password, self.password_count));
             }
-        } else {
-            assert_eq!(*self.password.borrow(), 0);
-            assert_eq!(self.password_count, 0);
         }
 
         let width = prompt.len().max(REPEAT_PROMPT.len());
@@ -138,7 +148,6 @@ impl<'a> prompt::Prompt for Prompt<'a> {
             let response = if password.is_empty() {
                 prompt::Response::NoPassword
             } else {
-                *self.password.borrow_mut() += 1;
                 prompt::Response::Password(password.into())
             };
 
