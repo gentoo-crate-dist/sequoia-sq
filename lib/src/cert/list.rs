@@ -523,8 +523,8 @@ pub enum Error {
 ///
 /// The parameters passed to [`Sequoia::cert_list`].
 #[derive(Clone)]
-pub struct Params<'a> {
-    sequoia: &'a Sequoia,
+pub struct Params<'sequoia> {
+    sequoia: &'sequoia Sequoia,
     queries: Vec<Query>,
     gossip: bool,
     unusable: bool,
@@ -532,9 +532,9 @@ pub struct Params<'a> {
     trust_amount: Option<TrustAmount<usize>>,
 }
 
-impl<'a> Params<'a> {
+impl<'sequoia> Params<'sequoia> {
     /// Returns the sequoia instance.
-    pub fn sequoia(&self) -> &'a Sequoia {
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
         self.sequoia
     }
 
@@ -581,15 +581,15 @@ impl<'a> Params<'a> {
 /// This command builder lists bindings.
 ///
 /// By default, it returns all bindings that are fully authenticated.
-pub struct Builder<'a> {
-    params: Params<'a>,
+pub struct Builder<'sequoia> {
+    params: Params<'sequoia>,
 }
 
-impl<'a> Builder<'a> {
+impl<'sequoia> Builder<'sequoia> {
     /// List bindings.
     ///
     /// See [`Builder`] for details.
-    pub(crate) fn new(sequoia: &Sequoia) -> Builder<'_>
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia>
     {
         Builder {
             params: Params {
@@ -715,7 +715,7 @@ impl<'a> Builder<'a> {
     /// Returns the parameters.
     ///
     /// This is useful for examining the builder's configuration.
-    pub fn params(&self) -> &Params<'_> {
+    pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
 

@@ -26,8 +26,9 @@ pub enum VerifyContext {
     PacketDecrypt,
 }
 
-pub struct Stream<'a> {
-    pub(crate) sq: &'a Sq,
+pub struct Stream<'sq> {
+    pub(crate) sq: &'sq Sq,
+
     #[allow(dead_code)]
     context: VerifyContext,
 
@@ -35,8 +36,9 @@ pub struct Stream<'a> {
     detached_sig_value: Option<PathBuf>,
 }
 
-impl<'a> Stream<'a> {
-    pub fn new(sq: &'a Sq, context: VerifyContext,
+impl<'sq> Stream<'sq> {
+    pub fn new(sq: &'sq Sq,
+               context: VerifyContext,
                detached_sig_arg: Option<String>,
                detached_sig_value: Option<PathBuf>) -> Self
     {

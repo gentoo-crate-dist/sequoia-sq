@@ -34,16 +34,17 @@ impl From<DecryptContext> for VerifyContext {
     }
 }
 
-pub struct Stream<'a> {
-    vstream: verify::Stream<'a>,
+pub struct Stream<'sq> {
+    vstream: verify::Stream<'sq>,
     context: DecryptContext,
     dump_session_key: bool,
 }
 
-impl<'a> Stream<'a> {
-    pub fn new(sq: &'a Sq, context: DecryptContext,
-               dump_session_key: bool,
-    ) -> Self
+impl<'sq> Stream<'sq> {
+    pub fn new(sq: &'sq Sq,
+               context: DecryptContext,
+               dump_session_key: bool)
+        -> Self
     {
         Self {
             vstream: verify::Stream::new(

@@ -7,12 +7,12 @@ use crate::Sq;
 use crate::error_chain;
 use crate::output::pluralize::Pluralize;
 
-pub struct Stream<'a> {
-    sq: &'a Sq,
+pub struct Stream<'sq> {
+    sq: &'sq Sq,
 }
 
-impl<'a> Stream<'a> {
-    pub fn new(sq: &'a Sq) -> Self {
+impl<'sq> Stream<'sq> {
+    pub fn new(sq: &'sq Sq) -> Self {
         Self {
             sq,
         }

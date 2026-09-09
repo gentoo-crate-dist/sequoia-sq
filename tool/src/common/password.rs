@@ -15,8 +15,8 @@ use crate::Sq;
 /// Prompt to repeat a password.
 const REPEAT_PROMPT: &str = "Repeat the password";
 
-pub struct PromptFactory<'a> {
-    sq: &'a Sq,
+pub struct PromptFactory<'sq> {
+    sq: &'sq Sq,
     // Adds (password n of t) to the message.
     password: Mutex<usize>,
     password_count: usize,
@@ -26,13 +26,13 @@ pub struct PromptFactory<'a> {
     cancel: bool,
 }
 
-impl<'a> PromptFactory<'a> {
+impl<'sq> PromptFactory<'sq> {
     /// Returns a new prompt.
     ///
     /// `cancel` means that if the user just hits enter, then we
     /// immediately return `prompt::Error::Cancel`.  Note: this is
     /// separate from allowing an empty password!
-    pub fn new(sq: &'a Sq, cancel: bool) -> Self {
+    pub fn new(sq: &'sq Sq, cancel: bool) -> Self {
         PromptFactory {
             sq,
             password: Mutex::new(0),
@@ -44,7 +44,7 @@ impl<'a> PromptFactory<'a> {
     /// Adds "(password n of t)".
     ///
     /// Cancel is disabled.
-    pub fn npasswords(sq: &'a Sq, count: usize) -> Self {
+    pub fn npasswords(sq: &'sq Sq, count: usize) -> Self {
         PromptFactory {
             sq,
             password: Mutex::new(0),
@@ -78,8 +78,8 @@ impl<'p> prompt::PromptFactory<'p> for PromptFactory<'p> {
     }
 }
 
-pub struct Prompt<'a> {
-    sq: &'a Sq,
+pub struct Prompt<'sq> {
+    sq: &'sq Sq,
     // Adds (password n of t) to the message.
     password: usize,
     password_count: usize,

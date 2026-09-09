@@ -18,8 +18,8 @@ use crate::Sq;
 use crate::common::ui::Safe;
 use crate::output::pluralize::Pluralize;
 
-pub struct Stream<'a> {
-    sq: &'a Sq,
+pub struct Stream<'sq> {
+    sq: &'sq Sq,
     silent_errors: bool,
     pb: ProgressBar,
     certs: Vec<CertResult>,
@@ -28,11 +28,11 @@ pub struct Stream<'a> {
     output_path: Option<Option<PathBuf>>,
 }
 
-impl<'a> Stream<'a> {
+impl<'sq> Stream<'sq> {
     // If `output_path`'s outer `Option` is `None`, then we're saving
     // to the certificate store.  If the inner `Option` is `None`, we
     // don't have a file name.
-    pub fn new(sq: &'a Sq,
+    pub fn new(sq: &'sq Sq,
                silent_errors: bool,
                output_path: Option<Option<PathBuf>>)
         -> Self
