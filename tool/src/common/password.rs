@@ -217,9 +217,9 @@ impl CheckNewPassword {
     }
 }
 
-impl prompt::Check<'_> for CheckNewPassword {
+impl<'a> prompt::Check<'a> for CheckNewPassword {
     fn check(&mut self,
-             _context: &mut prompt::Context,
+             _context: &mut prompt::Context<'a>,
              _response: &prompt::Response)
         -> std::result::Result<(), prompt::CheckError>
     {
@@ -254,9 +254,9 @@ impl<'a> CheckRemoteKey<'a> {
     }
 }
 
-impl prompt::Check<'_> for CheckRemoteKey<'_> {
+impl<'a> prompt::Check<'a> for CheckRemoteKey<'_> {
     fn check(&mut self,
-             _context: &mut prompt::Context,
+             _context: &mut prompt::Context<'a>,
              response: &prompt::Response)
         -> std::result::Result<(), prompt::CheckError>
     {
@@ -330,7 +330,7 @@ where
     }
 }
 
-impl<'a, R> prompt::Check<'_> for CheckKeys<'a, R>
+impl<R> prompt::Check<'_> for CheckKeys<'_, R>
 where
     R: key::KeyRole + Clone,
 {

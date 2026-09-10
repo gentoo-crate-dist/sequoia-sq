@@ -852,7 +852,9 @@ impl Cancel {
 }
 
 impl<T> Prompt<T> for Cancel {
-    fn prompt(&self, _context: &mut Context<T>, _check: &mut dyn Check<T>)
+    fn prompt<'a>(&self,
+                  _context: &mut Context<'a, T>,
+                  _check: &mut dyn Check<'a, T>)
         -> std::result::Result<Response, Error>
     {
         Err(Error::Cancelled(None))
