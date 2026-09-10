@@ -881,7 +881,7 @@ pub trait PromptFactory<'p, T=()>: Send + Sync {
 
 impl<'p, T, P> PromptFactory<'p, T> for Box<P>
 where
-    P: PromptFactory<'p, T> + 'p
+    P: PromptFactory<'p, T> + 'p + ?Sized
 {
     fn build<'a>(&self, context: &mut Context<'a, T>)
         -> Box<dyn Prompt<T> + 'p>
