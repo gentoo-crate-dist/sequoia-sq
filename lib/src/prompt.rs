@@ -642,7 +642,7 @@ impl<'a, T> Check<'a, T> for AcceptAll {
 }
 
 /// The prompting interface.
-pub trait Prompt<T=()> {
+pub trait Prompt<T=()>: Send + Sync {
     /// Returns a password for the specified context.
     ///
     /// Normally the password is obtained by prompting the user.  If
@@ -864,7 +864,7 @@ impl<T> Prompt<T> for Cancel {
 /// A [`Prompt`] factory.
 ///
 /// Returns a new prompt.
-pub trait PromptFactory<'p, T=()> {
+pub trait PromptFactory<'p, T=()>: Send + Sync {
     /// Returns a new prompt.
     fn build<'a>(&self, context: &mut Context<'a, T>)
         -> Box<dyn Prompt<T> + 'p>;
