@@ -150,10 +150,12 @@ impl Sequoia {
     /// If `allow_skipping` is true, then the user is given the option
     /// to skip decrypting the key.  If the user skips decrypting the
     /// key, then an error is returned.
-    pub fn decrypt_key<'p, R, P>(&self, cert: Option<&Cert>,
-                                 key: Key<key::SecretParts, R>,
-                                 allow_skipping: bool,
-                                 prompt: P)
+    pub fn decrypt_key<'sequoia, 'p, R, P>(
+        &'sequoia self,
+        cert: Option<&Cert>,
+        key: Key<key::SecretParts, R>,
+        allow_skipping: bool,
+        prompt: P)
         -> Result<Key<key::SecretParts, R>>
     where R: key::KeyRole + Clone,
         P: prompt::PromptFactory<'p>,
@@ -236,8 +238,10 @@ impl Sequoia {
     /// tried.  Otherwise, or if that fails, the user is prompted to
     /// unlock the key.  The correct password is added to the password
     /// cache.
-    pub fn get_signer<'p, P1, R1, R2, P>(&self, ka: &KeyAmalgamation<P1, R1, R2>,
-                                         prompt: P)
+    pub fn get_signer<'sequoia, 'p, P1, R1, R2, P>(
+        &'sequoia self,
+        ka: &KeyAmalgamation<P1, R1, R2>,
+        prompt: P)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where P1: key::KeyParts + Clone,
           R1: key::KeyRole + Clone,
@@ -371,10 +375,12 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    fn get_keys<'p, C, P>(&self, certs: &[C],
-                          keytype: KeyType,
-                          options: Option<&[GetKeysOptions]>,
-                          prompt: P)
+    fn get_keys<'sequoia, 'p, C, P>(
+        &'sequoia self,
+        certs: &[C],
+        keytype: KeyType,
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where C: Borrow<Cert>,
@@ -553,9 +559,11 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_keys<'p, C, P>(&self, certs: &[C],
-                                      options: Option<&[GetKeysOptions]>,
-                                      prompt: P)
+    pub fn get_primary_keys<'sequoia, 'p, C, P>(
+        &'sequoia self,
+        certs: &[C],
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Vec<Box<dyn crypto::Signer + Send + Sync>>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
@@ -581,9 +589,11 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_key<'p, C, P>(&self, certs: C,
-                                     options: Option<&[GetKeysOptions]>,
-                                     prompt: P)
+    pub fn get_primary_key<'sequoia, 'p, C, P>(
+        &'sequoia self,
+        certs: C,
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
@@ -613,9 +623,11 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_keys<'p, C, P>(&self, certs: &[C],
-                                      options: Option<&[GetKeysOptions]>,
-                                      prompt: P)
+    pub fn get_signing_keys<'sequoia, 'p, C, P>(
+        &'sequoia self,
+        certs: &[C],
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
@@ -643,9 +655,10 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_key<'p, C, P>(&self, cert: C,
-                                     options: Option<&[GetKeysOptions]>,
-                                     prompt: P)
+    pub fn get_signing_key<'sequoia, 'p, C, P>(
+        &'sequoia self, cert: C,
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: Borrow<Cert>,
@@ -675,9 +688,11 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_keys<'p, C, P>(&self, certs: &[C],
-                                            options: Option<&[GetKeysOptions]>,
-                                            prompt: P)
+    pub fn get_certification_keys<'sequoia, 'p, C, P>(
+        &'sequoia self,
+        certs: &[C],
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
@@ -705,9 +720,11 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_key<'p, C, P>(&self, cert: C,
-                                           options: Option<&[GetKeysOptions]>,
-                                           prompt: P)
+    pub fn get_certification_key<'sequoia, 'p, C, P>(
+        &'sequoia self,
+        cert: C,
+        options: Option<&[GetKeysOptions]>,
+        prompt: P)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,

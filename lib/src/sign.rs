@@ -106,7 +106,7 @@
 //! struct MyStream {
 //! }
 //!
-//! impl Stream for MyStream {
+//! impl Stream<'_> for MyStream {
 //!    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
 //!        match output {
 //!            Output::Signing(signing) => {
@@ -501,8 +501,8 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'stream> {
-    stream: Option<Box<dyn Stream + 'stream>>,
+struct ParamsOnce<'sequoia, 'stream> {
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Sign messages.
@@ -510,7 +510,7 @@ struct ParamsOnce<'stream> {
 /// A builder providing control over how to sign a message.
 pub struct Builder<'sequoia, 'stream, T> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream>,
     t: std::marker::PhantomData<T>,
 }
 
@@ -674,7 +674,7 @@ where
         &self.params
     }
 
-    stream_builder_impl!('sequoia; T);
+    stream_builder_impl!(; T);
 
     /// Signs the message with the specified certificate.
     ///
@@ -730,7 +730,7 @@ where
     }
 }
 
-impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
+impl<T> Builder<'_, '_, T>
 where
     T: builder::RichSignature
 {
@@ -792,12 +792,14 @@ impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
 where
     T: builder::SignatureType
 {
-    fn sign_<'a, 'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
-                         mut input: &mut (dyn std::io::Read + Send + Sync + 'a),
-                         output: Writer<'w>,
-                         prompt: &dyn prompt::PromptFactory<'p>,
-                         detached_signature: bool,
-                         preexisting_signatures: Vec<Signature>)
+    fn sign_<'a, 'w, 'p>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        mut input: &mut (dyn std::io::Read + Send + Sync + 'a),
+        output: Writer<'w>,
+        prompt: &dyn prompt::PromptFactory<'p>,
+        detached_signature: bool,
+        preexisting_signatures: Vec<Signature>)
         -> Result<(), Error>
     {
         let Params {
@@ -1061,7 +1063,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     // on Windows where it is not possible to replace a file that is
     // open.
     fn append_<'a, 'w, 'p>(
-        params: &Params, params_once: &mut ParamsOnce,
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
         mut input: &mut (dyn std::io::Read + Send + Sync),
         detached_signatures: Box<dyn std::io::Read + Send + Sync + 'a>,
         output: Writer<'w>,
@@ -1243,10 +1246,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     // referring to the same file, the file will not exist when
     // `PartFileWriter` persists it.  This is only relevant on Windows
     // where it is not possible to replace a file that is open.
-    fn append_<'a, 'p>(params: &Params, params_once: &mut ParamsOnce,
+    fn append_<'a, 'p>(params: &Params<'sequoia>,
+                       params_once: &mut ParamsOnce<'sequoia, 'stream>,
                        input: Box<dyn std::io::Read + Send + Sync + 'a>,
                        output: &mut (dyn std::io::Write + Send + Sync),
-                       prompt: &(dyn prompt::PromptFactory<'p>))
+                       prompt: &dyn prompt::PromptFactory<'p>)
         -> Result<(), Error>
     {
         let Params {
@@ -1600,10 +1604,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
     }
 
     fn clear_sign_<'p>(
-        params: &Params, params_once: &mut ParamsOnce,
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
         mut input: &mut (dyn std::io::Read + Send + Sync),
         mut output: &mut (dyn std::io::Write + Send + Sync),
-        prompt: &(dyn prompt::PromptFactory<'p>))
+        prompt: &dyn prompt::PromptFactory<'p>)
         -> Result<(), Error>
     {
         let Params {

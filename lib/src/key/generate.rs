@@ -792,7 +792,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
         self.generate_(&prompt)
     }
 
-    fn generate_<'p>(self, prompt: &(dyn prompt::PromptFactory<'p>))
+    fn generate_<'p>(self, prompt: &dyn prompt::PromptFactory<'p>)
         -> Result<Outcome, Error>
     {
         let Builder {

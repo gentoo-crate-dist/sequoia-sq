@@ -40,14 +40,15 @@ pub enum Kind {
 }
 
 #[allow(clippy::redundant_pattern_matching)]
-pub fn dump<'p, W, P>(sq: &crate::Sequoia,
-                      secrets: Vec<Cert>,
-                      input: &mut (dyn io::Read + Sync + Send),
-                      output: &mut dyn io::Write,
-                      mpis: bool, hex: bool,
-                      session_keys: Vec<SessionKey>,
-                      width: W,
-                      prompt: P)
+pub fn dump<'sequoia, 'p, W, P>(
+    sq: &'sequoia crate::Sequoia,
+    secrets: Vec<Cert>,
+    input: &mut (dyn io::Read + Sync + Send),
+    output: &mut dyn io::Write,
+    mpis: bool, hex: bool,
+    session_keys: Vec<SessionKey>,
+    width: W,
+    prompt: P)
     -> Result<Kind>
 where
     W: Into<Option<usize>>,
@@ -244,15 +245,17 @@ impl Node {
     }
 }
 
-pub struct PacketDumper<'a> {
-    sq: &'a Sequoia,
+pub struct PacketDumper<'sequoia> {
+    sq: &'sequoia Sequoia,
     width: usize,
     mpis: bool,
     root: Option<Node>,
 }
 
-impl<'a> PacketDumper<'a> {
-    pub fn new(sq: &'a Sequoia, width: usize, mpis: bool) -> Self {
+impl<'sequoia> PacketDumper<'sequoia> {
+    pub fn new(sq: &'sequoia Sequoia, width: usize, mpis: bool)
+        -> Self
+    {
         PacketDumper {
             sq,
             width,

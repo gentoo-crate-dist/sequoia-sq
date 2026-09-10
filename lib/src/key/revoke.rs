@@ -20,8 +20,8 @@ struct CertificateRevocation {
 
 impl CertificateRevocation {
     /// Create a new CertificateRevocation
-    pub fn new<'p, P>(
-        sequoia: &Sequoia,
+    pub fn new<'sequoia, 'p, P>(
+        sequoia: &'sequoia Sequoia,
         cert: &Cert,
         revoker: Option<&Cert>,
         reason: ReasonForRevocation,

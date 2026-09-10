@@ -16,8 +16,8 @@ use crate::Result;
 use crate::Sq;
 use crate::common::ui::emit_cert_userid;
 
-pub struct Stream<'a> {
-    sq: &'a Sq,
+pub struct Stream<'sq, 'a> {
+    sq: &'sq Sq,
 
     // The certificate that is being certified.
     cert: &'a Cert,
@@ -39,8 +39,8 @@ pub struct Stream<'a> {
     o: &'a mut dyn std::io::Write,
 }
 
-impl<'a> Stream<'a> {
-    pub fn new(sq: &'a Sq,
+impl<'sq, 'a> Stream<'sq, 'a> {
+    pub fn new(sq: &'sq Sq,
                cert: &'a Cert,
                userids: &'a [UserID],
                user_supplied_userids: bool,
@@ -59,7 +59,7 @@ impl<'a> Stream<'a> {
     }
 }
 
-impl certify::Stream for Stream<'_> {
+impl certify::Stream<'_> for Stream<'_, '_> {
     fn output(&mut self,
               params: &certify::Params,
               output: certify::Output)

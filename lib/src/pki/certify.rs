@@ -143,7 +143,7 @@
 //!     // Local state.
 //! }
 //!
-//! impl certify::Stream for Stream {
+//! impl certify::Stream<'_> for Stream {
 //!     fn output(&mut self,
 //!               _params: &certify::Params,
 //!               output: certify::Output)
@@ -1161,9 +1161,9 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'writer, 'stream> {
+struct ParamsOnce<'sequoia, 'writer, 'stream> {
     destination: Destination<Writer<'writer>>,
-    stream: Option<Box<dyn Stream + 'stream>>,
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Makes third-party certifications.
@@ -1182,7 +1182,7 @@ struct ParamsOnce<'writer, 'stream> {
 /// implementation to automatically
 pub struct Builder<'sequoia, 'writer, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'writer, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'writer, 'stream>,
 }
 
 impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
@@ -1227,7 +1227,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
 
     destination_builder_impl!('sequoia; 'stream; "certificate", "is");
 
-    stream_builder_impl!('sequoia, 'writer;);
+    stream_builder_impl!('writer;);
 
     /// Sets whether certification errors are ignored.
     ///
@@ -1613,7 +1613,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     }
 
     fn certify_<'p>(params: &Params<'sequoia>,
-                    params_once: &mut ParamsOnce<'writer, 'stream>,
+                    params_once: &mut ParamsOnce<'sequoia, 'writer, 'stream>,
                     certifier: &Cert,
                     cert: &Cert,
                     userids: &[UserID],

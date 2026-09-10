@@ -110,7 +110,7 @@
 //!     // Local state.
 //! }
 //!
-//! impl import::Stream for Stream {
+//! impl import::Stream<'_> for Stream {
 //!     fn output(&mut self,
 //!               _params: &import::Params,
 //!               output: import::Output)
@@ -506,8 +506,8 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'stream> {
-    stream: Option<Box<dyn Stream + 'stream>>,
+struct ParamsOnce<'sequoia, 'stream> {
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Imports keys.
@@ -515,7 +515,7 @@ struct ParamsOnce<'stream> {
 /// A builder providing control over how to import keys.
 pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream>,
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
@@ -545,8 +545,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// Report that importing something failed.
     ///
     /// This also increments the stats, if appropriate.
-    fn report_failure<'a>(params: &Params,
-                          params_once: &mut ParamsOnce,
+    fn report_failure<'a>(params: &Params<'sequoia>,
+                          params_once: &mut ParamsOnce<'sequoia, 'stream>,
                           error: error::ImportError,
                           outcome: &mut Outcome)
         -> Result<(), Error>
@@ -578,7 +578,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Returns the soft keys backend.
-    fn softkeys(params: &Params) -> Result<Backend, Error>
+    fn softkeys(params: &Params<'sequoia>) -> Result<Backend, Error>
     {
         let sequoia = params.sequoia;
 
@@ -694,9 +694,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         result
     }
 
-    fn import_keyring_<'a>(params: &Params, params_once: &mut ParamsOnce,
-                           input: &mut (dyn std::io::Read + Send + Sync + 'a),
-                           outcome: &mut Outcome)
+    fn import_keyring_<'a>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        input: &mut (dyn std::io::Read + Send + Sync + 'a),
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let parser = match CertParser::from_reader(input) {
@@ -898,10 +900,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         }
     }
 
-    fn import_keys_(params: &Params, params_once: &mut ParamsOnce,
-                    certs: &mut dyn Iterator<Item=Cert>,
-                    outcome: &mut Outcome,
-                    import_error: &mut Option<Error>)
+    fn import_keys_(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        certs: &mut dyn Iterator<Item=Cert>,
+        outcome: &mut Outcome,
+        import_error: &mut Option<Error>)
         -> Result<(), Error>
     {
         let mut softkeys = Self::softkeys(params)?;
@@ -931,8 +935,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         Ok(())
     }
 
-    fn import_key_(params: &Params, params_once: &mut ParamsOnce,
-                   softkeys: &mut Backend, cert: Cert, outcome: &mut Outcome)
+    fn import_key_(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        softkeys: &mut Backend, cert: Cert, outcome: &mut Outcome)
         -> Result<output::Imported, Error>
     {
         let Params {

@@ -17,49 +17,49 @@
 macro_rules! stream {
     {} => {
         /// The trait for collecting output.
-        pub trait Stream {
+        pub trait Stream<'sequoia> {
             /// Output.
-            fn output(&mut self, params: &Params, output: Output) -> Result<()>;
+            fn output(&mut self, params: &Params<'sequoia>, output: Output) -> Result<()>;
         }
 
-        impl<T> Stream for Box<T>
+        impl<'sequoia, T> Stream<'sequoia> for Box<T>
         where
-            T: Stream + ?Sized
+            T: Stream<'sequoia> + ?Sized
         {
-            fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+            fn output(&mut self, params: &Params<'sequoia>, output: Output) -> Result<()> {
                 AsMut::as_mut(self).output(params, output)
             }
         }
 
-        impl<T> Stream for &mut T
+        impl<'sequoia, T> Stream<'sequoia> for &mut T
         where
-            T: Stream + ?Sized
+            T: Stream<'sequoia> + ?Sized
         {
-            fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+            fn output(&mut self, params: &Params<'sequoia>, output: Output) -> Result<()> {
                 (*self).output(params, output)
             }
         }
 
         /// Collects the output in the specified vector.
-        impl Stream for &mut Vec<Output> {
-            fn output(&mut self, _params: &Params, output: Output) -> Result<()> {
+        impl<'sequoia> Stream<'sequoia> for &mut Vec<Output> {
+            fn output(&mut self, _params: &Params<'sequoia>, output: Output) -> Result<()> {
                 self.push(output);
                 Ok(())
             }
         }
 
         /// Discards the output.
-        impl Stream for () {
-            fn output(&mut self, _params: &Params, _output: Output) -> Result<()> {
+        impl<'sequoia> Stream<'sequoia> for () {
+            fn output(&mut self, _params: &Params<'sequoia>, _output: Output) -> Result<()> {
                 Ok(())
             }
         }
 
-        impl<S> Stream for Option<S>
+        impl<'sequoia, S> Stream<'sequoia> for Option<S>
         where
-            S: Stream
+            S: Stream<'sequoia>
         {
-            fn output(&mut self, params: &Params, output: Output) -> Result<()> {
+            fn output(&mut self, params: &Params<'sequoia>, output: Output) -> Result<()> {
                 if let Some(stream) = self.as_mut() {
                     stream.output(params, output)
                 } else {
@@ -72,13 +72,18 @@ macro_rules! stream {
 
 macro_rules! stream_builder_impl {
     () => {
-        stream_builder_impl!('sequoia; );
+        stream_builder_impl!(;);
     };
     ($($prelifetimes:lifetime),*; $($postlifetimes:lifetime),* $($generics:ident),*) => {
         /// Emits events on the specified stream.
-        pub fn stream<'s, S>(self, stream: S) -> Builder<$($prelifetimes,)* 's, $($postlifetimes,)* $($generics,)*>
+        pub fn stream<'s, S>(self, stream: S)
+            -> Builder<'sequoia,
+                       $($prelifetimes,)*
+                       's,
+                       $($postlifetimes,)*
+                       $($generics,)*>
         where
-            S: Stream + 's
+            S: Stream<'sequoia> + 's
         {
             Builder {
                 params: Params {

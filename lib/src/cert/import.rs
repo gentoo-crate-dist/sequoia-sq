@@ -85,7 +85,7 @@
 //!     // Local state.
 //! }
 //!
-//! impl import::Stream for Stream {
+//! impl import::Stream<'_> for Stream {
 //!     fn output(&mut self,
 //!               _params: &import::Params,
 //!               output: Output)
@@ -714,8 +714,8 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'stream> {
-    stream: Option<Box<dyn Stream + 'stream>>,
+struct ParamsOnce<'sequoia, 'stream> {
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Imports certificates.
@@ -723,7 +723,7 @@ struct ParamsOnce<'stream> {
 /// A builder providing control over how to import certificates.
 pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream>,
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
@@ -915,10 +915,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Report that importing something failed.
-    fn report_failure<'a>(params: &Params,
-                          params_once: &mut ParamsOnce,
-                          err: error::ImportError,
-                          outcome: &mut Outcome)
+    fn report_failure(params: &Params<'sequoia>,
+                      params_once: &mut ParamsOnce<'sequoia, 'stream>,
+                      err: error::ImportError,
+                      outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let ParamsOnce {
@@ -943,8 +943,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports the certs and reports on the individual certs.
-    fn import_and_report<'a>(params: &Params,
-                             params_once: &mut ParamsOnce,
+    fn import_and_report<'a>(params: &Params<'sequoia>,
+                             params_once: &mut ParamsOnce<'sequoia, 'stream>,
                              cert: openpgp::Cert,
                              artifact: output::Artifact,
                              provenance: Vec<Arc<Cert>>,
@@ -1092,8 +1092,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports certs encoded as OpenPGP keyring.
-    fn import_keyring_<'a>(params: &Params,
-                           params_once: &mut ParamsOnce,
+    fn import_keyring_<'a>(params: &Params<'sequoia>,
+                           params_once: &mut ParamsOnce<'sequoia, 'stream>,
                            source: Box<dyn BufferedReader<Cookie> + 'a>,
                            outcome: &mut Outcome)
         -> Result<(), Error>
@@ -1218,7 +1218,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         result
     }
 
-    fn import_certs_(params: &Params, params_once: &mut ParamsOnce,
+    fn import_certs_(params: &Params<'sequoia>,
+                     params_once: &mut ParamsOnce<'sequoia, 'stream>,
                      certs: &mut dyn Iterator<Item=Cert>,
                      outcome: &mut Outcome)
         -> Result<(), Error>
@@ -1385,8 +1386,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
 
     /// Imports a bare revocation certificate.
     fn import_revocation_<'a>(
-        params: &Params,
-        params_once: &mut ParamsOnce,
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
         source: Box<dyn BufferedReader<Cookie> + 'a>,
         outcome: &mut Outcome)
         -> Result<(), Error>
@@ -1696,11 +1697,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports certificates from autocrypt headers.
-    fn import_autocrypt_<'a>(params: &Params,
-                             params_once: &mut ParamsOnce,
-                             mut source: Box<dyn BufferedReader<Cookie> + 'a>,
-                             outcome: &mut Outcome,
-                             prompt: &(dyn prompt::PromptFactory + 'a))
+    fn import_autocrypt_<'a, 'p>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        mut source: Box<dyn BufferedReader<Cookie> + 'a>,
+        outcome: &mut Outcome,
+        prompt: &dyn prompt::PromptFactory<'p>)
         -> Result<(), Error>
     {
         let Params {

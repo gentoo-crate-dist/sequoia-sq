@@ -57,7 +57,7 @@ impl<'sq> Stream<'sq> {
     }
 }
 
-impl decrypt::Stream for Stream<'_> {
+impl decrypt::Stream<'_> for Stream<'_> {
     fn output(&mut self,
               params: &decrypt::Params,
               output: decrypt::Output)

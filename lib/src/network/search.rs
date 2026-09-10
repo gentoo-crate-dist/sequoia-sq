@@ -86,7 +86,7 @@
 //!     responses: usize,
 //! }
 //!
-//! impl search::Stream for Stream {
+//! impl search::Stream<'_> for Stream {
 //!     fn output(&mut self, params: &search::Params, output: search::Output)
 //!         -> Result<(), anyhow::Error>
 //!     {
@@ -948,15 +948,15 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'writer, 'stream> {
+struct ParamsOnce<'sequoia, 'writer, 'stream> {
     destination: Destination<Writer<'writer>>,
-    stream: Option<Box<dyn Stream + 'stream>>,
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Search for certificates on the network.
 pub struct Builder<'sequoia, 'writer, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'writer, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'writer, 'stream>,
 }
 
 impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
@@ -994,7 +994,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
 
     destination_builder_impl!('sequoia; 'stream; "certificates", "are");
 
-    stream_builder_impl!('sequoia, 'writer;);
+    stream_builder_impl!('writer;);
 
     /// The number of times to iterate.
     ///
@@ -1216,7 +1216,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
 
     /// Search for certificates on the network.
     async fn search_<'p>(params: &Params<'sequoia>,
-                         params_once: &mut ParamsOnce<'writer, 'stream>,
+                         params_once: &mut ParamsOnce<'sequoia, 'writer, 'stream>,
                          mut queries: Vec<Query>,
                          prompt: &dyn PromptFactory<'p>,
                          report: &mut output::Report)

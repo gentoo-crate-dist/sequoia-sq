@@ -23,8 +23,8 @@ struct UserIDRevocation {
 
 impl UserIDRevocation {
     /// Create a new UserIDRevocation
-    pub fn new<'p, P>(
-        sequoia: &Sequoia,
+    pub fn new<'sequoia, 'p, P>(
+        sequoia: &'sequoia Sequoia,
         revoker: Option<Cert>,
         cert: Cert,
         userid: &UserID,

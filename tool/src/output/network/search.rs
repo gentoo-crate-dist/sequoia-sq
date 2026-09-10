@@ -60,7 +60,7 @@ impl<'sq> Stream<'sq> {
     }
 }
 
-impl search::Stream for Stream<'_> {
+impl search::Stream<'_> for Stream<'_> {
     fn output(&mut self,
               _params: &search::Params,
               output: search::Output)

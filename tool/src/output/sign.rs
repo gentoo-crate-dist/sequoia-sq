@@ -17,7 +17,7 @@ impl<'sq> Stream<'sq> {
     }
 }
 
-impl sign::Stream for Stream<'_> {
+impl sign::Stream<'_> for Stream<'_> {
     fn output(&mut self,
               _params: &sign::Params,
               output: sign::Output)

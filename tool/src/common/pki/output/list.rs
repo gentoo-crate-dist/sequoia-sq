@@ -19,15 +19,15 @@ pub enum ListContext {
     Download,
 }
 
-pub struct Stream<'a> {
-    sq: &'a Sq,
+pub struct Stream<'sq, 'a> {
+    sq: &'sq Sq,
     queries: Vec<Query>,
     context: ListContext,
-    network: ConciseHumanReadableOutputNetwork<'a>,
+    network: ConciseHumanReadableOutputNetwork<'sq, 'a>,
 }
 
-impl<'a> Stream<'a> {
-    pub fn new(sq: &'a Sq,
+impl<'sq, 'a> Stream<'sq, 'a> {
+    pub fn new(sq: &'sq Sq,
                queries: Vec<Query>,
                params: &list::Params,
                context: ListContext,
@@ -50,7 +50,7 @@ impl<'a> Stream<'a> {
     }
 }
 
-impl<'a> sequoia::cert::list::Stream for Stream<'a> {
+impl sequoia::cert::list::Stream<'_> for Stream<'_, '_> {
     fn output(&mut self,
               params: &list::Params,
               output: list::Output)

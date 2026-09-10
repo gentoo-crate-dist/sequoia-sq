@@ -88,7 +88,8 @@ pub struct Builder<'sequoia> {
 }
 
 impl<'sequoia> Builder<'sequoia> {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia>
+    {
         Builder {
             params: Params {
                 sequoia,
@@ -183,8 +184,8 @@ impl<'sequoia> Builder<'sequoia> {
 }
 
 // output must be created with .for_secrets().create_safe()
-fn update_internal<'p, P>(
-        sequoia: &Sequoia,
+fn update_internal<'sequoia, 'p, P>(
+        sequoia: &'sequoia Sequoia,
         vcert: &ValidCert,
         userids: &Vec<UserID>,
         cmd_add_by: &Vec<KeyHandle>,

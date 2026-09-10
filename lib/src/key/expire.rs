@@ -55,7 +55,9 @@ pub struct Builder<'sequoia> {
 
 impl<'sequoia> Builder<'sequoia>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia)
+        -> Builder<'sequoia>
+    {
         Builder {
             params: Params {
                 sequoia,

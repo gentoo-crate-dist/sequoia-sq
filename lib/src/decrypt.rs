@@ -70,7 +70,7 @@
 //! struct Stream {
 //! }
 //!
-//! impl decrypt::Stream for Stream {
+//! impl decrypt::Stream<'_> for Stream {
 //!     fn output(&mut self, params: &decrypt::Params, output: decrypt::Output)
 //!         -> Result<(), anyhow::Error>
 //!     {
@@ -253,8 +253,8 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'stream> {
-    stream: Option<Box<dyn Stream + 'stream>>,
+struct ParamsOnce<'sequoia, 'stream> {
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Decrypt messages.
@@ -262,7 +262,7 @@ struct ParamsOnce<'stream> {
 /// This command builder is used to decrypt messages.
 pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream>,
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
@@ -446,7 +446,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
+    fn decrypt_<'w, 'p>(params: &Params<'sequoia>,
+                        params_once: &mut ParamsOnce<'sequoia, 'stream>,
                         input: &mut (dyn std::io::Read + Send + Sync),
                         mut output: OptionalWriter,
                         prompt: &dyn prompt::PromptFactory<'p>,
@@ -569,11 +570,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_unwrap_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
-                               input: &mut (dyn std::io::Read + Send + Sync),
-                               mut output: OptionalWriter<'w>,
-                               prompt: &dyn prompt::PromptFactory<'p>,
-                               report: &mut verify::output::Report)
+    fn decrypt_unwrap_<'w, 'p>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        input: &mut (dyn std::io::Read + Send + Sync),
+        mut output: OptionalWriter<'w>,
+        prompt: &dyn prompt::PromptFactory<'p>,
+        report: &mut verify::output::Report)
         -> Result<(), Error>
     {
         let &Params {
@@ -998,14 +1001,17 @@ pub enum Error {
     StreamOutputError(anyhow::Error),
 }
 
-struct StreamProxy<'a> {
-    stream: Box<dyn Stream + 'a>,
-    params: &'a Params<'a>,
+struct StreamProxy<'sequoia, 'a> {
+    stream: Box<dyn Stream<'sequoia> + 'a>,
+    params: &'a Params<'sequoia>,
 }
 
-impl verify::Stream for StreamProxy<'_>
+impl<'sequoia> verify::Stream<'sequoia>
+    for StreamProxy<'sequoia, '_>
 {
-    fn output(&mut self, _params: &verify::Params, output: verify::Output)
+    fn output(&mut self,
+              _params: &verify::Params<'sequoia>,
+              output: verify::Output)
         -> Result<()>
     {
         let output = match output {
@@ -1035,18 +1041,22 @@ impl verify::Stream for StreamProxy<'_>
     }
 }
 
-impl Stream for StreamProxy<'_>
+impl<'sequoia> Stream<'sequoia>
+    for StreamProxy<'sequoia, '_>
 {
-    fn output(&mut self, _params: &Params, output: Output) -> Result<()> {
+    fn output(&mut self, _params: &Params<'sequoia>, output: Output)
+        -> Result<()>
+    {
         self.stream.output(self.params, output)
     }
 }
 
-pub(crate) struct Helper<'c, 'p>
+pub(crate) struct Helper<'sequoia, 'c, 'p>
 {
-    sequoia: &'c Sequoia,
-    stream: Option<(Rc<RefCell<Box<dyn verify::VerifyDecryptStream + 'c>>>, &'c Params<'c>)>,
-    vhelper: VerificationHelper<'c>,
+    sequoia: &'sequoia Sequoia,
+    stream: Option<(Rc<RefCell<Box<dyn verify::VerifyDecryptStream<'sequoia> + 'c>>>,
+                    &'c Params<'sequoia>)>,
+    vhelper: VerificationHelper<'sequoia, 'c>,
     secret_keys: HashMap<KeyID, (Cert, Key<key::SecretParts, key::UnspecifiedRole>)>,
     key_identities: HashMap<KeyID, Arc<Cert>>,
     session_keys: Vec<SessionKey>,
@@ -1059,22 +1069,26 @@ pub(crate) struct Helper<'c, 'p>
     prompt: &'c dyn prompt::PromptFactory<'p>,
 }
 
-impl<'c, 'p> std::ops::Deref for Helper<'c, 'p> {
-    type Target = VerificationHelper<'c>;
+impl<'sequoia, 'c, 'p> std::ops::Deref
+    for Helper<'sequoia, 'c, 'p>
+{
+    type Target = VerificationHelper<'sequoia, 'c>;
 
     fn deref(&self) -> &Self::Target {
         &self.vhelper
     }
 }
 
-impl<'c, 'p> std::ops::DerefMut for Helper<'c, 'p> {
+impl<'sequoia, 'c, 'p> std::ops::DerefMut
+    for Helper<'sequoia, 'c, 'p>
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vhelper
     }
 }
 
-impl<'c, 'p> Helper<'c, 'p> {
-    pub fn new(sequoia: &'c Sequoia,
+impl<'sequoia, 'c, 'p> Helper<'sequoia, 'c, 'p> {
+    pub fn new(sequoia: &'sequoia Sequoia,
                signatures: usize,
                certs: Option<Vec<Cert>>,
                secret_keys: Vec<Cert>,
@@ -1183,7 +1197,7 @@ impl<'c, 'p> Helper<'c, 'p> {
     }
 }
 
-impl stream::VerificationHelper for Helper<'_, '_> {
+impl stream::VerificationHelper for Helper<'_, '_, '_> {
     fn get_certs(&mut self, ids: &[openpgp::KeyHandle]) -> Result<Vec<Cert>> {
         self.vhelper.get_certs(ids)
     }
@@ -1192,7 +1206,7 @@ impl stream::VerificationHelper for Helper<'_, '_> {
     }
 }
 
-impl DecryptionHelper for Helper<'_, '_> {
+impl DecryptionHelper for Helper<'_, '_, '_> {
     fn decrypt(&mut self, pkesks: &[PKESK], skesks: &[SKESK],
                sym_algo: Option<SymmetricAlgorithm>,
                decrypt: &mut dyn FnMut(Option<SymmetricAlgorithm>, &crypto::SessionKey) -> bool)

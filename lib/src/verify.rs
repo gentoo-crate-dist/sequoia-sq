@@ -87,11 +87,14 @@
 //! use sequoia::verify;
 //!
 //! # fn main() -> anyhow::Result<()> {
-//! struct VerifyOutputHandler<'a> {
-//!     sequoia: &'a sequoia::Sequoia,
+//! struct VerifyOutputHandler<'sequoia> {
+//!     sequoia: &'sequoia sequoia::Sequoia,
 //! }
 //!
-//! impl verify::Stream for &mut VerifyOutputHandler<'_> {
+//! impl<'sequoia>
+//!     verify::Stream<'sequoia>
+//!     for &mut VerifyOutputHandler<'sequoia>
+//! {
 //!     fn output(&mut self, _params: &verify::Params, output: verify::Output)
 //!         -> sequoia::Result<()>
 //!     {
@@ -975,11 +978,11 @@ pub enum Error {
     StreamOutputError(anyhow::Error),
 }
 
-impl Sequoia {
+impl<'stream> Sequoia {
     /// Returns a builder for verifying messages.
     ///
     /// See [`Builder`] for details.
-    pub fn verify(&self) -> Builder<'_, '_>
+    pub fn verify<'sequoia>(&'sequoia self) -> Builder<'sequoia, 'stream>
     {
         Builder {
             params: Params {
@@ -1045,8 +1048,8 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'stream> {
-    stream: Option<Box<dyn Stream + 'stream>>,
+struct ParamsOnce<'sequoia, 'stream> {
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Verify signatures.
@@ -1054,7 +1057,7 @@ struct ParamsOnce<'stream> {
 /// This command builder is used to verify signatures.
 pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream>,
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
@@ -1194,7 +1197,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute<'w>(params: &Params, params_once: &mut ParamsOnce,
+    fn execute<'w>(params: &Params<'sequoia>,
+                   params_once: &mut ParamsOnce<'sequoia, 'stream>,
                    input: &mut (dyn std::io::Read + Send + Sync),
                    detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
                    output: OptionalWriter<'w>)
@@ -1242,7 +1246,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Execute the verifier with the configured parameters.
     ///
     /// Returns `Ok` if the message could be verified.
-    fn execute_(params: &Params, params_once: &mut ParamsOnce,
+    fn execute_(params: &Params<'sequoia>,
+                params_once: &mut ParamsOnce<'sequoia, 'stream>,
                 input: &mut (dyn std::io::Read + Send + Sync),
                 detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
                 mut output: OptionalWriter,
@@ -1321,22 +1326,23 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     }
 }
 
-struct StreamProxy<'a> {
-    stream: Box<dyn Stream + 'a>,
+struct StreamProxy<'sequoia, 'a> {
+    stream: Box<dyn Stream<'sequoia> + 'a>,
 }
 
-impl Stream for StreamProxy<'_>
+impl<'sequoia> Stream<'sequoia> for StreamProxy<'sequoia, '_>
 {
-    fn output(&mut self, params: &Params, output: Output)
+    fn output(&mut self, params: &Params<'sequoia>, output: Output)
         -> Result<()>
     {
         self.stream.output(params, output)
     }
 }
 
-impl decrypt::Stream for StreamProxy<'_>
+impl<'sequoia> decrypt::Stream<'sequoia> for StreamProxy<'sequoia, '_>
 {
-    fn output(&mut self, _params: &decrypt::Params, _output: decrypt::Output)
+    fn output(&mut self, _params: &decrypt::Params<'sequoia>,
+              _output: decrypt::Output)
         -> Result<()>
     {
         Ok(())
@@ -1345,21 +1351,21 @@ impl decrypt::Stream for StreamProxy<'_>
 
 /// A wrapper trait so that we can have a `Box<dyn verify::Stream +
 /// decrypt::Stream>`.
-pub(crate) trait VerifyDecryptStream: Stream + decrypt::Stream {
+pub(crate) trait VerifyDecryptStream<'sequoia>: Stream<'sequoia> + decrypt::Stream<'sequoia> {
 }
 
 /// Implement the wrapper for everything that implements
 /// verify::Stream and `Stream`.
-impl<T: ?Sized> VerifyDecryptStream for T where T: Stream + decrypt::Stream {
+impl<'sequoia, T: ?Sized> VerifyDecryptStream<'sequoia> for T where T: Stream<'sequoia> + decrypt::Stream<'sequoia> {
 }
 
-pub(crate) struct VerificationHelper<'c>
+pub(crate) struct VerificationHelper<'sequoia, 'c>
 {
-    sequoia: &'c Sequoia,
+    sequoia: &'sequoia Sequoia,
     signatures: usize,
 
-    pub(crate) stream: Option<(Rc<RefCell<Box<dyn VerifyDecryptStream + 'c>>>,
-                               Cow<'c, Params<'c>>)>,
+    pub(crate) stream: Option<(Rc<RefCell<Box<dyn VerifyDecryptStream<'sequoia> + 'c>>>,
+                               Cow<'c, Params<'sequoia>>)>,
 
     /// Require signatures to be made by this set of certs.
     designated_signers: Option<Vec<Cert>>,
@@ -1373,11 +1379,11 @@ pub(crate) struct VerificationHelper<'c>
     report: &'c mut output::Report,
 }
 
-impl<'c> VerificationHelper<'c> {
-    pub fn new(sequoia: &'c Sequoia, signatures: usize,
+impl<'sequoia, 'c> VerificationHelper<'sequoia, 'c> {
+    pub fn new(sequoia: &'sequoia Sequoia, signatures: usize,
                designated_signers: Option<Vec<Cert>>,
                report: &'c mut output::Report)
-               -> Self
+        -> Self
     {
         VerificationHelper {
             sequoia,
@@ -1391,7 +1397,7 @@ impl<'c> VerificationHelper<'c> {
     }
 
     /// Returns the Sequoia instance.
-    pub fn sequoia(&self) -> &Sequoia {
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
         self.sequoia
     }
 }
@@ -1402,7 +1408,7 @@ impl<'c> VerificationHelper<'c> {
 // the functions that return our error type and then convert that to
 // an `anyhow::Error` in the actual trait implementation.  This flags
 // any use of `anyhow::Error`.
-impl VerificationHelper<'_> {
+impl VerificationHelper<'_, '_> {
     fn get_certs_(&mut self, ids: &[openpgp::KeyHandle])
                   -> Result<Vec<Cert>, Error>
     {
@@ -1557,7 +1563,7 @@ impl VerificationHelper<'_> {
     }
 }
 
-impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
+impl stream::VerificationHelper for VerificationHelper<'_, '_> {
     fn get_certs(&mut self, ids: &[openpgp::KeyHandle])
         -> Result<Vec<Cert>>
     {
@@ -1571,7 +1577,7 @@ impl<'c> stream::VerificationHelper for VerificationHelper<'c> {
     }
 }
 
-impl<'c> VerificationHelper<'c> {
+impl VerificationHelper<'_, '_> {
     /// Converts a `VerificationResult` into a `Signature`.
     fn check_sig(&mut self, result: VerificationResult) -> output::Signature {
         use output::signature_status::*;

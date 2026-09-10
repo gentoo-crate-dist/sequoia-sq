@@ -191,11 +191,12 @@ fn certify(sequoia: &Sequoia,
 /// or a CAs.  Normally the trust root and the CAs' secret key
 /// material is not protected by a password, but the user could change
 /// this.
-pub fn certify_downloads<'p, P>(sequoia: &Sequoia,
-                                emit_provenance_messages: bool,
-                                ca: &Cert,
-                                certs: Vec<Cert>, email: Option<&str>,
-                                prompt: P)
+pub fn certify_downloads<'sequoia, 'p, P>(
+    sequoia: &'sequoia Sequoia,
+    emit_provenance_messages: bool,
+    ca: &Cert,
+    certs: Vec<Cert>, email: Option<&str>,
+    prompt: P)
     -> Vec<Cert>
 where
     P: prompt::PromptFactory<'p>

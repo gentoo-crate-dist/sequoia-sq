@@ -96,7 +96,7 @@
 //! #   bindings: usize,
 //! }
 //!
-//! impl Stream for MyStream {
+//! impl Stream<'_> for MyStream {
 //!     fn output(&mut self, params: &Params, output: Output) -> Result<()> {
 //!         if let Output::Binding(binding) = output {
 //!             eprintln!("{}, {:?} matches",
@@ -736,7 +736,7 @@ impl<'sequoia> Builder<'sequoia> {
     /// added (see [`SequoiaBuilder::add_keyring`]).
     pub fn list<S>(self, mut stream: S) -> Result<Outcome, Error>
     where
-        S: Stream,
+        S: Stream<'sequoia>,
     {
         let mut report = output::Report::new();
 
@@ -776,7 +776,8 @@ impl<'sequoia> Builder<'sequoia> {
         result
     }
 
-    pub fn list_(&self, stream: &mut dyn Stream, report: &mut output::Report)
+    pub fn list_(&self, stream: &mut dyn Stream<'sequoia>,
+                 report: &mut output::Report)
         -> Result<(), Error>
     {
         let &Params {

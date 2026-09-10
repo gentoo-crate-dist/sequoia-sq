@@ -22,15 +22,15 @@ use crate::Sq;
 use crate::common::ui::emit_cert;
 use crate::common::ui::emit_cert_key_handle_userid_str;
 
-pub struct Stream<'a> {
-    sq: &'a Sq,
+pub struct Stream<'sq, 'a> {
+    sq: &'sq Sq,
     source: Option<PathBuf>,
     output: Box<dyn std::io::Write + Send + Sync + 'a>,
     print_stats: bool,
     pub stats: Option<ImportStats>,
 }
 
-impl<'a> Stream<'a> {
+impl<'sq, 'a> Stream<'sq, 'a> {
     /// `source` is the filename of the source.  This is only used for
     /// display purposes.
     ///
@@ -39,7 +39,7 @@ impl<'a> Stream<'a> {
     ///
     /// `print_stats` controls whether the statistics are shown at the
     /// end.
-    pub fn new(sq: &'a Sq,
+    pub fn new(sq: &'sq Sq,
                source: Option<&Path>,
                output: impl std::io::Write + Send + Sync + 'a,
                print_stats: bool)
@@ -55,7 +55,7 @@ impl<'a> Stream<'a> {
     }
 }
 
-impl import::Stream for Stream<'_> {
+impl import::Stream<'_> for Stream<'_, '_> {
     fn output(&mut self,
               _params: &import::Params,
               output: import::Output)

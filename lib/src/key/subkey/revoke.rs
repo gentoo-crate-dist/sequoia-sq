@@ -29,8 +29,8 @@ struct SubkeyRevocation {
 
 impl SubkeyRevocation {
     /// Create a new SubkeyRevocation
-    pub fn new<'p, P>(
-        sequoia: &Sequoia,
+    pub fn new<'sequoia, 'p, P>(
+        sequoia: &'sequoia Sequoia,
         kas: &[ValidErasedKeyAmalgamation<key::PublicParts>],
         cert: &Cert,
         revoker: Option<Cert>,

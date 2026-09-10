@@ -354,7 +354,8 @@ impl Sequoia {
     /// List bindings.
     ///
     /// See [`cert::list::Builder`] for details.
-    pub fn cert_list(&self) -> cert::list::Builder<'_>
+    pub fn cert_list<'sequoia>(&'sequoia self)
+        -> cert::list::Builder<'sequoia>
     {
         cert::list::Builder::new(self)
     }
@@ -362,7 +363,9 @@ impl Sequoia {
     /// Lookup a certificate by a human-meaningful identifier.
     ///
     /// See [`lookup_by`] for details.
-    pub fn lookup_by(&self) -> lookup_by::Builder<'_> {
+    pub fn lookup_by<'sequoia>(&'sequoia self)
+        -> lookup_by::Builder<'sequoia>
+    {
         lookup_by::Builder::new(self)
     }
 
@@ -384,11 +387,15 @@ impl Sequoia {
         encrypt::Builder::new(self)
     }
 
-    pub fn key_approvals_list(&self) -> key::approvals::list::Builder<'_> {
+    pub fn key_approvals_list<'sequoia>(&'sequoia self)
+        -> key::approvals::list::Builder<'sequoia>
+    {
         key::approvals::list::Builder::new(self)
     }
 
-    pub fn key_approvals_update(&self) -> key::approvals::update::Builder<'_> {
+    pub fn key_approvals_update<'sequoia>(&'sequoia self)
+        -> key::approvals::update::Builder<'sequoia>
+    {
         key::approvals::update::Builder::new(self)
     }
 
@@ -396,7 +403,9 @@ impl Sequoia {
     /// certificate or a key's expiration.
     ///
     /// See [`key::expire::Builder`] for details.
-    pub fn key_expire(&self) -> key::expire::Builder<'_> {
+    pub fn key_expire<'sequoia>(&'sequoia self)
+        -> key::expire::Builder<'sequoia>
+    {
         key::expire::Builder::new(self)
     }
 
@@ -430,7 +439,9 @@ impl Sequoia {
     /// a certificate.
     ///
     /// See [`key::revoke::Builder`] for details.
-    pub fn key_revoke(&self) -> key::revoke::Builder<'_> {
+    pub fn key_revoke<'sequoia>(&'sequoia self)
+        -> key::revoke::Builder<'sequoia>
+    {
         key::revoke::Builder::new(self)
     }
 
@@ -441,7 +452,8 @@ impl Sequoia {
     /// [`DEFAULT_KEY_VALIDITY_DURATION`](crate::config::DEFAULT_KEY_VALIDITY_DURATION).
     ///
     /// See [`key::subkey::add::Builder`] for details.
-    pub fn key_subkey_add(&self) -> key::subkey::add::Builder<'_>
+    pub fn key_subkey_add<'sequoia>(&'sequoia self)
+        -> key::subkey::add::Builder<'sequoia>
     {
         key::subkey::add::Builder::new(self)
     }
@@ -450,7 +462,9 @@ impl Sequoia {
     /// subkeys.
     ///
     /// See [`key::subkey::revoke::Builder`] for details.
-    pub fn key_subkey_revoke(&self) -> key::subkey::revoke::Builder<'_> {
+    pub fn key_subkey_revoke<'sequoia>(&'sequoia self)
+        -> key::subkey::revoke::Builder<'sequoia>
+    {
         key::subkey::revoke::Builder::new(self)
     }
 
@@ -458,7 +472,9 @@ impl Sequoia {
     /// to a certificate.
     ///
     /// See [`key::userid::add::Builder`] for details.
-    pub fn key_userid_add(&self) -> key::userid::add::Builder<'_> {
+    pub fn key_userid_add<'sequoia>(&'sequoia self)
+        -> key::userid::add::Builder<'sequoia>
+    {
         key::userid::add::Builder::new(self)
     }
 
@@ -466,7 +482,9 @@ impl Sequoia {
     /// user IDs.
     ///
     /// See [`key::userid::revoke::Builder`] for details.
-    pub fn key_userid_revoke(&self) -> key::userid::revoke::Builder<'_> {
+    pub fn key_userid_revoke<'sequoia>(&'sequoia self)
+        -> key::userid::revoke::Builder<'sequoia>
+    {
         key::userid::revoke::Builder::new(self)
     }
 

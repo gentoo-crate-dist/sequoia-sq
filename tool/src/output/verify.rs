@@ -51,7 +51,7 @@ impl<'sq> Stream<'sq> {
     }
 }
 
-impl verify::Stream for Stream<'_> {
+impl verify::Stream<'_> for Stream<'_> {
     fn output(&mut self,
               params: &verify::Params,
               output: verify::Output)

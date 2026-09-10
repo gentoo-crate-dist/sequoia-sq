@@ -146,7 +146,7 @@
 //! struct MyStream {
 //! }
 //!
-//! impl Stream for MyStream {
+//! impl Stream<'_> for MyStream {
 //!    fn output(&mut self, params: &Params, output: Output) -> Result<()> {
 //!        match output {
 //!            Output::Encrypting(encrypting) => {
@@ -548,8 +548,8 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'stream> {
-    stream: Option<Box<dyn Stream + 'stream>>,
+struct ParamsOnce<'sequoia, 'stream> {
+    stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
 }
 
 /// Encrypt messages.
@@ -557,7 +557,7 @@ struct ParamsOnce<'stream> {
 /// This command builder is used to encrypt messages.
 pub struct Builder<'sequoia, 'stream> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream>,
 }
 
 impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
@@ -890,7 +890,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result.map(|_| outcome)
     }
 
-    fn encrypt_<'w, 'p>(params: &Params, params_once: &mut ParamsOnce,
+    fn encrypt_<'w, 'p>(params: &Params<'sequoia>,
+                        params_once: &mut ParamsOnce<'sequoia, 'stream>,
                         mut input: &mut (dyn std::io::Read + Send + Sync),
                         output: Writer<'w>,
                         prompt: &dyn prompt::PromptFactory<'p>)

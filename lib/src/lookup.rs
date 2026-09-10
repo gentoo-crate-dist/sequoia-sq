@@ -155,7 +155,7 @@ use crate::types::FileStdinOrKeyHandle;
 
 const TRACE: bool = false;
 
-impl Sequoia {
+impl<'sequoia> Sequoia {
     /// Lookup a certificate.
     ///
     /// Looks up a certificate by fingerprint or key ID in the
@@ -164,7 +164,7 @@ impl Sequoia {
     /// By default, when given a key handle, this only matches on the
     /// certificate's key handle.  To also match on the subkeys, set
     /// [`Builder::subkeys`].
-    pub fn lookup(&self) -> Builder<'_> {
+    pub fn lookup(&'sequoia self) -> Builder<'sequoia> {
         Builder {
             params: Params {
                 sequoia: self,
@@ -499,8 +499,8 @@ impl<'sequoia> Builder<'sequoia>
     /// Like [`Builder::lookup_all`], but uses an alternate policy and
     /// an alternate reference time.
     pub fn lookup_all_with_policy<'a, H>(&self, handle: H,
-                                     policy: &dyn Policy,
-                                     time: SystemTime)
+                                         policy: &dyn Policy,
+                                         time: SystemTime)
         -> Result<Vec<Cert>, Error>
     where
         H: Into<FileStdinOrKeyHandle>,

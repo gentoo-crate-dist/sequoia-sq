@@ -19,7 +19,7 @@ impl<'sq> Stream<'sq> {
     }
 }
 
-impl encrypt::Stream for Stream<'_> {
+impl encrypt::Stream<'_> for Stream<'_> {
     fn output(&mut self,
               _params: &encrypt::Params,
               output: encrypt::Output)
