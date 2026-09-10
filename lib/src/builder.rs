@@ -231,7 +231,7 @@ impl SequoiaBuilder {
 
     /// Instantiate a new context based on the builder's
     /// configuration.
-    pub fn build(&self) -> Result<Sequoia> {
+    pub fn build(self) -> Result<Sequoia> {
         let home = match &self.home {
             Home::Default => {
                 let home = sequoia_directories::Home::new(None)
