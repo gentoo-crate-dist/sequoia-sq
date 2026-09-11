@@ -68,9 +68,7 @@
 //! use sequoia::sign;
 //!
 //! use sequoia_openpgp as openpgp;
-//! use openpgp::cert::amalgamation::ValidAmalgamation;
 //! use openpgp::types::KeyFlags;
-//! use openpgp::types::RevocationStatus;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! // A stateless Sequoia instance.
