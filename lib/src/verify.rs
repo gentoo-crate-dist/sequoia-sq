@@ -839,6 +839,20 @@ pub mod error {
         pub kind: Kind,
     }
 
+    /// Expected a CSF signature, but got something else.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Input is not a cleartext signature")]
+    pub struct NotACsfSignature {
+    }
+
+    /// Expected an inline signature, but got something else.
+    #[non_exhaustive]
+    #[derive(thiserror::Error, Debug, Clone)]
+    #[error("Input is not an inline signature")]
+    pub struct NotAnInlineSignature {
+    }
+
     /// Can't authenticate the signature.
     ///
     /// The signature is mathematically correct, but we could not
@@ -873,6 +887,12 @@ pub mod error {
     pub enum OperationalError {
         #[error(transparent)]
         NotADetachedSignature(NotADetachedSignature),
+
+        #[error(transparent)]
+        NotACsfSignature(NotACsfSignature),
+
+        #[error(transparent)]
+        NotAnInlineSignature(NotAnInlineSignature),
 
         #[error(transparent)]
         Unauthenticated(Unauthenticated),
@@ -1154,7 +1174,45 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = self;
 
         Self::execute(&params, &mut params_once,
-                      &mut input, None, output.into())
+                      &mut input, None, false, output.into())
+    }
+
+    /// Verifies a signed message using the cleartext signature
+    /// framework.
+    ///
+    /// An cleartext-signed message is an OpenPGP message that
+    /// includes one or more signatures and the signed data.  Unlike
+    /// an inline signed message, the cleartext data is not encoded,
+    /// but remains human readable.  If the signatures and the data
+    /// are stored separately, you have a detached signature, which
+    /// you can verify using [`Builder::detached_signature`].
+    ///
+    /// Returns `Ok` if the message could be verified according to the
+    /// policy.  (You can configure the signing policy using
+    /// [`Builder::signatures`] and [`Builder::add_designated_signer`].)
+    ///
+    /// The verified data is written to `output`.  If you don't plan
+    /// to consume the verified data, you can pass an instance of
+    /// `std::io::Empty`, which is normally created by calling
+    /// `std::io::empty`.  If you do plan to consume the verified
+    /// data, you should not use the input, but save the output and
+    /// use that.  This avoids [TOCTOU] errors, and, accidentally
+    /// using the wrong data.
+    ///
+    /// [TOCTOU]: https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+    pub fn cleartext_signature<'w, I, O>(self, mut input: I, output: O)
+        -> Result<Outcome, Error>
+    where
+        I: std::io::Read + Send + Sync,
+        O: Into<OptionalWriter<'w>>,
+    {
+        let Builder {
+            params,
+            mut params_once,
+        } = self;
+
+        Self::execute(&params, &mut params_once,
+                      &mut input, None, true, output.into())
     }
 
     /// Verifies a detached signature.
@@ -1191,7 +1249,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = self;
 
         Self::execute(&params, &mut params_once,
-                      &mut input, Some(&mut detached), output.into())
+                      &mut input, Some(&mut detached), false, output.into())
     }
 
     /// Execute the verifier with the configured parameters.
@@ -1201,12 +1259,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                    params_once: &mut ParamsOnce<'sequoia, 'stream>,
                    input: &mut (dyn std::io::Read + Send + Sync),
                    detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
+                   expect_csf: bool,
                    output: OptionalWriter<'w>)
         -> Result<Outcome, Error>
     {
         let mut report = output::Report::new();
         let result = Self::execute_(
-            params, params_once, input, detached, output, &mut report);
+            params, params_once, input, detached, expect_csf, output,
+            &mut report);
 
         let stream = &mut params_once.stream;
 
@@ -1250,6 +1310,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                 params_once: &mut ParamsOnce<'sequoia, 'stream>,
                 input: &mut (dyn std::io::Read + Send + Sync),
                 detached: Option<&mut (dyn std::io::Read + Send + Sync)>,
+                expect_csf: bool,
                 mut output: OptionalWriter,
                 report: &mut output::Report)
         -> Result<(), Error>
@@ -1292,7 +1353,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             })));
 
         let mut helper = VerificationHelper::new(
-            sequoia, signatures, designated_signers.clone(), report);
+            sequoia, signatures, designated_signers.clone(),
+            expect_csf, report);
         helper.stream = Some((proxy, Cow::Borrowed(params)));
         let helper = if let Some(ref mut dsig) = detached {
             let mut v = DetachedVerifierBuilder::from_reader(dsig)
@@ -1375,6 +1437,8 @@ pub(crate) struct VerificationHelper<'sequoia, 'c>
     /// Tracks the inner-most encryption container encountered.
     pub sym_algo: Option<SymmetricAlgorithm>,
 
+    expect_csf: bool,
+
     /// Tracks the signatures encountered.
     report: &'c mut output::Report,
 }
@@ -1382,6 +1446,7 @@ pub(crate) struct VerificationHelper<'sequoia, 'c>
 impl<'sequoia, 'c> VerificationHelper<'sequoia, 'c> {
     pub fn new(sequoia: &'sequoia Sequoia, signatures: usize,
                designated_signers: Option<Vec<Cert>>,
+               expect_csf: bool,
                report: &'c mut output::Report)
         -> Self
     {
@@ -1392,6 +1457,7 @@ impl<'sequoia, 'c> VerificationHelper<'sequoia, 'c> {
             trusted: HashSet::new(),
             sym_algo: None,
             stream: None,
+            expect_csf,
             report,
         }
     }
@@ -1503,6 +1569,24 @@ impl VerificationHelper<'_, '_> {
         use output::message_layer::*;
 
         tracer!(TRACE, "VerificationHelper::check");
+
+        if self.expect_csf {
+            if ! structure.processed_csf_message() {
+                self.report.broken_signatures += 1;
+                return Err(Error::OperationalError(
+                    error::OperationalError::NotACsfSignature(
+                        error::NotACsfSignature {
+                        })));
+            }
+        } else {
+            if structure.processed_csf_message() {
+                self.report.broken_signatures += 1;
+                return Err(Error::OperationalError(
+                    error::OperationalError::NotAnInlineSignature(
+                        error::NotAnInlineSignature {
+                        })));
+            }
+        }
 
         let mut layers = Vec::new();
 
@@ -2328,5 +2412,99 @@ mod tests {
               R::unauthenticated()
                   .authenticated_signatures(0)
                   .bad_signatures(1));
+    }
+
+    // Check that an inline signature can't be verified as a CSF
+    // signature and vice versa.
+    #[test]
+    fn inline_vs_csf() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        const MESSAGE: &[u8] = b"message";
+
+        // Alice signs a message.
+        let mut alice_signed = Vec::new();
+        sq.sign()
+            .inline()
+            .add_signer(alice.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut alice_signed)
+            .expect("can sign");
+
+        eprintln!("Verify Alice's inline signature.");
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .inline_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
+
+        check(&sq, &output, result, true,
+              R::authenticated().authenticated_signatures(1));
+
+        eprintln!("Verify Alice's inline signature as a CSF signature.");
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .cleartext_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty());
+        assert!(result.is_err(),
+                "Expected invalid signature, got: {}",
+                result.as_ref().unwrap_err());
+
+        check(&sq, &output, result, false,
+              R::unauthenticated().broken_signatures(1));
+
+
+        // Alice signs a message.
+        let mut alice_signed = Vec::new();
+        sq.sign()
+            .clear()
+            .add_signer(alice.clone())
+            .sign(
+                std::io::Cursor::new(MESSAGE),
+                &mut alice_signed)
+            .expect("can sign");
+
+
+        eprintln!("Verify Alice's CSF signature.");
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .inline_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty());
+        assert!(result.is_err(),
+                "Expected invalid signature, got: {}",
+                result.as_ref().unwrap_err());
+
+        check(&sq, &output, result, false,
+              R::unauthenticated().broken_signatures(1));
+
+        eprintln!("Verify Alice's inline signature as a CSF signature.");
+        let mut output = Vec::new();
+        let result = sq.verify()
+            .stream(&mut output)
+            .cleartext_signature(
+                std::io::Cursor::new(&alice_signed),
+                std::io::empty());
+        assert!(result.is_ok(),
+                "Expected valid signature, got: {}",
+                result.as_ref().unwrap_err());
+
+        check(&sq, &output, result, true,
+              R::authenticated().authenticated_signatures(1));
     }
 }

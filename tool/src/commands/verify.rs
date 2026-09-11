@@ -40,7 +40,7 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
         verifier
             .stream(stream)
             .detached_signature(input, signature_fp,  &mut output)
-    } else {
+    } else if command.message {
         let stream = Stream::new(
             &sq, VerifyContext::Verify,
             // Detached signature argument.
@@ -49,6 +49,17 @@ pub fn dispatch(sq: Sq, command: cli::verify::Command)
         verifier
             .stream(stream)
             .inline_signature(input,  &mut output)
+    } else {
+        assert!(command.cleartext);
+
+        let stream = Stream::new(
+            &sq, VerifyContext::Verify,
+            // Detached signature argument.
+            None, None);
+
+        verifier
+            .stream(stream)
+            .cleartext_signature(input,  &mut output)
     }.map(|_| ()).map_err(|err| anyhow::Error::from(err));
 
     if result.is_err() {

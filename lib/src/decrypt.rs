@@ -1112,7 +1112,8 @@ impl<'sequoia, 'c, 'p> Helper<'sequoia, 'c, 'p> {
         Helper {
             sequoia: &sequoia,
             stream: None,
-            vhelper: VerificationHelper::new(&sequoia, signatures, certs, report),
+            vhelper: VerificationHelper::new(
+                &sequoia, signatures, certs, false, report),
             secret_keys: keys,
             key_identities: identities,
             session_keys,
