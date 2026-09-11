@@ -201,8 +201,10 @@ pub fn certify_downloads<'sequoia, 'prompt>(
     prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
     -> Vec<Cert>
 {
-    let mut ca_signer = match sequoia.get_certification_key(
-        ca, None, prompt)
+    let mut ca_signer = match sequoia
+        .signer()
+        .prompt_(prompt)
+        .get_certification_key(ca)
     {
         Ok(signer) => signer,
         Err(err) => {

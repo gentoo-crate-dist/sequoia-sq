@@ -17,7 +17,6 @@ use openpgp::types::SignatureType;
 use sequoia_cert_store as cert_store;
 use cert_store::StoreUpdate;
 
-use crate::GetKeysOptions;
 use crate::Sequoia;
 use crate::config::DEFAULT_KEY_VALIDITY_DURATION;
 use crate::config::Expiration;
@@ -120,10 +119,11 @@ impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
             = keys.into_iter().partition(|ka| ka.primary());
         assert!(primary.len() <= 1);
 
-        let mut primary_signer = sequoia.get_primary_key(
-            cert,
-            Some(&[GetKeysOptions::AllowNotAlive]),
-            prompt.clone())?;
+        let mut primary_signer = sequoia
+            .signer()
+            .allow_not_alive(true)
+            .prompt_(prompt.clone())
+            .get_primary_key(cert)?;
 
         // Fix the new expiration time.
         let expiration_time = expiration.to_system_time(sequoia.time())?;

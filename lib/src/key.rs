@@ -22,8 +22,6 @@ use sequoia_cert_store as cert_store;
 use cert_store::StoreUpdate;
 use cert_store::LazyCert;
 
-use crate::GetKeysOptions;
-
 use crate::Result;
 use crate::Sequoia;
 use crate::prompt;
@@ -165,14 +163,14 @@ fn get_secret_signer<'sequoia, 'a, 'prompt>(
     prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
     -> Result<(Cert, Box<dyn Signer + Send + Sync>)>
 {
-    let flags = Some(&[
-        GetKeysOptions::AllowRevoked,
-        GetKeysOptions::AllowNotAlive,
-        GetKeysOptions::NullPolicy,
-    ][..]);
+    let signer = sequoia.signer()
+        .allow_revoked(true)
+        .allow_not_alive(true)
+        .null_policy()
+        .prompt_(prompt);
 
     if let Some(secret) = secret {
-        match sequoia.get_primary_key(secret, flags, prompt) {
+        match signer.get_primary_key(secret) {
             Ok(key) => Ok((secret.clone(), key)),
             Err(err) => {
                 let err = anyhow::Error::from(err);
@@ -191,7 +189,7 @@ does not contain a certification key with secret key material")));
             }
         }
     } else {
-        match sequoia.get_primary_key(cert, flags, prompt) {
+        match signer.get_primary_key(cert) {
             Ok(key) => Ok((cert.clone(), key)),
             Err(err) => {
                 let err = anyhow::Error::from(err);

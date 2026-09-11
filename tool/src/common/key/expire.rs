@@ -17,7 +17,6 @@ use openpgp::types::SignatureType;
 use sequoia::cert_store::StoreUpdate;
 
 use sequoia::types::TrustThreshold;
-use sequoia::GetKeysOptions;
 
 use crate::Sq;
 use crate::cli::types::CertDesignators;
@@ -69,8 +68,9 @@ where P: cert_designator::ArgumentPrefix,
         }
     }
 
-    let mut primary_signer
-        = sq.get_primary_key(&cert, Some(&[GetKeysOptions::AllowNotAlive]))?;
+    let mut primary_signer = sq.signer()
+        .allow_not_alive(true)
+        .get_primary_key(&cert)?;
 
     // Fix the new expiration time.
     let expiration_time = expiration.to_system_time(sq.time())?;

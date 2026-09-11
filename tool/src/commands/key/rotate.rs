@@ -334,8 +334,8 @@ pub fn dispatch(
     wwriteln!(stream = o,
               "Cross signing the old and new certificates.");
 
-    let mut old_cert_signer = sq.get_certification_key(&old_cert, None)?;
-    let mut cert_signer = sq.get_certification_key(&cert, None)?;
+    let mut old_cert_signer = sq.signer().get_certification_key(&old_cert)?;
+    let mut cert_signer = sq.signer().get_certification_key(&cert)?;
 
     let mut builder
         = SignatureBuilder::new(SignatureType::GenericCertification)
@@ -389,7 +389,7 @@ pub fn dispatch(
 
     // Replay the trust root -> cert onto the new certificate.
     let trust_root = sq.sequoia.local_trust_root()?.into_cert();
-    let mut trust_root_signer = sq.get_certification_key(&trust_root, None)?;
+    let mut trust_root_signer = sq.signer().get_certification_key(&trust_root)?;
 
     if ! command.own_key && ! command.shared_key {
         wwriteln!(stream = o);

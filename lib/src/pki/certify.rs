@@ -1660,8 +1660,10 @@ impl<'sequoia, 'writer, 'stream, 'prompt>
 
         let prep = ||  -> Result<_, anyhow::Error> {
             // Get the signer to certify with.
-            let signer = sequoia.get_certification_key(
-                certifier, None, prompt.clone())?;
+            let signer = sequoia
+                .signer()
+                .prompt_(prompt.clone())
+                .get_certification_key(certifier)?;
 
             let mut base
                 = SignatureBuilder::new(SignatureType::GenericCertification)

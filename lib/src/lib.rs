@@ -267,9 +267,7 @@ mod compat;
 pub mod config;
 use config::Config;
 use config::ConfigFile;
-mod signer;
-pub use signer::GetKeysOptions;
-pub use signer::KeyType;
+pub mod signer;
 pub mod lookup;
 pub mod lookup_by;
 pub mod packet;
@@ -539,6 +537,15 @@ impl Sequoia {
                          sign::builder::UnspecifiedSignatureType>
     {
         sign::Builder::new(self)
+    }
+
+    /// Returns a signer for a given a certificate.
+    ///
+    /// See [`signer`] for details.
+    pub fn signer<'sequoia, 'policy, 'prompt>(&'sequoia self)
+        -> signer::Builder<'sequoia, 'policy, 'prompt>
+    {
+        signer::Builder::new(self)
     }
 
     /// Returns the home directory.

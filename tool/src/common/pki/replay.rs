@@ -69,7 +69,8 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
     let signer = if let Some(signer) = target_signer {
         signer
     } else {
-        signer_ = sq.get_certification_key(target, None)?;
+        signer_ = sq.signer()
+            .get_certification_key(target)?;
         &mut signer_
     };
 

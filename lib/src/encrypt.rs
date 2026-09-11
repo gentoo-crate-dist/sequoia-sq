@@ -911,8 +911,10 @@ impl<'sequoia, 'stream, 'prompt> Builder<'sequoia, 'stream, 'prompt> {
             prompt,
         } = params_once;
 
-        let mut signers = sequoia.get_signing_keys(
-            &signers, None, prompt.clone())
+        let mut signers = sequoia
+            .signer()
+            .prompt_(prompt.clone())
+            .get_signing_keys(signers)
             .map_err(|err| {
                 Error::OperationalError(
                     error::OperationalError::SigningFailed(

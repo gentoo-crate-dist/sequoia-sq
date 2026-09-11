@@ -197,8 +197,9 @@ impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
             ref mut prompt,
         } = &mut self.params_once;
 
-        let mut signer = sequoia.get_primary_key(
-            cert, None, prompt.clone())?;
+        let mut signer = sequoia.signer()
+            .prompt_(prompt.clone())
+            .get_primary_key(cert)?;
 
         // Make sure the user IDs are in canonical form.  If not, and
         // `--allow-non-canonical-userids` is not set, error out.

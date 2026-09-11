@@ -26,28 +26,6 @@ use crate::prompt::PromptFactory;
 use crate::prompt::check::CheckRemoteKey;
 use crate::prompt;
 
-/// Flags for [`Sequoia::get_signer`], [`Sequoia::get_primary_keys`]
-/// and related functions.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GetKeysOptions {
-    /// Don't ignore keys that are not alive.
-    AllowNotAlive,
-    /// Don't ignore keys that are not revoke.
-    AllowRevoked,
-    /// Use the NULL Policy.
-    NullPolicy,
-}
-
-/// Flags for [`Sequoia::get_signer`], [`Sequoia::get_primary_keys`]
-/// and related functions.
-pub enum KeyType {
-    /// Only consider primary key.
-    Primary,
-    /// Only consider keys that have at least one of the specified
-    /// capabilities.
-    KeyFlags(KeyFlags),
-}
-
 impl Sequoia {
     /// Gets a signer for the specified key.
     ///
@@ -178,49 +156,190 @@ impl Sequoia {
             })
         }
     }
+}
+
+/// Flags for [`Builder::get_key`].
+enum KeyType {
+    /// Only consider the primary key.
+    Primary,
+    /// Only consider keys that have at least one of the specified
+    /// capabilities.
+    KeyFlags(KeyFlags),
+}
 
-    /// Returns a signer for each certificate.
+/// Gets a signer for a certificate.
+///
+/// These parameters are used by [`signer`](Sequoia::signer).
+#[derive(Clone)]
+pub struct Params<'sequoia, 'policy> {
+    sequoia: &'sequoia Sequoia,
+
+    /// Whether to consider keys that are not alive.
+    allow_not_alive: bool,
+    /// Whether to consider keys that are revoked.
+    allow_revoked: bool,
+
+    /// An alternate policy.
+    policy: Option<&'policy dyn Policy>,
+}
+
+impl<'sequoia, 'policy> Params<'sequoia, 'policy> {
+    /// Returns the `Sequoia` instance.
+    pub fn sequoia(&self) -> &'sequoia Sequoia {
+        &self.sequoia
+    }
+
+    /// Returns whether to consider keys that are not alive.
     ///
-    /// This returns one key for each certificate.  If a certificate
-    /// doesn't have a suitable key, then this returns an error.
+    /// By default keys that are expired or created in the future are
+    /// ignored.
+    pub fn allow_not_alive(&self) -> bool {
+        self.allow_not_alive
+    }
+
+    /// Returns whether to consider revoked certificates.
+    ///
+    /// Revoked certificates are ignored by default.
+    pub fn allow_revoked(&self) -> bool {
+        self.allow_revoked
+    }
+
+    /// Returns the alternate policy, if any.
+    ///
+    /// If set, the alternate policy is used instead of the configured
+    /// policy.
+    pub fn policy(&self) -> Option<&'policy dyn Policy> {
+        self.policy.clone()
+    }
+}
+
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
+}
+
+/// Gets a signer for a certificate.
+///
+/// A builder providing control over how to get the signer.
+pub struct Builder<'sequoia, 'policy, 'prompt> {
+    params: Params<'sequoia, 'policy>,
+    params_once: ParamsOnce<'prompt>,
+}
+
+impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
+{
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
+        Builder {
+            params: Params {
+                sequoia,
+                allow_not_alive: false,
+                allow_revoked: false,
+                policy: None,
+            },
+            params_once: ParamsOnce {
+                prompt: None,
+            },
+        }
+    }
+
+    prompt_builder_impl!('policy; );
+
+    /// Returns the parameters.
+    ///
+    /// This is useful for examining the builder's configuration.
+    pub fn params(&self) -> &Params<'sequoia, 'policy> {
+        &self.params
+    }
+
+    /// Sets whether to consider keys that are not alive.
+    ///
+    /// By default keys that are expired or created in the future are
+    /// ignored.
+    pub fn allow_not_alive(mut self, allow_not_alive: bool) -> Self {
+        self.params.allow_not_alive = allow_not_alive;
+        self
+    }
+
+    /// Sets whether to consider revoked certificates.
+    ///
+    /// Revoked certificates are ignored by default.
+    pub fn allow_revoked(mut self, allow_revoked: bool) -> Self {
+        self.params.allow_revoked = allow_revoked;
+        self
+    }
+
+    /// Sets an alternate policy.
+    ///
+    /// If set, the alternate policy is used instead of the configured
+    /// policy.
+    pub fn policy<'p, P>(self, policy: P)
+        -> Builder<'sequoia, 'p, 'prompt>
+    where
+        P: Into<Option<&'p dyn Policy>>
+    {
+        Builder {
+            params: Params {
+                policy: policy.into(),
+                ..self.params
+            },
+            ..self
+        }
+    }
+
+    /// Sets the alternate policy to the null policy.
+    ///
+    /// The null policy accepts all algorithms, even those that are
+    /// known to be broken.
+    ///
+    /// See [`Builder::policy`].
+    pub fn null_policy(self) -> Builder<'sequoia, 'static, 'prompt> {
+        self.policy(Some(NULL_POLICY as &dyn Policy))
+    }
+
+    /// Returns a signer.
+    ///
+    /// If the certificate doesn't have a suitable key, then this
+    /// returns an error.
     ///
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key matches the key type specified in `keytype` (it's either
+    /// - the key matches the specified key type (it's either
     ///   the primary, or it has one of the key capabilities)
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    fn get_key<'sequoia, 'prompt, C>(
-        &'sequoia self,
-        cert: &C,
-        keytype: KeyType,
-        options: Option<&[GetKeysOptions]>,
-        prompt: &Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    fn get_key<C>(&self, cert: &C, key_type: KeyType)
         -> Result<(Cert, Box<dyn crypto::Signer + Send + Sync>),
                   CertError>
     where C: Borrow<Cert>,
     {
-        let options = options.unwrap_or(&[][..]);
-        let allow_not_alive = options.contains(&GetKeysOptions::AllowNotAlive);
-        let allow_revoked = options.contains(&GetKeysOptions::AllowRevoked);
-        let null_policy = options.contains(&GetKeysOptions::NullPolicy);
+        let &Params {
+            sequoia,
+            allow_not_alive,
+            allow_revoked,
+            policy,
+        } = &self.params;
+        let ParamsOnce {
+            prompt,
+        } = &self.params_once;
 
-        let policy = if null_policy {
-            NULL_POLICY as &dyn Policy
+        let policy: &dyn Policy = if let Some(policy) = policy {
+            policy
         } else {
-            self.policy() as &dyn Policy
+            sequoia.policy() as _
         };
 
         let cert = cert.borrow();
 
         if ! allow_revoked {
             let revocation_status
-                = cert.revocation_status(policy, self.time());
+                = cert.revocation_status(policy, sequoia.time());
             if let RevocationStatus::Revoked(sigs) = revocation_status {
                 return Err(CertError {
                     cert: cert.clone(),
@@ -237,7 +356,7 @@ impl Sequoia {
             }
         }
 
-        let vc = match cert.with_policy(policy, self.time()) {
+        let vc = match cert.with_policy(policy, sequoia.time()) {
             Ok(vc) => vc,
             Err(error) => {
                 return Err(CertError {
@@ -253,7 +372,7 @@ impl Sequoia {
             }
         };
 
-        let keyiter = match keytype {
+        let keyiter = match key_type {
             KeyType::Primary => {
                 Box::new(
                     std::iter::once(
@@ -284,7 +403,7 @@ impl Sequoia {
                             key: ka.key().fingerprint(),
                             creation_time: ka.key().creation_time(),
                             expiration_time: ka.key_expiration_time(),
-                            reference_time: self.time(),
+                            reference_time: sequoia.time(),
                             error: err.into(),
                         }));
                 }
@@ -319,7 +438,7 @@ impl Sequoia {
                 continue;
             }
 
-            match self.get_signer(ka.amalgamation(), prompt.clone()) {
+            match sequoia.get_signer(ka.amalgamation(), prompt.clone()) {
                 Ok(key) => {
                     return Ok((cert.clone(), key));
                 }
@@ -332,7 +451,7 @@ impl Sequoia {
 
         // We didn't get a key.  Return an error.
         if problems.is_empty() {
-            let key_flags = match keytype {
+            let key_flags = match key_type {
                 KeyType::Primary =>
                     unreachable!("All certificates have a primary key"),
                 KeyType::KeyFlags(flags) => flags.clone(),
@@ -365,24 +484,24 @@ impl Sequoia {
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key matches the specified key type (it's either
+    ///   the primary, or it has one of the key capabilities)
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_keys<'sequoia, 'prompt, C>(
-        &'sequoia self,
-        certs: &[C],
-        options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    pub fn get_primary_keys<C>(self, certs: &[C])
         -> Result<Vec<Box<dyn crypto::Signer + Send + Sync>>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
     {
         certs.into_iter()
             .map(|cert| {
-                self.get_key(cert, KeyType::Primary, options, &prompt)
+                self.get_key(cert, KeyType::Primary)
                     .map(|(_cert, signer)| signer)
             })
             .collect::<Result<_, _>>()
@@ -396,22 +515,22 @@ impl Sequoia {
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key matches the specified key type (it's either
+    ///   the primary, or it has one of the key capabilities)
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_key<'sequoia, 'prompt, C>(
-        &'sequoia self,
-        cert: C,
-        options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    pub fn get_primary_key<C>(self, cert: C,)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
     {
-        self.get_key(&cert, KeyType::Primary, options, &prompt)
+        self.get_key(&cert, KeyType::Primary)
             .map(|(_cert, signer)| signer)
     }
 
@@ -424,18 +543,17 @@ impl Sequoia {
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key is signing capable
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key matches the specified key type (it's either
+    ///   the primary, or it has one of the key capabilities)
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_keys<'sequoia, 'prompt, C>(
-        &'sequoia self,
-        certs: &[C],
-        options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    pub fn get_signing_keys<C>(self, certs: &[C])
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
@@ -445,9 +563,7 @@ impl Sequoia {
             .map(|cert| {
                 self.get_key(
                     cert,
-                    KeyType::KeyFlags(KeyFlags::signing()),
-                    options,
-                    &prompt)
+                    KeyType::KeyFlags(KeyFlags::signing()))
             })
             .collect::<Result<_, _>>()
     }
@@ -461,26 +577,24 @@ impl Sequoia {
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key is signing capable
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key matches the specified key type (it's either
+    ///   the primary, or it has one of the key capabilities)
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_key<'sequoia, 'prompt, C>(
-        &'sequoia self, cert: C,
-        options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    pub fn get_signing_key<C>(self, cert: C)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: Borrow<Cert>,
     {
         self.get_key(
             &cert,
-            KeyType::KeyFlags(KeyFlags::signing()),
-            options,
-            &prompt)
+            KeyType::KeyFlags(KeyFlags::signing()))
             .map(|(_cert, signer)| signer)
     }
 
@@ -493,18 +607,17 @@ impl Sequoia {
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key is certification capable
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key matches the specified key type (it's either
+    ///   the primary, or it has one of the key capabilities)
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_keys<'sequoia, 'prompt, C>(
-        &'sequoia self,
-        certs: &[C],
-        options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    pub fn get_certification_keys<C>(self, certs: &[C])
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
@@ -514,9 +627,7 @@ impl Sequoia {
             .map(|cert| {
                 self.get_key(
                     cert,
-                    KeyType::KeyFlags(KeyFlags::certification()),
-                    options,
-                    &prompt)
+                    KeyType::KeyFlags(KeyFlags::certification()))
             })
             .collect::<Result<_, _>>()
     }
@@ -530,27 +641,25 @@ impl Sequoia {
     /// A key is considered suitable if:
     ///
     /// - the certificate is valid
-    /// - the key is certification capable
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
+    /// - the key matches the specified key type (it's either
+    ///   the primary, or it has one of the key capabilities)
+    /// - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+    /// - the key is not revoked (unless allowed by
+    ///   [`Builder::allow_revoked`])
+    /// - the key's algorithm is supported by the underlying
+    ///   cryptographic backend.
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_key<'sequoia, 'prompt, C>(
-        &'sequoia self,
-        cert: C,
-        options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+    pub fn get_certification_key<C>(self, cert: C)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
     {
         self.get_key(
             &cert,
-            KeyType::KeyFlags(KeyFlags::certification()),
-            options,
-            &prompt)
+            KeyType::KeyFlags(KeyFlags::certification()))
             .map(|(_cert, signer)| signer)
     }
 }
+

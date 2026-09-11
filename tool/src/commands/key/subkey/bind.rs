@@ -185,7 +185,7 @@ pub fn bind(sq: Sq, command: cli::key::subkey::bind::Command) -> Result<()>
 
     // Get a signer.
     let pk = cert.primary_key().key();
-    let mut pk_signer = sq.get_primary_key(&cert, None)
+    let mut pk_signer = sq.signer().get_primary_key(&cert)
         .with_context(|| {
             format!("Getting signer for {}'s primary key",
                     cert.fingerprint())

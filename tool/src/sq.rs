@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -41,7 +40,6 @@ use sequoia::wot;
 
 use sequoia::key_store as keystore;
 
-use sequoia::GetKeysOptions;
 use sequoia::Sequoia;
 use sequoia::SystemError;
 use sequoia::cert::CertError;
@@ -393,105 +391,11 @@ impl Sq {
         self.sequoia.get_signer(ka, Some(Arc::new(prompt)))
     }
 
-    /// Returns a signer for each certificate's primary key.
-    ///
-    /// This returns one key for each certificate.  If a certificate
-    /// doesn't have a suitable key, then this returns an error.
-    ///
-    /// A key is considered suitable if:
-    ///
-    /// - the certificate is valid
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
-    ///
-    /// If a key is locked, then the user will be prompted to enter
-    /// the password.
-    pub fn get_primary_keys<C>(&self, certs: &[C],
-                               options: Option<&[GetKeysOptions]>)
-        -> Result<Vec<Box<dyn crypto::Signer + Send + Sync>>, CertError>
-    where C: std::borrow::Borrow<Cert>
+    /// A thin wrapper around `Sequoia::signer`, which sets the prompt.
+    pub fn signer(&self) -> sequoia::signer::Builder<'_, '_, '_>
     {
         let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_primary_keys(certs, options,
-                                      Some(Arc::new(prompt)))
-    }
-
-    /// Returns a signer for the certificate's primary key.
-    ///
-    /// If the certificate doesn't have a suitable key, then this
-    /// returns an error.
-    ///
-    /// A key is considered suitable if:
-    ///
-    /// - the certificate is valid
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
-    ///
-    /// If a key is locked, then the user will be prompted to enter
-    /// the password.
-    pub fn get_primary_key<C>(&self, cert: C,
-                              options: Option<&[GetKeysOptions]>)
-        -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
-    where C: std::borrow::Borrow<Cert>
-    {
-        let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_primary_key(cert, options,
-                                     Some(Arc::new(prompt)))
-    }
-
-    /// Returns a signer for a signing-capable key for each
-    /// certificate.
-    ///
-    /// This returns one key for each certificate.  If a certificate
-    /// doesn't have a suitable key, then this returns an error.
-    ///
-    /// A key is considered suitable if:
-    ///
-    /// - the certificate is valid
-    /// - the key is signing capable
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
-    ///
-    /// If a key is locked, then the user will be prompted to enter
-    /// the password.
-    pub fn get_signing_keys<C>(&self, certs: &[C],
-                               options: Option<&[GetKeysOptions]>)
-        -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
-                  CertError>
-    where C: Borrow<Cert>
-    {
-        let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_signing_keys(certs, options,
-                                      Some(Arc::new(prompt)))
-    }
-
-    /// Returns a signer for a certification-capable key for the
-    /// certificate.
-    ///
-    /// This returns one key for each certificate.  If a certificate
-    /// doesn't have a suitable key, then this returns an error.
-    ///
-    /// A key is considered suitable if:
-    ///
-    /// - the certificate is valid
-    /// - the key is certification capable
-    /// - the key is alive (unless allowed by `options`)
-    /// - the key is not revoked (unless allowed by `options`)
-    /// - the key's algorithm is supported by the underlying crypto engine.
-    ///
-    /// If a key is locked, then the user will be prompted to enter
-    /// the password.
-    pub fn get_certification_key<C>(&self, cert: C,
-                                    options: Option<&[GetKeysOptions]>)
-        -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
-    where C: std::borrow::Borrow<Cert>
-    {
-        let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_certification_key(cert, options,
-                                           Some(Arc::new(prompt)))
+        self.sequoia.signer().prompt(prompt)
     }
 
     /// Prints additional information in verbose mode.

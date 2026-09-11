@@ -222,7 +222,10 @@ fn update_internal<'sequoia, 'prompt>(
          wot::FULLY_TRUSTED));
 
     // Get a signer.
-    let mut pk_signer = sequoia.get_primary_key(&key, None, prompt)?;
+    let mut pk_signer = sequoia
+        .signer()
+        .prompt_(prompt.clone())
+        .get_primary_key(&key)?;
 
     // Now, create new approval signatures.
     let mut approval_signatures = Vec::new();

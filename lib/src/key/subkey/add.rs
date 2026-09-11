@@ -238,7 +238,10 @@ impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
 
         // If a password is needed to use the key, the user will be prompted.
         let (primary_key, password) =
-            match sequoia.get_primary_key(cert, None, prompt.clone()) {
+            match sequoia.signer()
+                .prompt_(prompt.clone())
+                .get_primary_key(cert)
+            {
                 Ok(key) => {
                     // Don't use a password, or prompt for one.
                     match password_policy {
