@@ -1,3 +1,69 @@
+//! Get signers.
+//!
+//! A signer is a handle that allows you to generate signatures.  The
+//! underlying key material may be in the certificate itself, managed
+//! by the key store, or be in one of the configured keyrings (see
+//! ([`SequoiaBuilder::add_keyring`]).
+//!
+//! The functionality here is relatively low-level.  If you want to
+//! sign data, you should first check if [`sign`](crate::sign) does
+//! what you want.  If you want to make a certification, look at
+//! [`pki::certify`](crate::pki::certify).
+//!
+//! # Key Selection
+//!
+//! [`Builder::get_signing_key`] returns a single signer that
+//! satisfies the given criteria for a given certificate.  If a
+//! certificate has more than one signing-capable subkey that
+//! satisfies the criteria, then one of them is chosen arbitrarily.
+//!
+//! A key is considered suitable if:
+//!
+//! - the certificate is valid
+//! - the key matches the specified key type
+//! - the key is alive (unless allowed by [`Builder::allow_not_alive`])
+//! - the key is not revoked (unless allowed by
+//!   [`Builder::allow_revoked`])
+//! - the key's algorithm is supported by the underlying
+//!   cryptographic backend.
+//!
+//! If a key is locked, then the user will be prompted to enter
+//! the password.
+//!
+//! Usually you don't want to sign with expired or revoked subkeys.
+//! But occasionally you do.  For instance, if you have an expired
+//! certificate and you find out that the secret key material has been
+//! compromised, then you want to be able to revoke the certificate.
+//!
+//! # Examples
+//!
+//! ```
+//! # use sequoia::Sequoia;
+//! #
+//! # fn main() -> sequoia::Result<()> {
+//! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+//! #
+//! # // Default cert.
+//! # let mut cert = sq.key_generate()
+//! #     .email("alice@example.org")
+//! #     .without_password()
+//! #     .generate()
+//! #     .expect("can generate a key")
+//! #     .into_cert();
+//! #
+//! let signer = sq.signer().get_signing_key(&cert)?;
+//! #
+//! # let vc = cert.with_policy(sq.policy(), sq.time())
+//! #     .expect("have a valid cert");
+//! # assert_eq!(signer.public().fingerprint(),
+//! #            vc.keys()
+//! #            .for_signing()
+//! #            .next()
+//! #            .expect("have signing key")
+//! #            .key()
+//! #            .fingerprint());
+//! # Ok(()) }
+//! ```
 use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -25,6 +91,9 @@ use crate::cert;
 use crate::prompt::PromptFactory;
 use crate::prompt::check::CheckRemoteKey;
 use crate::prompt;
+
+#[cfg(doc)]
+use crate::SequoiaBuilder;
 
 impl Sequoia {
     /// Gets a signer for the specified key.
