@@ -1,4 +1,76 @@
 //! User prompting.
+//!
+//! Some operations require a password or need to prompt the user to
+//! do something like insert a smartcard.  The library can't prompt
+//! the user directly, as the application is responsible for
+//! interacting with the user.  Similarly, the application shouldn't
+//! have to deal with too much OpenPGP logic; that's the library's
+//! responsibility.
+//!
+//! There are several ways to separate these concerns.  The prompting
+//! can be done upfront.  Unfortunately, figuring out what is needed
+//! beforehand can be as complicated as the operation itself, which
+//! defeats the convenience of the library.  The operation can be
+//! aborted with a machine readable error.  The application can then
+//! prompt the user and retry the operation.  This requires the
+//! implementation to carefully unwind the state, which is brittle,
+//! and the error handling is still complicated for the caller.  The
+//! operation can invoke a callback, which is provided by the
+//! application and does the actual prompting.  This is the most
+//! convenient for both the caller and the implementation, but it
+//! means that an operation can block.  This library opts for the last
+//! approach.
+//!
+//! # Prompting Framework
+//!
+//! This module provides a prompting framework that allows the library
+//! to describe a prompt and to drive the user interaction, while
+//! delegating the actual display and input retrieval to the
+//! application.
+//!
+//! To use the prompting framework, functions like
+//! [`Sequoia::key_generate`](crate::key::generate) take an object
+//! that implements [`Prompt`].  When the library needs to get some
+//! input from the user, it calls either [`Prompt::prompt`] or
+//! [`Prompt::multiprompt`].  The application displays a prompt to the
+//! user, and returns what the user entered.  The library then
+//! continues execution.
+//!
+//! The library passes two arguments to [`Prompt::prompt`] and
+//! [`Prompt::multiprompt`]: a [`Context`] object (or objects in the
+//! case of `Prompt::multiprompt`) and a [`Check`] object.  The
+//! `Context` structure describes the prompt.  These include machine
+//! readable fields like [`Reason`] and [`Action`] as well as getters
+//! than return reasonable human-readable strings like a prompt
+//! ([`Context::prompt`]) and a window title ([`Context::title`]).
+//!
+//! The [`Check`] object checks the input.  For instance, if unlocking
+//! a key, then the `check` function returns whether the password is
+//! correct using [`CheckError`].  If not, the prompt should display
+//! an appropriate error message and prompt the user again.
+//!
+//! # Asynchronous Closing
+//!
+//! An application may want to close the prompt asynchronously, e.g.,
+//! after a certain amount of time, or if automatically detects that
+//! the user inserts the requested token.  This can be done using
+//! [`Prompt::close`].
+//!
+//! # State
+//!
+//! A [`Prompt`] will only be used once.  If the library needs to
+//! prompt the user again, it will create a second prompt from a
+//! [`PromptFactory`] and use that.
+//!
+//! In general you should be very careful about what you store in a
+//! `Prompt` as you don't know exactly what context it will be used
+//! in.  For instance, when [generating a key](crate::key::generate),
+//! you might reasonably think that the prompt will only be used for
+//! prompting for new passwords for the key, but key generate also
+//! certifies the new certificate with the local trust root.  If the
+//! local trust root's secret key material is password protected, it
+//! will also prompt for a password to unlock it.  To determine what a
+//! prompt is used for you should examine the passed [`Context`].
 
 use std::borrow::Cow;
 use std::sync::Arc;
