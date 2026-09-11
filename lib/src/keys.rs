@@ -375,13 +375,13 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    fn get_keys<'sequoia, 'prompt, C>(
+    fn get_key<'sequoia, 'prompt, C>(
         &'sequoia self,
-        certs: &[C],
+        cert: &C,
         keytype: KeyType,
         options: Option<&[GetKeysOptions]>,
-        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
-        -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
+        prompt: &Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
+        -> Result<(Cert, Box<dyn crypto::Signer + Send + Sync>),
                   CertError>
     where C: Borrow<Cert>,
     {
@@ -396,152 +396,145 @@ impl Sequoia {
             self.policy() as &dyn Policy
         };
 
-        let mut keys = vec![];
+        let cert = cert.borrow();
 
-        'next_cert: for cert in certs {
-            let cert = cert.borrow();
-
-            if ! allow_revoked {
-                let revocation_status
-                    = cert.revocation_status(policy, self.time());
-                if let RevocationStatus::Revoked(sigs) = revocation_status {
-                    return Err(CertError {
-                        cert: cert.clone(),
-                        problems: vec![
-                            cert::CertProblem::CertRevoked(
-                                cert::problem::CertRevoked {
-                                    cert: cert.fingerprint(),
-                                    revocations: sigs.into_iter()
-                                        .cloned()
-                                        .collect(),
-                                }),
-                        ],
-                    });
-                }
-            }
-
-            let vc = match cert.with_policy(policy, self.time()) {
-                Ok(vc) => vc,
-                Err(error) => {
-                    return Err(CertError {
-                        cert: cert.clone(),
-                        problems: vec![
-                            cert::CertProblem::CertInvalid(
-                                cert::problem::CertInvalid {
-                                    cert: cert.fingerprint(),
-                                    error: error.into()
-                                })
-                        ]
-                    });
-                }
-            };
-
-            let keyiter = match keytype {
-                KeyType::Primary => {
-                    Box::new(
-                        std::iter::once(
-                            vc.keys()
-                                .next()
-                                .expect("a valid cert has a primary key")))
-                        as Box<dyn Iterator<Item=ValidErasedKeyAmalgamation<openpgp::packet::key::PublicParts>>>
-                },
-                KeyType::KeyFlags(ref flags) => {
-                    Box::new(vc.keys().key_flags(flags.clone()))
-                        as Box<dyn Iterator<Item=_>>
-                },
-            };
-
-            let mut problems = Vec::new();
-
-            let mut key_count = 0;
-            for ka in keyiter {
-                key_count += 1;
-
-                let problem_count = problems.len();
-
-                if ! allow_not_alive {
-                    if let Err(err) = ka.alive() {
-                        problems.push(cert::CertProblem::NotLive(
-                            cert::problem::NotLive {
-                                cert: cert.fingerprint(),
-                                key: ka.key().fingerprint(),
-                                creation_time: ka.key().creation_time(),
-                                expiration_time: ka.key_expiration_time(),
-                                reference_time: self.time(),
-                                error: err.into(),
-                            }));
-                    }
-                }
-
-                if ! allow_revoked {
-                    if let RevocationStatus::Revoked(sigs)
-                        = ka.revocation_status()
-                    {
-                        problems.push(cert::CertProblem::KeyRevoked(
-                            cert::problem::KeyRevoked {
-                                cert: cert.fingerprint(),
-                                key: ka.key().fingerprint(),
-                                revocations: sigs.into_iter()
-                                    .map(|sig| sig.clone())
-                                    .collect(),
-                            }));
-                    }
-                }
-
-                if ! ka.key().pk_algo().is_supported() {
-                    problems.push(cert::CertProblem::UnsupportedAlgorithm(
-                        cert::problem::UnsupportedAlgorithm {
-                            cert: cert.fingerprint(),
-                            key: ka.key().fingerprint(),
-                            algo: ka.key().pk_algo(),
-                        }));
-                }
-
-                if problems.len() > problem_count {
-                    // This key has at least one problem.
-                    continue;
-                }
-
-                match self.get_signer(ka.amalgamation(), prompt.clone()) {
-                    Ok(key) => {
-                        keys.push((cert.clone(), key));
-                        continue 'next_cert;
-                    }
-                    Err(err) => {
-                        problems.extend(err.problems);
-                        continue;
-                    }
-                }
-            }
-
-            // We didn't get a key.  Return an error.
-            if problems.is_empty() {
-                let key_flags = match keytype {
-                    KeyType::Primary =>
-                        unreachable!("All certificates have a primary key"),
-                    KeyType::KeyFlags(flags) => flags.clone(),
-                };
-
+        if ! allow_revoked {
+            let revocation_status
+                = cert.revocation_status(policy, self.time());
+            if let RevocationStatus::Revoked(sigs) = revocation_status {
                 return Err(CertError {
                     cert: cert.clone(),
                     problems: vec![
-                        cert::CertProblem::NoUsableKeys(
-                            cert::problem::NoUsableKeys {
+                        cert::CertProblem::CertRevoked(
+                            cert::problem::CertRevoked {
                                 cert: cert.fingerprint(),
-                                capabilities: key_flags,
-                                unusable: key_count,
-                            })
-                    ]
-                });
-            } else {
-                return Err(CertError {
-                    cert: cert.clone(),
-                    problems,
+                                revocations: sigs.into_iter()
+                                    .cloned()
+                                    .collect(),
+                            }),
+                    ],
                 });
             }
         }
 
-        Ok(keys)
+        let vc = match cert.with_policy(policy, self.time()) {
+            Ok(vc) => vc,
+            Err(error) => {
+                return Err(CertError {
+                    cert: cert.clone(),
+                    problems: vec![
+                        cert::CertProblem::CertInvalid(
+                            cert::problem::CertInvalid {
+                                cert: cert.fingerprint(),
+                                error: error.into()
+                            })
+                    ]
+                });
+            }
+        };
+
+        let keyiter = match keytype {
+            KeyType::Primary => {
+                Box::new(
+                    std::iter::once(
+                        vc.keys()
+                            .next()
+                            .expect("a valid cert has a primary key")))
+                    as Box<dyn Iterator<Item=ValidErasedKeyAmalgamation<openpgp::packet::key::PublicParts>>>
+            },
+            KeyType::KeyFlags(ref flags) => {
+                Box::new(vc.keys().key_flags(flags.clone()))
+                    as Box<dyn Iterator<Item=_>>
+            },
+        };
+
+        let mut problems = Vec::new();
+
+        let mut key_count = 0;
+        for ka in keyiter {
+            key_count += 1;
+
+            let problem_count = problems.len();
+
+            if ! allow_not_alive {
+                if let Err(err) = ka.alive() {
+                    problems.push(cert::CertProblem::NotLive(
+                        cert::problem::NotLive {
+                            cert: cert.fingerprint(),
+                            key: ka.key().fingerprint(),
+                            creation_time: ka.key().creation_time(),
+                            expiration_time: ka.key_expiration_time(),
+                            reference_time: self.time(),
+                            error: err.into(),
+                        }));
+                }
+            }
+
+            if ! allow_revoked {
+                if let RevocationStatus::Revoked(sigs)
+                    = ka.revocation_status()
+                {
+                    problems.push(cert::CertProblem::KeyRevoked(
+                        cert::problem::KeyRevoked {
+                            cert: cert.fingerprint(),
+                            key: ka.key().fingerprint(),
+                            revocations: sigs.into_iter()
+                                .map(|sig| sig.clone())
+                                .collect(),
+                        }));
+                }
+            }
+
+            if ! ka.key().pk_algo().is_supported() {
+                problems.push(cert::CertProblem::UnsupportedAlgorithm(
+                    cert::problem::UnsupportedAlgorithm {
+                        cert: cert.fingerprint(),
+                        key: ka.key().fingerprint(),
+                        algo: ka.key().pk_algo(),
+                    }));
+            }
+
+            if problems.len() > problem_count {
+                // This key has at least one problem.
+                continue;
+            }
+
+            match self.get_signer(ka.amalgamation(), prompt.clone()) {
+                Ok(key) => {
+                    return Ok((cert.clone(), key));
+                }
+                Err(err) => {
+                    problems.extend(err.problems);
+                    continue;
+                }
+            }
+        }
+
+        // We didn't get a key.  Return an error.
+        if problems.is_empty() {
+            let key_flags = match keytype {
+                KeyType::Primary =>
+                    unreachable!("All certificates have a primary key"),
+                KeyType::KeyFlags(flags) => flags.clone(),
+            };
+
+            return Err(CertError {
+                cert: cert.clone(),
+                problems: vec![
+                    cert::CertProblem::NoUsableKeys(
+                        cert::problem::NoUsableKeys {
+                            cert: cert.fingerprint(),
+                            capabilities: key_flags,
+                            unusable: key_count,
+                        })
+                ]
+            });
+        } else {
+            return Err(CertError {
+                cert: cert.clone(),
+                problems,
+            });
+        }
     }
 
     /// Returns a signer for each certificate's primary key.
@@ -567,10 +560,12 @@ impl Sequoia {
     where
         C: std::borrow::Borrow<Cert>,
     {
-        self.get_keys(certs, KeyType::Primary, options, prompt)
-            .map(|keys| keys.into_iter()
-                 .map(|(_, signer)| signer)
-                 .collect())
+        certs.into_iter()
+            .map(|cert| {
+                self.get_key(cert, KeyType::Primary, options, &prompt)
+                    .map(|(_cert, signer)| signer)
+            })
+            .collect::<Result<_, _>>()
     }
 
     /// Returns a signer for the certificate's primary key.
@@ -589,19 +584,15 @@ impl Sequoia {
     /// the password.
     pub fn get_primary_key<'sequoia, 'prompt, C>(
         &'sequoia self,
-        certs: C,
+        cert: C,
         options: Option<&[GetKeysOptions]>,
         prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
     {
-        let keys = self.get_primary_keys(&[certs], options, prompt)?;
-        assert!(
-            keys.len() == 1,
-            "Expected exactly one result from get_primary_keys()"
-        );
-        Ok(keys.into_iter().next().unwrap())
+        self.get_key(&cert, KeyType::Primary, options, &prompt)
+            .map(|(_cert, signer)| signer)
     }
 
     /// Returns a signer for a signing-capable key for each
@@ -630,9 +621,15 @@ impl Sequoia {
     where
         C: Borrow<Cert>,
     {
-        self.get_keys(certs,
-                      KeyType::KeyFlags(KeyFlags::empty().set_signing()),
-                      options, prompt)
+        certs.into_iter()
+            .map(|cert| {
+                self.get_key(
+                    cert,
+                    KeyType::KeyFlags(KeyFlags::signing()),
+                    options,
+                    &prompt)
+            })
+            .collect::<Result<_, _>>()
     }
 
     /// Returns a signer for a signing-capable key for the
@@ -659,12 +656,12 @@ impl Sequoia {
     where
         C: Borrow<Cert>,
     {
-        let keys = self.get_signing_keys(&[cert], options, prompt)?;
-        assert!(
-            keys.len() == 1,
-            "Expected exactly one result from get_signing_keys()"
-        );
-        Ok(keys.into_iter().next().unwrap().1)
+        self.get_key(
+            &cert,
+            KeyType::KeyFlags(KeyFlags::signing()),
+            options,
+            &prompt)
+            .map(|(_cert, signer)| signer)
     }
 
     /// Returns a signer for a certification-capable key for each
@@ -693,9 +690,15 @@ impl Sequoia {
     where
         C: std::borrow::Borrow<Cert>,
     {
-        self.get_keys(certs,
-                      KeyType::KeyFlags(KeyFlags::empty().set_certification()),
-                      options, prompt)
+        certs.into_iter()
+            .map(|cert| {
+                self.get_key(
+                    cert,
+                    KeyType::KeyFlags(KeyFlags::certification()),
+                    options,
+                    &prompt)
+            })
+            .collect::<Result<_, _>>()
     }
 
     /// Returns a signer for a certification-capable key for the
@@ -723,11 +726,11 @@ impl Sequoia {
     where
         C: std::borrow::Borrow<Cert>,
     {
-        let keys = self.get_certification_keys(&[cert], options, prompt)?;
-        assert!(
-            keys.len() == 1,
-            "Expected exactly one result from get_certification_keys()"
-        );
-        Ok(keys.into_iter().next().unwrap().1)
+        self.get_key(
+            &cert,
+            KeyType::KeyFlags(KeyFlags::certification()),
+            options,
+            &prompt)
+            .map(|(_cert, signer)| signer)
     }
 }
