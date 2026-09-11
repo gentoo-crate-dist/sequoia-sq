@@ -21,7 +21,7 @@ maintenance = { status = "actively-developed" }
 aho-corasick = "1"
 anyhow = "1.0.18"
 chrono = "0.4.38"
-clap = { version = "4.5", optional = true }
+clap = { version = "4.5", optional = true, features = ["derive", "string"] }
 dirs = "6"
 filetime = "0.2"
 fs_extra = "1"
