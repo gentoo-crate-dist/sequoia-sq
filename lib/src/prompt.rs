@@ -892,7 +892,7 @@ where
 
 impl<'p, T, P> PromptFactory<'p, T> for &P
 where
-    P: PromptFactory<'p, T> + ?Sized
+    P: PromptFactory<'p, T> + 'p + ?Sized
 {
     fn build<'a>(&self, context: &mut Context<'a, T>)
         -> Box<dyn Prompt<T> + 'p>

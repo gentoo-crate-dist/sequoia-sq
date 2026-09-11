@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 
 use sequoia_openpgp as openpgp;
@@ -191,18 +193,16 @@ fn certify(sequoia: &Sequoia,
 /// or a CAs.  Normally the trust root and the CAs' secret key
 /// material is not protected by a password, but the user could change
 /// this.
-pub fn certify_downloads<'sequoia, 'p, P>(
+pub fn certify_downloads<'sequoia, 'prompt>(
     sequoia: &'sequoia Sequoia,
     emit_provenance_messages: bool,
     ca: &Cert,
     certs: Vec<Cert>, email: Option<&str>,
-    prompt: P)
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
     -> Vec<Cert>
-where
-    P: prompt::PromptFactory<'p>
 {
     let mut ca_signer = match sequoia.get_certification_key(
-        ca, None, &prompt)
+        ca, None, prompt)
     {
         Ok(signer) => signer,
         Err(err) => {

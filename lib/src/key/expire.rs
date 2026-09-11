@@ -45,18 +45,23 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
+}
+
 /// Changes the expiration time.
 ///
 /// A builder providing control over how to change a certificate or
 /// key's expiration time.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'prompt> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'prompt>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia>
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self
     {
         Builder {
             params: Params {
@@ -64,6 +69,9 @@ impl<'sequoia> Builder<'sequoia>
                 expiration: Expiration::from_duration(
                     DEFAULT_KEY_VALIDITY_DURATION),
             },
+            params_once: ParamsOnce {
+                prompt: None,
+            }
         }
     }
 
@@ -73,6 +81,8 @@ impl<'sequoia> Builder<'sequoia>
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    prompt_builder_impl!(; );
 
     /// When the certificate expires.
     pub fn expiration(mut self, expiration: Expiration) -> Self
@@ -86,22 +96,21 @@ impl<'sequoia> Builder<'sequoia>
     /// If `keys` is `None`, the primary key's expiration is changed.
     /// Otherwise the expiration of each of the specified keys is
     /// extended.
-    pub fn expire<'p, P>(&self,
-                         cert: &Cert,
-                         keys: &[KeyHandle],
-                         output: Option<(&mut dyn std::io::Write, Option<&std::path::Path>)>,
-                         binary: bool,
-                         prompt: P)
+    pub fn expire(
+        mut self,
+        cert: &Cert,
+        keys: &[KeyHandle],
+        output: Option<(&mut dyn std::io::Write, Option<&std::path::Path>)>,
+        binary: bool)
         -> Result<()>
-    where
-        P: prompt::PromptFactory<'p>
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                ref expiration,
-            },
-        } = self;
+        let &Params {
+            sequoia,
+            ref expiration,
+        } = &self.params;
+        let &mut ParamsOnce {
+            ref mut prompt,
+        } = &mut self.params_once;
 
         let vc = cert.with_policy(sequoia.policy(), sequoia.time())?;
 
@@ -111,10 +120,10 @@ impl<'sequoia> Builder<'sequoia>
             = keys.into_iter().partition(|ka| ka.primary());
         assert!(primary.len() <= 1);
 
-        let mut primary_signer
-            = sequoia.get_primary_key(cert,
-                                      Some(&[GetKeysOptions::AllowNotAlive]),
-                                      &prompt)?;
+        let mut primary_signer = sequoia.get_primary_key(
+            cert,
+            Some(&[GetKeysOptions::AllowNotAlive]),
+            prompt.clone())?;
 
         // Fix the new expiration time.
         let expiration_time = expiration.to_system_time(sequoia.time())?;

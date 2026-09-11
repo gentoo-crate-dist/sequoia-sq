@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use anyhow::Context as _;
 
@@ -145,20 +146,20 @@ impl Sequoia {
     /// decrypted using those passwords, the user is prompted.  If a
     /// valid password is entered, it is added to the password cache.
     /// If you only want to probe the password cache and not prompt
-    /// the user, use [`prompt::Cancel`] as the prompter.
+    /// the user, use [`prompt::Cancel`] for the prompt
+    /// implementation.
     ///
     /// If `allow_skipping` is true, then the user is given the option
     /// to skip decrypting the key.  If the user skips decrypting the
     /// key, then an error is returned.
-    pub fn decrypt_key<'sequoia, 'p, R, P>(
+    pub fn decrypt_key<'sequoia, 'prompt, R>(
         &'sequoia self,
         cert: Option<&Cert>,
         key: Key<key::SecretParts, R>,
         allow_skipping: bool,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Key<key::SecretParts, R>>
     where R: key::KeyRole + Clone,
-        P: prompt::PromptFactory<'p>,
     {
         tracer!(TRACE, "decrypt_key");
         t!("Decrypting {}/{}, allow skipping: {}",
@@ -208,7 +209,7 @@ impl Sequoia {
                     unencrypted: None,
                 };
 
-                match prompt.prompt(&mut context, &mut checker)
+                match prompt!(self, prompt, &mut context, &mut checker)
                     .context("Prompting for password")?
                 {
                     prompt::Response::NoPassword => {
@@ -238,21 +239,20 @@ impl Sequoia {
     /// tried.  Otherwise, or if that fails, the user is prompted to
     /// unlock the key.  The correct password is added to the password
     /// cache.
-    pub fn get_signer<'sequoia, 'p, P1, R1, R2, P>(
+    pub fn get_signer<'sequoia, 'prompt, P1, R1, R2>(
         &'sequoia self,
         ka: &KeyAmalgamation<P1, R1, R2>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where P1: key::KeyParts + Clone,
           R1: key::KeyRole + Clone,
-          P: PromptFactory<'p>,
     {
         let try_tsk = |cert: &Cert, key: &Key<_, _>|
             -> Result<_>
         {
             if let Ok(key) = key.parts_as_secret() {
                 let key = self.decrypt_key(
-                    Some(cert), key.clone(), false, &prompt)?;
+                    Some(cert), key.clone(), false, prompt.clone())?;
                 let keypair = Box::new(key.into_keypair()
                     .expect("decrypted secret key material"));
                 Ok(keypair)
@@ -311,7 +311,7 @@ impl Sequoia {
 
                         let mut checker = CheckRemoteKey::optional(&mut key);
 
-                        match prompt.prompt(&mut context, &mut checker) {
+                        match prompt!(self, prompt, &mut context, &mut checker) {
                             Ok(prompt::Response::Password(p)) => {
                                 assert!(checker.unlocked());
                                 self.cache_password(p.clone());
@@ -375,16 +375,15 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    fn get_keys<'sequoia, 'p, C, P>(
+    fn get_keys<'sequoia, 'prompt, C>(
         &'sequoia self,
         certs: &[C],
         keytype: KeyType,
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where C: Borrow<Cert>,
-          P: PromptFactory<'p>,
     {
         let options = options.unwrap_or(&[][..]);
         let allow_not_alive = options.contains(&GetKeysOptions::AllowNotAlive);
@@ -503,7 +502,7 @@ impl Sequoia {
                     continue;
                 }
 
-                match self.get_signer(ka.amalgamation(), &prompt) {
+                match self.get_signer(ka.amalgamation(), prompt.clone()) {
                     Ok(key) => {
                         keys.push((cert.clone(), key));
                         continue 'next_cert;
@@ -559,15 +558,14 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_keys<'sequoia, 'p, C, P>(
+    pub fn get_primary_keys<'sequoia, 'prompt, C>(
         &'sequoia self,
         certs: &[C],
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Vec<Box<dyn crypto::Signer + Send + Sync>>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
-        P: PromptFactory<'p>,
     {
         self.get_keys(certs, KeyType::Primary, options, prompt)
             .map(|keys| keys.into_iter()
@@ -589,15 +587,14 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_key<'sequoia, 'p, C, P>(
+    pub fn get_primary_key<'sequoia, 'prompt, C>(
         &'sequoia self,
         certs: C,
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
-        P: PromptFactory<'p>,
     {
         let keys = self.get_primary_keys(&[certs], options, prompt)?;
         assert!(
@@ -623,16 +620,15 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_keys<'sequoia, 'p, C, P>(
+    pub fn get_signing_keys<'sequoia, 'prompt, C>(
         &'sequoia self,
         certs: &[C],
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
         C: Borrow<Cert>,
-        P: PromptFactory<'p>,
     {
         self.get_keys(certs,
                       KeyType::KeyFlags(KeyFlags::empty().set_signing()),
@@ -655,14 +651,13 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_key<'sequoia, 'p, C, P>(
+    pub fn get_signing_key<'sequoia, 'prompt, C>(
         &'sequoia self, cert: C,
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: Borrow<Cert>,
-        P: PromptFactory<'p>,
     {
         let keys = self.get_signing_keys(&[cert], options, prompt)?;
         assert!(
@@ -688,16 +683,15 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_keys<'sequoia, 'p, C, P>(
+    pub fn get_certification_keys<'sequoia, 'prompt, C>(
         &'sequoia self,
         certs: &[C],
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
         C: std::borrow::Borrow<Cert>,
-        P: PromptFactory<'p>,
     {
         self.get_keys(certs,
                       KeyType::KeyFlags(KeyFlags::empty().set_certification()),
@@ -720,15 +714,14 @@ impl Sequoia {
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_key<'sequoia, 'p, C, P>(
+    pub fn get_certification_key<'sequoia, 'prompt, C>(
         &'sequoia self,
         cert: C,
         options: Option<&[GetKeysOptions]>,
-        prompt: P)
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>)
         -> Result<Box<dyn crypto::Signer + Send + Sync>, CertError>
     where
         C: std::borrow::Borrow<Cert>,
-        P: PromptFactory<'p>,
     {
         let keys = self.get_certification_keys(&[cert], options, prompt)?;
         assert!(

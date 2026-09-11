@@ -62,10 +62,9 @@
 //! store.
 //!
 //! ```
-//! use sequoia::Sequoia;
+//! # use sequoia::Sequoia;
 //! use sequoia::cert::list::Query;
 //! use sequoia::cert;
-//! use sequoia::prompt::Cancel;
 //! use sequoia::sign;
 //!
 //! use sequoia_openpgp as openpgp;
@@ -81,13 +80,13 @@
 //! #   let alice = sequoia.key_generate()
 //! #         .email("alice@example.org")
 //! #         .without_password()
-//! #         .generate(Cancel::new())
+//! #         .generate()
 //! #         .expect("can generate certificate")
 //! #         .into_cert();
 //! #   let bob_priv = sequoia.key_generate()
 //! #         .email("bob@example.org")
 //! #         .without_password()
-//! #         .generate(Cancel::new())
+//! #         .generate()
 //! #         .expect("can generate certificate")
 //! #         .into_cert();
 //!
@@ -113,9 +112,7 @@
 //!     .add_recipient(bob.clone())
 //!     .encrypt(
 //!         std::io::Cursor::new(message),
-//!         &mut ciphertext,
-//!         // Fail if the signing key is password protected.
-//!         sequoia::prompt::Cancel::new())?;
+//!         &mut ciphertext)?;
 //! #
 //! # let mut plaintext = Vec::new();
 //! # sequoia.decrypt()
@@ -123,8 +120,7 @@
 //! #     .add_secret_key(bob_priv)
 //! #     .decrypt(
 //! #         std::io::Cursor::new(ciphertext),
-//! #         &mut plaintext,
-//! #         Cancel::new())
+//! #         &mut plaintext)
 //! #     .expect("Valid signature");
 //! # assert_eq!(&plaintext, message);
 //! # Ok(()) }
@@ -140,7 +136,6 @@
 //! use sequoia::encrypt::Params;
 //! use sequoia::encrypt::Stream;
 //! use sequoia::encrypt;
-//! use sequoia::prompt::Cancel;
 //! # use sequoia::openpgp::cert::CertBuilder;
 //!
 //! struct MyStream {
@@ -183,9 +178,7 @@
 //!     .add_recipient(bob.clone())
 //!     .encrypt(
 //!         std::io::Cursor::new(message),
-//!         &mut ciphertext,
-//!         // Fail if the signing key is password protected.
-//!         sequoia::prompt::Cancel::new())?;
+//!         &mut ciphertext)?;
 //! #
 //! # let mut plaintext = Vec::new();
 //! # sequoia.decrypt()
@@ -193,8 +186,7 @@
 //! #     .add_secret_key(bob)
 //! #     .decrypt(
 //! #         std::io::Cursor::new(ciphertext),
-//! #         &mut plaintext,
-//! #         Cancel::new())
+//! #         &mut plaintext)
 //! #     .expect("Valid signature");
 //! # assert_eq!(&plaintext, message);
 //! # Ok(()) }
@@ -548,22 +540,21 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'sequoia, 'stream> {
+struct ParamsOnce<'sequoia, 'stream, 'prompt> {
     stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Encrypt messages.
 ///
 /// This command builder is used to encrypt messages.
-pub struct Builder<'sequoia, 'stream> {
+pub struct Builder<'sequoia, 'stream, 'prompt> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'sequoia, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream, 'prompt>,
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'stream>
-    {
+impl<'sequoia, 'stream, 'prompt> Builder<'sequoia, 'stream, 'prompt> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -584,6 +575,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             },
             params_once: ParamsOnce {
                 stream: None,
+                prompt: None,
             }
         }
     }
@@ -595,7 +587,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         &self.params
     }
 
-    stream_builder_impl!();
+    stream_builder_impl!(; 'prompt,);
+
+    prompt_builder_impl!('stream; );
 
     /// Signs the message with the specified certificate.
     ///
@@ -829,7 +823,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     }
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
+impl<'sequoia, 'stream, 'prompt> Builder<'sequoia, 'stream, 'prompt> {
     /// Encrypts the specified message with the configured parameters.
     ///
     /// The encrypted data is written to `output`.  By default, the
@@ -841,18 +835,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     ///
     /// On failure some of the encrypted data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn encrypt<'w, 'p, I, O, P>(mut self, mut input: I, output: O, prompt: P)
+    pub fn encrypt<'w, I, O>(mut self, mut input: I, output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
         let result = Self::encrypt_(
             &self.params, &mut self.params_once,
-            &mut input, output.into(), &prompt);
+            &mut input, output.into());
 
         let mut stream = self.params_once.stream;
 
@@ -891,10 +884,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     }
 
     fn encrypt_<'w, 'p>(params: &Params<'sequoia>,
-                        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+                        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
                         mut input: &mut (dyn std::io::Read + Send + Sync),
-                        output: Writer<'w>,
-                        prompt: &dyn prompt::PromptFactory<'p>)
+                        output: Writer<'w>)
         -> Result<(), Error>
     {
         let &Params {
@@ -916,9 +908,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = params;
         let ParamsOnce {
             stream,
+            prompt,
         } = params_once;
 
-        let mut signers = sequoia.get_signing_keys(&signers, None, &prompt)
+        let mut signers = sequoia.get_signing_keys(
+            &signers, None, prompt.clone())
             .map_err(|err| {
                 Error::OperationalError(
                     error::OperationalError::SigningFailed(
@@ -936,7 +930,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
                 .sequoia(sequoia)
                 .build();
 
-            match prompt.prompt(&mut context, &mut checker)
+            match prompt!(sequoia, prompt, &mut context, &mut checker)
                 .map_err(|err| {
                     Error::OperationalError(
                         error::OperationalError::PromptError(err))
@@ -1282,8 +1276,6 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 mod tests {
     use super::*;
 
-    use crate::prompt::Cancel;
-
     const MESSAGE: &[u8] = b"message";
 
     fn check(output: Vec<Output>, result: Result<Outcome, Error>,
@@ -1380,13 +1372,13 @@ mod tests {
         let keystore1 = sq.key_generate()
             .email("keystore@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
         let keystore2 = sq.key_generate()
             .email("keystore@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1395,14 +1387,14 @@ mod tests {
             .email("ephemeral@example.org")
             .without_password()
             .ephemeral()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
         let ephemeral2 = sq.key_generate()
             .email("ephemeral@example.org")
             .without_password()
             .ephemeral()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1416,8 +1408,7 @@ mod tests {
             .add_signer(keystore2.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                crate::prompt::Cancel::new());
+                &mut ciphertext);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1, 1);
@@ -1432,8 +1423,7 @@ mod tests {
             .add_signer(ephemeral2.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                crate::prompt::Cancel::new());
+                &mut ciphertext);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1, 1);
@@ -1447,8 +1437,7 @@ mod tests {
             .add_signer(ephemeral2.clone().strip_secret_key_material())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                crate::prompt::Cancel::new());
+                &mut ciphertext);
 
         assert!(result.is_err());
         check(output, result, 0, 0);
@@ -1465,8 +1454,7 @@ mod tests {
             .add_signer(keystore2.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                crate::prompt::Cancel::new());
+                &mut ciphertext);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 2, 3);
@@ -1479,8 +1467,7 @@ mod tests {
             .add_recipient(keystore1.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                crate::prompt::Cancel::new());
+                &mut ciphertext);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1, 0);
@@ -1493,8 +1480,7 @@ mod tests {
             .add_signer(keystore1.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                crate::prompt::Cancel::new());
+                &mut ciphertext);
 
         assert!(result.is_err());
         check(output, result, 0, 0);

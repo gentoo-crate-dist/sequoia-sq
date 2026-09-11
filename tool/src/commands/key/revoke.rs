@@ -36,14 +36,14 @@ pub fn dispatch(
     let prompt = password::PromptFactory::new(&sq, false);
 
     sq.sequoia.key_revoke()
+        .prompt(prompt)
         .add_notations(notations.into_iter())
         .revoke(
             revoker.as_ref(),
             &cert,
             command.reason.into(),
             &command.message,
-            output,
-            prompt)?;
+            output)?;
 
     Ok(())
 }

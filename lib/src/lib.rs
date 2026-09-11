@@ -46,11 +46,22 @@
 //!
 //! ```rust
 //! use sequoia::Sequoia;
+//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
-//! let sequoia = Sequoia::new()?;
+//! let sequoia = Sequoia::new(Cancel::new())?;
 //! # Ok(()) }
 //! ```
+//!
+//! We supply the [`Cancel`](crate::prompt::Cancel) implementation of
+//! [`PromptFactory`](crate::prompt::PromptFactory`).  `PromptFactory`
+//! returns objects that implement [`Prompt`](crate::prompt::Prompt`),
+//! which is the mechanism that this library uses to prompt the user
+//! for passwords (see the [`prompt`] module's documentation), to
+//! insert a smartcard, etc.  `Cancel` simulates the user pressing
+//! cancel at the prompt.  You should provide your own implementation
+//! of `PromptFactory` and `Prompt`, which is appropriate for your
+//! application.
 //!
 //! One of the most common operations is to verify a signature (see
 //! [`sequoia::verify`]).  The following example verifies that a
@@ -68,7 +79,7 @@
 //! #   .key_generate()
 //! #   .email("alice@example.org")
 //! #   .without_password()
-//! #   .generate(sequoia::prompt::Cancel::new())?;
+//! #   .generate()?;
 //! #
 //! # let file = b"I own you";
 //! # let mut signature = Vec::new();
@@ -77,8 +88,7 @@
 //! #   .add_signer(alice.cert().clone())
 //! #   .sign(
 //! #       std::io::Cursor::new(file),
-//! #       &mut signature,
-//! #       sequoia::prompt::Cancel::new())?;
+//! #       &mut signature)?;
 //! #
 //! # if false {
 //! let qubes_release_key = Cert::from_file("qubes-release-4.3-signing-key.asc")?;
@@ -292,6 +302,9 @@ pub struct Sequoia {
     /// The current time.
     time: Clock,
 
+    /// The default prompt.
+    prompt: Box<dyn prompt::PromptFactory<'static>>,
+
     /// Overrides the path to the cert store.
     cert_store_path: Option<types::StateDirectory>,
 
@@ -337,16 +350,21 @@ impl Sequoia {
     }
 
     /// Returns a new `Sequoia` instance using all the defaults.
-    pub fn new() -> Result<Sequoia> {
-        Sequoia::builder().build()
+    pub fn new<P>(prompt: P) -> Result<Sequoia>
+    where
+        P: prompt::PromptFactory<'static> + 'static,
+    {
+        Sequoia::builder()
+            .prompt(prompt)
+            .build()
     }
 
     /// Returns a builder providing control over how to import
     /// certificates.
     ///
     /// See [`cert::import::Builder`] for details.
-    pub fn cert_import<'sequoia, 'stream>(&'sequoia self)
-        -> cert::import::Builder<'sequoia, 'stream>
+    pub fn cert_import<'sequoia, 'stream, 'prompt>(&'sequoia self)
+        -> cert::import::Builder<'sequoia, 'stream, 'prompt>
     {
         cert::import::Builder::new(self)
     }
@@ -372,8 +390,8 @@ impl Sequoia {
     /// Returns a builder for decrypting and verifying messages.
     ///
     /// See [`decrypt::Builder`] for details.
-    pub fn decrypt<'sequoia, 'stream>(&'sequoia self)
-        -> decrypt::Builder<'sequoia, 'stream>
+    pub fn decrypt<'sequoia, 'stream, 'prompt>(&'sequoia self)
+        -> decrypt::Builder<'sequoia, 'stream, 'prompt>
     {
         decrypt::Builder::new(self)
     }
@@ -381,8 +399,8 @@ impl Sequoia {
     /// Returns a builder providing control over how to encrypt a message.
     ///
     /// See [`encrypt::Builder`] for details.
-    pub fn encrypt<'sequoia, 'stream>(&'sequoia self)
-        -> encrypt::Builder<'sequoia, 'stream>
+    pub fn encrypt<'sequoia, 'stream, 'prompt>(&'sequoia self)
+        -> encrypt::Builder<'sequoia, 'stream, 'prompt>
     {
         encrypt::Builder::new(self)
     }
@@ -393,8 +411,8 @@ impl Sequoia {
         key::approvals::list::Builder::new(self)
     }
 
-    pub fn key_approvals_update<'sequoia>(&'sequoia self)
-        -> key::approvals::update::Builder<'sequoia>
+    pub fn key_approvals_update<'sequoia, 'prompt>(&'sequoia self)
+        -> key::approvals::update::Builder<'sequoia, 'prompt>
     {
         key::approvals::update::Builder::new(self)
     }
@@ -403,8 +421,8 @@ impl Sequoia {
     /// certificate or a key's expiration.
     ///
     /// See [`key::expire::Builder`] for details.
-    pub fn key_expire<'sequoia>(&'sequoia self)
-        -> key::expire::Builder<'sequoia>
+    pub fn key_expire<'sequoia, 'prompt>(&'sequoia self)
+        -> key::expire::Builder<'sequoia, 'prompt>
     {
         key::expire::Builder::new(self)
     }
@@ -419,8 +437,8 @@ impl Sequoia {
     /// [`DEFAULT_KEY_VALIDITY_DURATION`](crate::config::DEFAULT_KEY_VALIDITY_DURATION).
     ///
     /// See [`key::generate::Builder`] for details.
-    pub fn key_generate<'sequoia, 'writer>(&'sequoia self)
-        -> key::generate::Builder<'sequoia, 'writer>
+    pub fn key_generate<'sequoia, 'writer, 'prompt>(&'sequoia self)
+        -> key::generate::Builder<'sequoia, 'writer, 'prompt>
     {
         key::generate::Builder::new(self)
     }
@@ -439,8 +457,8 @@ impl Sequoia {
     /// a certificate.
     ///
     /// See [`key::revoke::Builder`] for details.
-    pub fn key_revoke<'sequoia>(&'sequoia self)
-        -> key::revoke::Builder<'sequoia>
+    pub fn key_revoke<'sequoia, 'prompt>(&'sequoia self)
+        -> key::revoke::Builder<'sequoia, 'prompt>
     {
         key::revoke::Builder::new(self)
     }
@@ -452,8 +470,8 @@ impl Sequoia {
     /// [`DEFAULT_KEY_VALIDITY_DURATION`](crate::config::DEFAULT_KEY_VALIDITY_DURATION).
     ///
     /// See [`key::subkey::add::Builder`] for details.
-    pub fn key_subkey_add<'sequoia>(&'sequoia self)
-        -> key::subkey::add::Builder<'sequoia>
+    pub fn key_subkey_add<'sequoia, 'prompt>(&'sequoia self)
+        -> key::subkey::add::Builder<'sequoia, 'prompt>
     {
         key::subkey::add::Builder::new(self)
     }
@@ -462,8 +480,8 @@ impl Sequoia {
     /// subkeys.
     ///
     /// See [`key::subkey::revoke::Builder`] for details.
-    pub fn key_subkey_revoke<'sequoia>(&'sequoia self)
-        -> key::subkey::revoke::Builder<'sequoia>
+    pub fn key_subkey_revoke<'sequoia, 'prompt>(&'sequoia self)
+        -> key::subkey::revoke::Builder<'sequoia, 'prompt>
     {
         key::subkey::revoke::Builder::new(self)
     }
@@ -472,8 +490,8 @@ impl Sequoia {
     /// to a certificate.
     ///
     /// See [`key::userid::add::Builder`] for details.
-    pub fn key_userid_add<'sequoia>(&'sequoia self)
-        -> key::userid::add::Builder<'sequoia>
+    pub fn key_userid_add<'sequoia, 'prompt>(&'sequoia self)
+        -> key::userid::add::Builder<'sequoia, 'prompt>
     {
         key::userid::add::Builder::new(self)
     }
@@ -482,8 +500,8 @@ impl Sequoia {
     /// user IDs.
     ///
     /// See [`key::userid::revoke::Builder`] for details.
-    pub fn key_userid_revoke<'sequoia>(&'sequoia self)
-        -> key::userid::revoke::Builder<'sequoia>
+    pub fn key_userid_revoke<'sequoia, 'prompt>(&'sequoia self)
+        -> key::userid::revoke::Builder<'sequoia, 'prompt>
     {
         key::userid::revoke::Builder::new(self)
     }
@@ -495,8 +513,8 @@ impl Sequoia {
     /// results of the previous iteration to generate related queries.
     ///
     /// See [`network::search::Builder`] for details.
-    pub fn network_search<'sequoia, 'writer, 'stream>(&'sequoia self)
-        -> network::search::Builder<'sequoia, 'writer, 'stream>
+    pub fn network_search<'sequoia, 'writer, 'stream, 'prompt>(&'sequoia self)
+        -> network::search::Builder<'sequoia, 'writer, 'stream, 'prompt>
     {
         network::search::Builder::new(self)
     }
@@ -505,8 +523,8 @@ impl Sequoia {
     /// keys.
     ///
     /// See [`pki::certify::Builder`] for details.
-    pub fn pki_certify<'sequoia, 'writer, 'stream>(&'sequoia self)
-        -> pki::certify::Builder<'sequoia, 'writer, 'stream>
+    pub fn pki_certify<'sequoia, 'writer, 'stream, 'prompt>(&'sequoia self)
+        -> pki::certify::Builder<'sequoia, 'writer, 'stream, 'prompt>
     {
         pki::certify::Builder::new(self)
     }
@@ -515,8 +533,9 @@ impl Sequoia {
     /// signature.
     ///
     /// See [`sign::Builder`] for details.
-    pub fn sign<'sequoia, 'stream>(&'sequoia self)
-        -> sign::Builder<'sequoia, 'stream, sign::builder::UnspecifiedSignatureType>
+    pub fn sign<'sequoia, 'stream, 'prompt>(&'sequoia self)
+        -> sign::Builder<'sequoia, 'stream, 'prompt,
+                         sign::builder::UnspecifiedSignatureType>
     {
         sign::Builder::new(self)
     }

@@ -40,7 +40,8 @@ pub fn dispatch(sq: Sq, cmd: import::Command) -> Result<()> {
             if input_path == stdin_path {
                 sq.sequoia.cert_import()
                     .stream(&mut stream)
-                    .import(std::io::stdin(), &prompt)?;
+                    .prompt(&prompt)
+                    .import(std::io::stdin())?;
             } else {
                 let input = std::fs::File::open(&input_path)
                     .with_context(|| {
@@ -49,7 +50,8 @@ pub fn dispatch(sq: Sq, cmd: import::Command) -> Result<()> {
 
                 sq.sequoia.cert_import()
                     .stream(&mut stream)
-                    .import(input, &prompt)
+                    .prompt(&prompt)
+                    .import(input)
                     .with_context(|| {
                         format!("Reading {}", input_path.display())
                     })?;

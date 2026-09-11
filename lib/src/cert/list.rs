@@ -23,14 +23,11 @@
 //! other types of queries.)
 //!
 //! ```
-//! use sequoia::Sequoia;
+//! # use sequoia::Sequoia;
 //! use sequoia::cert::list::Output;
 //! use sequoia::cert::list::Query;
-//! # use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
-//! # let sq = Sequoia::builder().ephemeral()?.build()?;
-//! #
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 //! #
 //! # // Generate a key and import it into the certificate store.
@@ -38,7 +35,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -71,16 +68,13 @@
 //!
 //! ```
 //! use sequoia::Result;
-//! use sequoia::Sequoia;
+//! # use sequoia::Sequoia;
 //! use sequoia::cert::list::Output;
 //! use sequoia::cert::list::Params;
 //! use sequoia::cert::list::Query;
 //! use sequoia::cert::list::Stream;
-//! # use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
-//! # let sq = Sequoia::builder().ephemeral()?.build()?;
-//! #
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 //! #
 //! # // Generate a key and import it into the certificate store.
@@ -88,7 +82,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -1415,8 +1409,6 @@ mod tests {
     use sequoia_openpgp as openpgp;
     use openpgp::cert::CertBuilder;
 
-    use crate::prompt::Cancel;
-
     fn check(sequoia: &Sequoia,
              output: Vec<Output>,
              result: Result<Outcome, Error>,
@@ -1638,7 +1630,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1678,7 +1670,7 @@ mod tests {
                 .email(email)
                 .without_password()
                 .ephemeral()
-                .generate(Cancel::new())
+                .generate()
                 .expect("can generate a key")
                 .into_cert();
 
@@ -1692,8 +1684,7 @@ mod tests {
                     .trust_amount(trust_amount)
                     .certify(&certifier,
                              &cert,
-                             &[UserID::from(format!("<{}>", email))],
-                             Cancel::new())
+                             &[UserID::from(format!("<{}>", email))])
                     .expect("can certify");
             }
 
@@ -1952,8 +1943,7 @@ mod tests {
             .pki_certify()
             .certify(&local_trust_root,
                      &alice,
-                     &[UserID::from("<alice@example.org>")],
-                     Cancel::new())
+                     &[UserID::from("<alice@example.org>")])
             .expect("can certify");
 
         // Make sure the binding is now considered to be

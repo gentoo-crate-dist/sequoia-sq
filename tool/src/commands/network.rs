@@ -121,12 +121,13 @@ pub fn dispatch_search(sq: Sq, c: cli::network::search::Command)
     rt.block_on(async {
         sq.sequoia.network_search()
             .stream(&mut stream)
+            .prompt(prompt)
             .iterations(iterations)
             .set_key_servers(servers)
             .query_wkd(use_wkd)
             .query_dane(use_dane)
             .to_writer(output)
-            .search(queries, prompt).await
+            .search(queries).await
     })?;
 
     Ok(())
@@ -176,12 +177,13 @@ pub fn dispatch_keyserver(
             rt.block_on(async {
                 sq.sequoia.network_search()
                     .stream(&mut stream)
+                    .prompt(prompt)
                     .iterations(1)
                     .set_key_servers(servers)
                     .clear_sources()
                     .query_key_servers(true)
                     .to_writer(output)
-                    .search(queries, prompt).await
+                    .search(queries).await
             })?;
         }
         Publish(c) => {
@@ -304,11 +306,12 @@ pub fn dispatch_wkd(sq: Sq, c: cli::network::wkd::Command)
             rt.block_on(async {
                 sq.sequoia.network_search()
                     .stream(&mut stream)
+                    .prompt(prompt)
                     .iterations(1)
                     .clear_sources()
                     .query_wkd(true)
                     .to_writer(output)
-                    .search(queries, prompt).await
+                    .search(queries).await
             })?;
         }
         Publish(mut c) => {
@@ -683,11 +686,12 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             rt.block_on(async {
                 sq.sequoia.network_search()
                     .stream(&mut stream)
+                    .prompt(prompt)
                     .iterations(1)
                     .clear_sources()
                     .query_dane(true)
                     .to_writer(output)
-                    .search(queries, prompt).await
+                    .search(queries).await
             })?;
         }
     }

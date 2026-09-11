@@ -84,6 +84,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
 
     sq.sequoia.pki_certify()
         .stream(stream)
+        .prompt(prompt)
         .recreate(c.recreate)
         .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
@@ -96,8 +97,7 @@ pub fn add(sq: Sq, c: link::AddCommand)
         .certify(
             &trust_root,
             &cert,
-            &userids,
-            prompt)?;
+            &userids)?;
 
     Ok(())
 }
@@ -132,6 +132,7 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
 
     sq.sequoia.pki_certify()
         .stream(stream)
+        .prompt(prompt)
         .recreate(c.recreate)
         .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(c.amount.amount())
@@ -144,8 +145,7 @@ pub fn authorize(sq: Sq, c: link::AuthorizeCommand)
         .certify(
             &trust_root,
             &cert,
-            &userids,
-            prompt)?;
+            &userids)?;
 
     Ok(())
 }
@@ -180,6 +180,7 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
 
     sq.sequoia.pki_certify()
         .stream(stream)
+        .prompt(prompt)
         .recreate(c.recreate)
         .ignore_certification_errors(true) // Filtered by stream.
         .trust_amount(0)
@@ -189,8 +190,7 @@ pub fn retract(sq: Sq, c: link::RetractCommand)
         .certify(
             &trust_root,
             &cert,
-            &userids,
-            prompt)?;
+            &userids)?;
 
     Ok(())
 }

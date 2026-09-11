@@ -26,8 +26,7 @@
 //! # use openpgp::serialize::Serialize;
 //! #
 //! # use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
-//!
+//! #
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
@@ -41,11 +40,7 @@
 //! #
 //! # let mut input = std::io::Cursor::new(&input[..]);
 //! #
-//! // The prompt is used to ask for a password to decrypt an
-//! // Autocrypt message.  Here we suppress the prompt.
-//! let prompt = Cancel::new();
-//!
-//! if let Err(err) = sq.cert_import().import(input, prompt) {
+//! if let Err(err) = sq.cert_import().import(input) {
 //!     eprintln!("Failed to import the file: {}", err);
 //! }
 //! # Ok(()) }
@@ -66,7 +61,6 @@
 //! use sequoia::cert::import::Output;
 //! use sequoia::cert::import::output::*;
 //! use sequoia::cert::import;
-//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
@@ -115,14 +109,10 @@
 //!     }
 //! }
 //!
-//! // The prompt is used to ask for a password to decrypt an
-//! // Autocrypt message.  Here we suppress the prompt.
-//! let prompt = Cancel::new();
-//!
 //! let mut stream = Stream { };
 //! if let Err(err) = sq.cert_import()
 //!     .stream(&mut stream)
-//!     .import(input, prompt)
+//!     .import(input)
 //! {
 //!     eprintln!("Failed to import at least one certificate: {}", err);
 //! }
@@ -714,23 +704,22 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'sequoia, 'stream> {
+struct ParamsOnce<'sequoia, 'stream, 'prompt> {
     stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Imports certificates.
 ///
 /// A builder providing control over how to import certificates.
-pub struct Builder<'sequoia, 'stream> {
+pub struct Builder<'sequoia, 'stream, 'prompt> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'sequoia, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream, 'prompt>,
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
+impl<'sequoia, 'stream, 'prompt> Builder<'sequoia, 'stream, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'stream>
-    {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -739,6 +728,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             },
             params_once: ParamsOnce {
                 stream: None,
+                prompt: None,
             },
         }
     }
@@ -750,7 +740,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         &self.params
     }
 
-    stream_builder_impl!();
+    stream_builder_impl!(; 'prompt,);
+
+    prompt_builder_impl!('stream; );
 
     /// Sets the secret keys to try when decrypting an autocrypt
     /// message.
@@ -804,12 +796,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// [`Builder::import_autocrypt`], as appropriate.
     ///
     /// See those functions for a description of the return value.
-    pub fn import<'a, 'p, P>(self,
-                             input: impl std::io::Read + Send + Sync + 'a,
-                             prompt: P)
+    pub fn import<'a>(self, input: impl std::io::Read + Send + Sync + 'a)
         -> Result<Outcome, Error>
-    where
-        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             params,
@@ -876,7 +864,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
             Type::Other => {
                 let mut outcome = Outcome::new(ArtifactType::Autocrypt);
                 let result = Self::import_autocrypt_(
-                    &params, &mut params_once, input, &mut outcome, &prompt);
+                    &params, &mut params_once, input, &mut outcome);
                 (outcome, result)
             }
         };
@@ -915,14 +903,16 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Report that importing something failed.
-    fn report_failure(params: &Params<'sequoia>,
-                      params_once: &mut ParamsOnce<'sequoia, 'stream>,
-                      err: error::ImportError,
-                      outcome: &mut Outcome)
+    fn report_failure(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
+        err: error::ImportError,
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let ParamsOnce {
             stream,
+            prompt: _,
         } = params_once;
 
         outcome.importing_failed.push(output::ImportingFailed {
@@ -943,12 +933,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports the certs and reports on the individual certs.
-    fn import_and_report<'a>(params: &Params<'sequoia>,
-                             params_once: &mut ParamsOnce<'sequoia, 'stream>,
-                             cert: openpgp::Cert,
-                             artifact: output::Artifact,
-                             provenance: Vec<Arc<Cert>>,
-                             outcome: &mut Outcome)
+    fn import_and_report<'a>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
+        cert: openpgp::Cert,
+        artifact: output::Artifact,
+        provenance: Vec<Arc<Cert>>,
+        outcome: &mut Outcome)
         -> Result<bool, Error>
     {
         let Params {
@@ -958,6 +949,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         } = params;
         let ParamsOnce {
             stream,
+            prompt: _,
         } = params_once;
 
         let cert_store = match sequoia.cert_store_or_else() {
@@ -1092,10 +1084,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports certs encoded as OpenPGP keyring.
-    fn import_keyring_<'a>(params: &Params<'sequoia>,
-                           params_once: &mut ParamsOnce<'sequoia, 'stream>,
-                           source: Box<dyn BufferedReader<Cookie> + 'a>,
-                           outcome: &mut Outcome)
+    fn import_keyring_<'a>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
+        source: Box<dyn BufferedReader<Cookie> + 'a>,
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let raw_certs = match RawCertParser::from_buffered_reader(source) {
@@ -1218,10 +1211,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         result
     }
 
-    fn import_certs_(params: &Params<'sequoia>,
-                     params_once: &mut ParamsOnce<'sequoia, 'stream>,
-                     certs: &mut dyn Iterator<Item=Cert>,
-                     outcome: &mut Outcome)
+    fn import_certs_(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
+        certs: &mut dyn Iterator<Item=Cert>,
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         for cert in certs.into_iter() {
@@ -1387,7 +1381,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// Imports a bare revocation certificate.
     fn import_revocation_<'a>(
         params: &Params<'sequoia>,
-        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
         source: Box<dyn BufferedReader<Cookie> + 'a>,
         outcome: &mut Outcome)
         -> Result<(), Error>
@@ -1636,13 +1630,10 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     /// be decrypted or the signature can't be verified, the error is
     /// propagated using [`Output::DecryptedAutocrypt`], but it does
     /// not cause the function to return an error.
-    pub fn import_autocrypt<'p, P>(
+    pub fn import_autocrypt(
         mut self,
-        source: impl std::io::Read + Send + Sync,
-        prompt: P)
+        source: impl std::io::Read + Send + Sync)
         -> Result<Outcome, Error>
-    where
-        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             ref params,
@@ -1659,7 +1650,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let mut outcome = Outcome::new(ArtifactType::Autocrypt);
 
         let result = Self::import_autocrypt_(
-            params, params_once, source, &mut outcome, &prompt);
+            params, params_once, source, &mut outcome);
 
         let report = outcome.to_report();
 
@@ -1697,12 +1688,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
     }
 
     /// Imports certificates from autocrypt headers.
-    fn import_autocrypt_<'a, 'p>(
+    fn import_autocrypt_<'a>(
         params: &Params<'sequoia>,
-        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
         mut source: Box<dyn BufferedReader<Cookie> + 'a>,
-        outcome: &mut Outcome,
-        prompt: &dyn prompt::PromptFactory<'p>)
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         let Params {
@@ -1773,7 +1763,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
                         let cert = certify_downloads(
                             sequoia, false, ca,
                             vec![cert], Some(&addr[..]),
-                            prompt);
+                            params_once.prompt.clone());
                         (cert.into_iter().next().expect("have cert"),
                          Some(ca))
                     } else {
@@ -1826,14 +1816,14 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream>
         let mut plaintext = Vec::new();
         let decryption_result = sequoia.decrypt()
             .stream(&mut decryption_output)
+            .prompt_(params_once.prompt.clone())
             .add_designated_signer((*sender_attributes.0).clone())
             .add_secret_keys(secret_keys.clone())
             .add_session_keys(session_keys.clone())
             .signatures(1)
             .decrypt(
                 dup,
-                &mut plaintext,
-                prompt);
+                &mut plaintext);
 
         let decrypted = decryption_output.iter().any(|o| {
             matches!(o, decrypt::Output::Decrypted(_))
@@ -2371,8 +2361,7 @@ mod tests {
         let result = sq.cert_import()
             .stream(&mut output)
             .import_autocrypt(
-                std::io::Cursor::new(b""),
-                prompt::Cancel::new());
+                std::io::Cursor::new(b""));
 
         assert!(result.is_err());
         check(ArtifactType::Autocrypt, output, result, 0, 1);
@@ -2382,8 +2371,7 @@ mod tests {
         let result = sq.cert_import()
             .stream(&mut output)
             .import_autocrypt(
-                std::io::Cursor::new(b"not an email"),
-                prompt::Cancel::new());
+                std::io::Cursor::new(b"not an email"));
 
         assert!(result.is_err());
         check(ArtifactType::Autocrypt, output, result, 0, 1);
@@ -2398,8 +2386,7 @@ From: Alice <alice@example.org>
 To: Bob <bob@example.org>
 
 Hi!
-"),
-                prompt::Cancel::new());
+"));
 
         if let Err(err) = result.as_ref() {
             panic!("Failed to import certificates: {:?}", err);
@@ -2425,8 +2412,7 @@ Autocrypt: addr=patrick@enigmail.net; prefer-encrypt=mutual; keydata=
  oONLAjAqbLlkGZZW54HaVTiUAQDbiHnmrXQ6dWpdMfjUeO9xvSgZ2b2Yup7vE4C4k/b7DA==
 
 Hi!
-"),
-                prompt::Cancel::new());
+"));
 
         if let Err(err) = result.as_ref() {
             panic!("Failed to import certificates: {:?}", err);

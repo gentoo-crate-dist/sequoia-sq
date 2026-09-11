@@ -64,8 +64,6 @@
 //!
 //! ```
 //! # use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
-//!
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
@@ -74,7 +72,7 @@
 //!     .email("alice@example.org")
 //!     .password("secr3t".into())
 //!     // We already provided the password so we don't need a password prompt.
-//!     .generate(Cancel::new())?;
+//!     .generate()?;
 //!
 //! println!("New certificate's fingerprint: {}",
 //!          outcome.cert().fingerprint());
@@ -85,7 +83,6 @@
 //!
 //! ```
 //! # use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
@@ -99,7 +96,7 @@
 //!     .password("secr3t".into())
 //!     .to_writer((&mut key, &mut revocation))
 //!     // We already provided the password so we don't need a password prompt.
-//!     .generate(Cancel::new())?;
+//!     .generate()?;
 //!
 //! println!("New certificate's fingerprint: {}",
 //!          outcome.cert().fingerprint());
@@ -479,23 +476,22 @@ impl KeyTemplate {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'writer> {
+struct ParamsOnce<'writer, 'prompt> {
     destination: Destination<(Writer<'writer>, OptionalWriter<'writer>)>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Generates keys.
 ///
 /// A builder providing control over how to generate a new key.
-pub struct Builder<'sequoia, 'writer> {
+pub struct Builder<'sequoia, 'writer, 'prompt> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'writer>,
+    params_once: ParamsOnce<'writer, 'prompt>,
 }
 
-impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
+impl<'sequoia, 'writer, 'prompt> Builder<'sequoia, 'writer, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'writer>
-    {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -519,6 +515,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             },
             params_once: ParamsOnce {
                 destination: Destination::Store,
+                prompt: None,
             },
         }
     }
@@ -538,7 +535,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// If `writers` is `None`, then writes the key and the revocation
     /// certificate to the store.
     pub fn to_writer<'w, O, W1, W2>(self, writers: O)
-        -> Builder<'sequoia, 'w>
+        -> Builder<'sequoia, 'w, 'prompt>
     where
         O: Into<Option<(W1, W2)>>,
         W1: Into<crate::Writer<'w>>,
@@ -575,6 +572,8 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     }
 
     destination_builder_to_ephemeral_impl!("key");
+
+    prompt_builder_impl!('writer; );
 
     /// Sets the certificate's profile.
     ///
@@ -784,17 +783,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
     /// "Generated on $HOST" shadow CA.  These are opportunistic and
     /// if either fails, e.g., because the certificate is not usable,
     /// the error is silently ignored.
-    pub fn generate<'p, P>(self, prompt: P)
-        -> Result<Outcome, Error>
-    where
-        P: prompt::PromptFactory<'p>,
-    {
-        self.generate_(&prompt)
-    }
-
-    fn generate_<'p>(self, prompt: &dyn prompt::PromptFactory<'p>)
-        -> Result<Outcome, Error>
-    {
+    pub fn generate(self) -> Result<Outcome, Error> {
         let Builder {
             params: Params {
                 sequoia,
@@ -817,6 +806,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
             },
             params_once: ParamsOnce {
                 mut destination,
+                prompt,
             }
         } = self;
 
@@ -976,7 +966,8 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                     .sequoia(sequoia)
                     .build();
 
-                let password = match prompt.prompt(&mut context, &mut checker)
+                let password = match prompt!(
+                    sequoia, prompt, &mut context, &mut checker)
                     .map_err(|err| Error::PromptError(err))?
                 {
                     prompt::Response::Password(password) => Some(password),
@@ -1084,7 +1075,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                 let have_userids = cert.userids().next().is_some();
                 if have_userids {
                     if let Ok(c) = certify_generated(
-                        &sequoia, &cert, &prompt)
+                        &sequoia, &cert, prompt.clone())
                     {
                         cert = c;
                     }
@@ -1112,6 +1103,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                         // Mark all user IDs as authenticated, and mark
                         // the key as a trusted introducer.
                         sequoia.pki_certify()
+                            .prompt_(prompt.clone())
                             .recreate(false)
                             .trust_amount(FULLY_TRUSTED as u8)
                             .trust_depth(u8::MAX)
@@ -1121,11 +1113,11 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                                 &trust_root,
                                 &cert,
                                 &userids,
-                                prompt,
                             )?;
                     } else if ! own_key /* shared key */ && have_userids {
                         // Mark all user IDs as authenticated.
                         sequoia.pki_certify()
+                            .prompt_(prompt.clone())
                             .recreate(false)
                             .trust_amount(FULLY_TRUSTED as u8)
                             // Not a trusted introducer.
@@ -1135,8 +1127,7 @@ impl<'sequoia, 'writer> Builder<'sequoia, 'writer>
                             .certify(
                                 &trust_root,
                                 &cert,
-                                &userids,
-                                prompt)?;
+                                &userids)?;
                     }
 
                     Ok(())
@@ -1165,7 +1156,6 @@ mod tests {
 
     use crate::cert::list::Output::Binding;
     use crate::cert::list::Query;
-    use crate::prompt::Cancel;
 
     fn check(sequoia: &Sequoia, cert: &Cert, imported: bool,
              authenticated: bool)
@@ -1223,7 +1213,7 @@ mod tests {
         let outcome = sequoia.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key");
 
         assert!(outcome.key_import_status.is_some(),
@@ -1246,7 +1236,7 @@ mod tests {
             .email("alice@example.org")
             .without_password()
             .to_writer((&mut cert_bytes, None))
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key");
 
         assert!(outcome.key_import_status.is_none(),
@@ -1279,7 +1269,7 @@ mod tests {
             .email("alice@example.org")
             .without_password()
             .ephemeral()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key");
 
         assert!(outcome.key_import_status.is_none(),

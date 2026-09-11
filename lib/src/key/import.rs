@@ -50,8 +50,7 @@
 //! # use openpgp::serialize::Serialize;
 //! #
 //! # use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
-//!
+//! #
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
@@ -91,7 +90,6 @@
 //! use sequoia::key::import::Output;
 //! use sequoia::key::import::output::*;
 //! use sequoia::key::import;
-//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;

@@ -59,6 +59,7 @@ pub fn dispatch(sq: Sq, command: cli::encrypt::Command) -> Result<()> {
 
     sq.sequoia.encrypt()
         .stream(stream)
+        .prompt(prompt)
         .add_signers(signers.into_iter())
         .add_notations(notations.into_iter())
         .prompt_for_passwords(npasswords)
@@ -74,8 +75,7 @@ pub fn dispatch(sq: Sq, command: cli::encrypt::Command) -> Result<()> {
                 .map(|f| f.as_bytes())
                 .unwrap_or(b""))?
         .encrypt(command.input.open("data to encrypt")?,
-                 output,
-                 prompt)?;
+                 output)?;
 
     Ok(())
 }

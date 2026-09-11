@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sequoia_openpgp as openpgp;
 use openpgp::Cert;
 use openpgp::Packet;
@@ -20,17 +22,15 @@ struct CertificateRevocation {
 
 impl CertificateRevocation {
     /// Create a new CertificateRevocation
-    pub fn new<'sequoia, 'p, P>(
+    pub fn new<'sequoia, 'prompt>(
         sequoia: &'sequoia Sequoia,
         cert: &Cert,
         revoker: Option<&Cert>,
         reason: ReasonForRevocation,
         message: &str,
         notations: &[(bool, NotationData)],
-        prompt: P,
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
     ) -> Result<Self>
-    where
-        P: prompt::PromptFactory<'p>
     {
         let (revoker, mut signer) = get_secret_signer(
             &sequoia,
@@ -107,21 +107,30 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
+}
+
 /// Revokes certificates.
 ///
 /// A builder providing control over how to revoke certificates.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'prompt> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'prompt>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia>
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self
     {
         Builder {
             params: Params {
                 sequoia,
                 notations: Vec::new(),
+            },
+            params_once: ParamsOnce {
+                prompt: None,
             },
         }
     }
@@ -132,6 +141,8 @@ impl<'sequoia> Builder<'sequoia>
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    prompt_builder_impl!();
 
     /// Adds a notation to the new revocation signatures.
     ///
@@ -161,22 +172,23 @@ impl<'sequoia> Builder<'sequoia>
     }
 
     /// Revokes a certificate.
-    pub fn revoke<'p, P>(&self,
-                         revoker: Option<&Cert>,
-                         cert: &Cert,
-                         reason: ReasonForRevocation,
-                         message: &str,
-                         output: Option<&mut dyn std::io::Write>,
-                         prompt: P)
+    pub fn revoke(
+        self,
+        revoker: Option<&Cert>,
+        cert: &Cert,
+        reason: ReasonForRevocation,
+        message: &str,
+        output: Option<&mut dyn std::io::Write>)
         -> Result<()>
-    where
-        P: prompt::PromptFactory<'p>
     {
-        let &Builder {
+        let Builder {
             params: Params {
                 sequoia,
                 ref notations,
             },
+            params_once: ParamsOnce {
+                prompt,
+            }
         } = self;
 
         let revocation = CertificateRevocation::new(

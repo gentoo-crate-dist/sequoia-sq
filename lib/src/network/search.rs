@@ -40,9 +40,8 @@
 //! automatically add the results to the certificate store:
 //!
 //! ```rust
-//! use sequoia::Sequoia;
+//! # use sequoia::Sequoia;
 //! use sequoia::network::search::Query;
-//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! # let rt = tokio::runtime::Runtime::new()
@@ -53,7 +52,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .expect("can generate a key");
 //! #
 //! # rt.block_on(async {
@@ -61,10 +60,7 @@
 //! #   .clear_sources()
 //! #   .query_cert_store(true)
 //!     .search(
-//!         Query::Address("alice@example.org".to_string()),
-//!         // If a shadow CA is password protected, don't prompt for
-//!         // a password; ignore it;
-//!         Cancel::new())
+//!         Query::Address("alice@example.org".to_string()))
 //!     .await?;
 //! # Ok::<(), anyhow::Error>(())
 //! # })?;
@@ -79,7 +75,6 @@
 //! use sequoia::Sequoia;
 //! use sequoia::network::search::Query;
 //! use sequoia::network::search;
-//! use sequoia::prompt::Cancel;
 //!
 //! struct Stream {
 //!     requests: usize,
@@ -120,7 +115,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .expect("can generate a key");
 //! #
 //! # rt.block_on(async {
@@ -134,10 +129,7 @@
 //! #   .clear_sources()
 //! #   .query_cert_store(true)
 //!     .search(
-//!         Query::Address("alice@example.org".to_string()),
-//!         // If a shadow CA is password protected, don't prompt for
-//!         // a password; ignore it;
-//!         Cancel::new())
+//!         Query::Address("alice@example.org".to_string()))
 //!     .await?;
 //! # Ok::<(), anyhow::Error>(())
 //! # })?;
@@ -948,21 +940,22 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'sequoia, 'writer, 'stream> {
+struct ParamsOnce<'sequoia, 'writer, 'stream, 'prompt> {
     destination: Destination<Writer<'writer>>,
     stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
+    prompt: Option<Arc<dyn PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Search for certificates on the network.
-pub struct Builder<'sequoia, 'writer, 'stream> {
+pub struct Builder<'sequoia, 'writer, 'stream, 'prompt> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'sequoia, 'writer, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'writer, 'stream, 'prompt>,
 }
 
-impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'writer, 'stream>
-    {
+impl<'sequoia, 'writer, 'stream, 'prompt>
+    Builder<'sequoia, 'writer, 'stream, 'prompt>
+{
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -981,6 +974,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
             params_once: ParamsOnce {
                 destination: Destination::Store,
                 stream: None,
+                prompt: None,
             },
         }
     }
@@ -992,9 +986,11 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
         &self.params
     }
 
-    destination_builder_impl!('sequoia; 'stream; "certificates", "are");
+    destination_builder_impl!('sequoia; 'stream, 'prompt; "certificates", "are");
 
-    stream_builder_impl!('writer;);
+    stream_builder_impl!('writer; 'prompt,);
+
+    prompt_builder_impl!('writer, 'stream; );
 
     /// The number of times to iterate.
     ///
@@ -1163,12 +1159,8 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     }
 
     /// Search for certificates on the network.
-    pub async fn search<'p, P>(mut self,
-                               queries: impl IntoIterator<Item=Query>,
-                               prompt: P)
+    pub async fn search(mut self, queries: impl IntoIterator<Item=Query>)
         -> Result<Outcome, Error>
-    where
-        P: PromptFactory<'p>
     {
         let mut report = output::Report::new();
 
@@ -1176,7 +1168,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
 
         let result = Self::search_(
             &self.params, &mut self.params_once,
-            queries, &prompt, &mut report).await;
+            queries, &mut report).await;
 
         let mut stream = self.params_once.stream;
 
@@ -1215,11 +1207,11 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
     }
 
     /// Search for certificates on the network.
-    async fn search_<'p>(params: &Params<'sequoia>,
-                         params_once: &mut ParamsOnce<'sequoia, 'writer, 'stream>,
-                         mut queries: Vec<Query>,
-                         prompt: &dyn PromptFactory<'p>,
-                         report: &mut output::Report)
+    async fn search_(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'writer, 'stream, 'prompt>,
+        mut queries: Vec<Query>,
+        report: &mut output::Report)
         -> Result<(), Error>
     {
         let &Params {
@@ -1236,6 +1228,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
         let ParamsOnce {
             destination,
             stream,
+            prompt,
         } = params_once;
 
         for q in queries.iter() {
@@ -1612,7 +1605,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream> {
                                                 let cert = certify_downloads(
                                                     &sequoia, true,
                                                     ca.cert(), vec![cert], None,
-                                                    &prompt);
+                                                    prompt.clone());
                                                 // One cert in, one cert out.
                                                 assert_eq!(cert.len(), 1);
                                                 let cert = cert
@@ -1807,8 +1800,6 @@ mod tests {
 
     use std::collections::BTreeSet;
 
-    use crate::prompt::Cancel;
-
     fn check(_sequoia: &Sequoia,
              output: &[Output],
              result: Result<Outcome, Error>,
@@ -1994,8 +1985,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    Query::Address("alice@example.org".to_string()),
-                    Cancel::new())
+                    Query::Address("alice@example.org".to_string()))
                 .await
         });
         assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
@@ -2009,8 +1999,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    &Query::Address("invalid@alice@example.org".to_string()),
-                    Cancel::new())
+                    &Query::Address("invalid@alice@example.org".to_string()))
                 .await
         });
         assert!(result.is_err(), "should fail on invalid address");
@@ -2033,8 +2022,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
-                    Cancel::new())
+                    vec![Query::Address("alice@example.org".to_string())])
                 .await
         });
         assert!(result.is_err(), "should fail with no cert store");
@@ -2059,8 +2047,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_writer(&mut keyring)
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
-                    Cancel::new())
+                    vec![Query::Address("alice@example.org".to_string())])
                 .await
         });
         assert!(result.is_ok(), "Unexpected failure: {:?}", result.as_ref());
@@ -2078,13 +2065,13 @@ mod tests {
             .email("alice@example.org")
             .email("alice@other.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key");
 
         let _bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key");
 
         // Search for alice@example.org.
@@ -2096,8 +2083,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
-                    Cancel::new())
+                    vec![Query::Address("alice@example.org".to_string())])
                 .await
         });
         // Looking up alice@example.org generates queries for
@@ -2115,8 +2101,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
-                    Cancel::new())
+                    vec![Query::Address("alice@example.org".to_string())])
                 .await
         });
         // Looking up alice@example.org shouldn't generate additional
@@ -2128,7 +2113,7 @@ mod tests {
         let alice2 = sq.key_generate()
             .email("alice@other.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key");
 
         // Search for alice@example.org.
@@ -2140,8 +2125,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
-                    Cancel::new())
+                    vec![Query::Address("alice@example.org".to_string())])
                 .await
         });
         // Looking up alice@example.org generates queries for
@@ -2165,8 +2149,7 @@ mod tests {
                 .query_cert_store(true)
                 .to_store()
                 .search(
-                    vec![Query::Address("alice@example.org".to_string())],
-                    Cancel::new())
+                    vec![Query::Address("alice@example.org".to_string())])
                 .await
         });
         // Looking up alice@example.org shouldn't generate additional

@@ -46,14 +46,13 @@
 //! ```
 //! use sequoia::openpgp::Fingerprint;
 //! # use sequoia::Sequoia;
-//! # use sequoia::prompt::Cancel;
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .unwrap()
 //! #     .into_cert();
 //! #
@@ -82,14 +81,13 @@
 //! use openpgp::types::KeyFlags;
 //! #
 //! # use sequoia::Sequoia;
-//! # use sequoia::prompt::Cancel;
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .unwrap()
 //! #     .into_cert();
 //! # let mut detached_sig_bytes = Vec::new();
@@ -98,8 +96,7 @@
 //! #     .add_signer(alice.clone())
 //! #     .sign(
 //! #         &b"hi"[..],
-//! #         &mut detached_sig_bytes,
-//! #         Cancel::new())
+//! #         &mut detached_sig_bytes)
 //! #     .expect("can sign");
 //! #
 //!
@@ -707,8 +704,6 @@ impl<'sequoia> Builder<'sequoia>
 mod test {
     use super::*;
 
-    use crate::prompt::Cancel;
-
     #[test]
     fn lookup() {
         let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
@@ -717,7 +712,7 @@ mod test {
             .email("alice@example.org")
             .without_password()
             .can_authenticate(false)
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key")
             .into_cert();
         let vc = cert.with_policy(sq.policy(), sq.time())

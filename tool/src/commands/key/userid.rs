@@ -39,13 +39,13 @@ fn userid_add(
     let prompt = password::PromptFactory::new(&sq, false);
 
     sq.sequoia.key_userid_add()
+        .prompt(prompt)
         .names(&command.names)
         .emails(&command.emails)
         .userids(command.userid.into_iter())
         .allow_non_canonical_userids(command.allow_non_canonical_userids)
         .add(
             &cert,
-            prompt,
             output)
 }
 
@@ -97,6 +97,7 @@ pub fn userid_revoke(
     let prompt = password::PromptFactory::new(&sq, false);
 
     sq.sequoia.key_userid_revoke()
+        .prompt(prompt)
         .add_notations(notations.into_iter())
         .revoke(
             revoker.as_ref(),
@@ -104,8 +105,7 @@ pub fn userid_revoke(
             userid.userid(),
             command.reason.into(),
             &command.message,
-            output,
-            prompt)?;
+            output)?;
 
     Ok(())
 }

@@ -6,16 +6,15 @@
 //! # Examples
 //!
 //! ```rust
-//! use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
-//!
+//! # use sequoia::Sequoia;
+//! #
 //! # fn main() -> anyhow::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 //! #
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #         .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -28,8 +27,7 @@
 //! #     .add_signer(alice.clone())
 //! #     .encrypt(
 //! #         std::io::Cursor::new(message),
-//! #         &mut ciphertext,
-//! #         Cancel::new())
+//! #         &mut ciphertext)
 //! #     .expect("can encrypt");
 //! # let ciphertext = std::io::Cursor::new(&ciphertext);
 //!
@@ -46,8 +44,7 @@
 //!     .stream(&mut output)
 //!     .decrypt(
 //!         ciphertext,
-//!         &mut plaintext,
-//!         Cancel::new())?;
+//!         &mut plaintext)?;
 //! // Examine output for more information about the decryption process.
 //! assert_eq!(plaintext, message);
 //! # Ok(()) }
@@ -65,7 +62,6 @@
 //! ```rust
 //! use sequoia::Sequoia;
 //! use sequoia::decrypt;
-//! use sequoia::prompt::Cancel;
 //!
 //! struct Stream {
 //! }
@@ -123,7 +119,7 @@
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .expect("can generate a key")
 //! #     .into_cert();
 //! #
@@ -136,8 +132,7 @@
 //! #     .add_signer(alice.clone())
 //! #     .encrypt(
 //! #         std::io::Cursor::new(message),
-//! #         &mut ciphertext,
-//! #         Cancel::new())
+//! #         &mut ciphertext)
 //! #     .expect("can encrypt");
 //! # let ciphertext = std::io::Cursor::new(&ciphertext);
 //!
@@ -151,8 +146,7 @@
 //!     .stream(&mut output)
 //!     .decrypt(
 //!         ciphertext,
-//!         &mut plaintext,
-//!         Cancel::new())?;
+//!         &mut plaintext)?;
 //! // Examine `output` for more information about the decryption process.
 //! assert_eq!(plaintext, message);
 //! # Ok(()) }
@@ -253,21 +247,21 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'sequoia, 'stream> {
+struct ParamsOnce<'sequoia, 'stream, 'prompt> {
     stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Decrypt messages.
 ///
 /// This command builder is used to decrypt messages.
-pub struct Builder<'sequoia, 'stream> {
+pub struct Builder<'sequoia, 'stream, 'prompt> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'sequoia, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream, 'prompt>,
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'stream>
+impl<'sequoia, 'stream, 'prompt> Builder<'sequoia, 'stream, 'prompt> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self
     {
         Builder {
             params: Params {
@@ -281,6 +275,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
             },
             params_once: ParamsOnce {
                 stream: None,
+                prompt: None,
             }
         }
     }
@@ -292,7 +287,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         &self.params
     }
 
-    stream_builder_impl!();
+    stream_builder_impl!(; 'prompt,);
+
+    prompt_builder_impl!('stream; );
 
     /// Sets the number of required authenticated signatures.
     ///
@@ -394,12 +391,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// Returns `Ok` if the message could be decrypted and verified.
     /// See [`verify::Builder`] for details.  By default, at least one
     /// signature needs to be authenticated.
-    pub fn decrypt<'w, 'p, I, O, P>(self, mut input: I, output: O, prompt: P)
+    pub fn decrypt<'w, 'p, I, O>(self, mut input: I, output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             params,
@@ -408,7 +404,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let mut report = output::Report::new();
         let result = Self::decrypt_(
-            &params, &mut params_once, &mut input, output.into(), &prompt,
+            &params, &mut params_once, &mut input, output.into(),
             &mut report.verification);
 
         let mut stream = params_once.stream;
@@ -446,12 +442,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_<'w, 'p>(params: &Params<'sequoia>,
-                        params_once: &mut ParamsOnce<'sequoia, 'stream>,
-                        input: &mut (dyn std::io::Read + Send + Sync),
-                        mut output: OptionalWriter,
-                        prompt: &dyn prompt::PromptFactory<'p>,
-                        report: &mut verify::output::Report)
+    fn decrypt_<'w>(params: &Params<'sequoia>,
+                    params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
+                    input: &mut (dyn std::io::Read + Send + Sync),
+                    mut output: OptionalWriter,
+                    report: &mut verify::output::Report)
         -> Result<(), Error>
     {
         let &Params {
@@ -465,6 +460,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = params;
         let ParamsOnce {
             stream,
+            prompt,
         } = params_once;
 
         let proxy: Rc<RefCell<Box<dyn verify::VerifyDecryptStream>>>
@@ -475,7 +471,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let mut helper = Helper::new(
             sequoia, signatures, designated_signers.clone(),
-            secret_keys.clone(), session_keys.clone(), &prompt,
+            secret_keys.clone(), session_keys.clone(),
+            prompt.clone(),
             report);
 
         helper.stream = Some((Rc::clone(&proxy), params));
@@ -515,14 +512,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
     /// encryption container, it also does not verify the signatures.
     /// Thus, the signing policy parameters ([`Builder::signatures`]
     /// and [`Builder::add_designated_signer`]) are ignored.
-    pub fn decrypt_unwrap<'w, 'p, I, O, P>(self,
-                                           mut input: I, output: O,
-                                           prompt: P)
+    pub fn decrypt_unwrap<'w, I, O>(self, mut input: I, output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<OptionalWriter<'w>>,
-        P: prompt::PromptFactory<'p>,
     {
         let Builder {
             params,
@@ -532,7 +526,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         let mut report = output::Report::new();
 
         let result = Self::decrypt_unwrap_(
-            &params, &mut params_once, &mut input, output.into(), &prompt,
+            &params, &mut params_once, &mut input, output.into(),
             &mut report.verification);
 
         let mut stream = params_once.stream;
@@ -570,12 +564,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         result
     }
 
-    fn decrypt_unwrap_<'w, 'p>(
+    fn decrypt_unwrap_<'w>(
         params: &Params<'sequoia>,
-        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
         input: &mut (dyn std::io::Read + Send + Sync),
         mut output: OptionalWriter<'w>,
-        prompt: &dyn prompt::PromptFactory<'p>,
         report: &mut verify::output::Report)
         -> Result<(), Error>
     {
@@ -590,6 +583,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
         } = params;
         let ParamsOnce {
             stream,
+            prompt,
         } = params_once;
 
         let proxy: Rc<RefCell<Box<dyn verify::VerifyDecryptStream>>>
@@ -600,7 +594,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream> {
 
         let mut helper = Helper::new(
             sequoia, 0, None,
-            secret_keys.clone(), session_keys.clone(), &prompt,
+            secret_keys.clone(), session_keys.clone(),
+            prompt.clone(),
             report);
 
         helper.stream = Some((Rc::clone(&proxy), params));
@@ -1066,7 +1061,7 @@ pub(crate) struct Helper<'sequoia, 'c, 'p>
     /// decrypted it in some other way.
     decryptor: RefCell<Option<Fingerprint>>,
 
-    prompt: &'c dyn prompt::PromptFactory<'p>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'p> + 'p>>,
 }
 
 impl<'sequoia, 'c, 'p> std::ops::Deref
@@ -1093,7 +1088,7 @@ impl<'sequoia, 'c, 'p> Helper<'sequoia, 'c, 'p> {
                certs: Option<Vec<Cert>>,
                secret_keys: Vec<Cert>,
                session_keys: Vec<SessionKey>,
-               prompt: &'c dyn prompt::PromptFactory<'p>,
+               prompt: Option<Arc<dyn prompt::PromptFactory<'p> + 'p>>,
                report: &'c mut verify::output::Report)
         -> Self
     {
@@ -1253,17 +1248,18 @@ impl DecryptionHelper for Helper<'_, '_, '_> {
 
         // The outer Result is the error returned by the output callback.
         let mut decrypt_key = |slf: &Self, pkesk, cert, key: &Key<_, _>, may_prompt: bool| {
-            let cancel_;
-            let prompt: &dyn prompt::PromptFactory = if may_prompt {
-                &slf.prompt
+            let result = if may_prompt {
+                slf.vhelper.sequoia()
+                    .decrypt_key(Some(cert), key.clone(), true,
+                                 slf.prompt.clone())
             } else {
-                cancel_ = prompt::Cancel::new();
-                &cancel_
+                let cancel = prompt::Cancel::new();
+                let cancel = Arc::new(cancel) as Arc<_>;
+                slf.vhelper.sequoia()
+                    .decrypt_key(Some(cert), key.clone(), true, Some(cancel))
             };
 
-            if let Ok(key) = slf.vhelper.sequoia()
-                .decrypt_key(Some(cert), key.clone(), true, prompt)
-            {
+            if let Ok(key) = result {
                 let mut keypair = key.into_keypair()
                     .expect("decrypted secret key material");
 
@@ -1494,7 +1490,10 @@ impl DecryptionHelper for Helper<'_, '_, '_> {
 
                                     let mut checker = CheckRemoteKey::optional(&mut key);
 
-                                    match self.prompt.prompt(&mut context, &mut checker) {
+                                    let result = prompt!(
+                                        self.vhelper.sequoia(), self.prompt,
+                                        &mut context, &mut checker);
+                                    match result {
                                         Ok(prompt::Response::Password(_)) => {
                                             t!("User entered a password for {}",
                                                keyid);
@@ -1585,7 +1584,9 @@ impl DecryptionHelper for Helper<'_, '_, '_> {
                 prompt::Reason::DecryptMessage)
             .sequoia(&self.vhelper.sequoia())
             .build();
-        let result = match self.prompt.prompt(&mut context, &mut checker) {
+        let result = prompt!(
+            self.sequoia, self.prompt, &mut context, &mut checker);
+        let result = match result {
             Ok(prompt::Response::Password(p)) => {
                 self.sequoia.cache_password(p);
 
@@ -1624,8 +1625,6 @@ mod tests {
     use super::*;
 
     use std::str::FromStr;
-
-    use crate::prompt::Cancel;
 
     // It's possible to decrypt, but then fail, if there are no valid
     // signatures.
@@ -1740,7 +1739,7 @@ mod tests {
         let cert = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1752,8 +1751,7 @@ mod tests {
             .add_recipient(cert.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                Cancel::new())
+                &mut ciphertext)
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1765,8 +1763,7 @@ mod tests {
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, true, true);
 
@@ -1778,8 +1775,7 @@ mod tests {
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(&sq, &output, result, true, false);
         assert_eq!(&plaintext, MESSAGE);
@@ -1792,7 +1788,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1802,7 +1798,7 @@ mod tests {
             .email("bob@example.org")
             .without_password()
             .ephemeral()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1819,8 +1815,7 @@ mod tests {
             .add_signer(bob.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                Cancel::new())
+                &mut ciphertext)
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1832,8 +1827,7 @@ mod tests {
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, true, true);
 
@@ -1845,8 +1839,7 @@ mod tests {
             .add_designated_signer(bob.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(&sq, &output, result, true, false);
         assert_eq!(&plaintext, MESSAGE);
@@ -1862,14 +1855,14 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
         let bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1882,8 +1875,7 @@ mod tests {
             .add_signer(bob.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                Cancel::new())
+                &mut ciphertext)
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1896,8 +1888,7 @@ mod tests {
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(&sq, &output, result, true, false);
         assert_eq!(&plaintext, MESSAGE);
@@ -1911,8 +1902,7 @@ mod tests {
             .add_designated_signer(alice.clone())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, true, true);
 
@@ -1926,8 +1916,7 @@ mod tests {
             .add_designated_signers(std::iter::empty())
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, true, true);
     }
@@ -1939,7 +1928,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1951,8 +1940,7 @@ mod tests {
             .add_recipient(alice.clone())
             .encrypt(
                 std::io::Cursor::new(MESSAGE),
-                &mut ciphertext,
-                Cancel::new())
+                &mut ciphertext)
             .expect("can encrypt");
 
         let mut plaintext = Vec::new();
@@ -1964,8 +1952,7 @@ mod tests {
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, true, true);
 
@@ -1995,8 +1982,7 @@ mod tests {
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, false, true);
 
@@ -2009,8 +1995,7 @@ mod tests {
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(&sq, &output, result, true, false);
 
@@ -2026,8 +2011,7 @@ mod tests {
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, false, true);
     }
@@ -2039,7 +2023,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -2052,8 +2036,7 @@ mod tests {
             .add_recipient(alice.clone())
             .encrypt(
                 std::io::Cursor::new(&message),
-                &mut ciphertext,
-                Cancel::new())
+                &mut ciphertext)
             .expect("can encrypt");
 
         // Make sure we can decrypt the message.
@@ -2064,8 +2047,7 @@ mod tests {
             .signatures(0)
             .decrypt(
                 std::io::Cursor::new(&ciphertext),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(&sq, &output, result, true, false);
         assert_eq!(&message, &plaintext);
@@ -2083,8 +2065,7 @@ mod tests {
             .stream(&mut output)
             .decrypt(
                 std::io::Cursor::new(&corrupted),
-                &mut plaintext,
-                Cancel::new());
+                &mut plaintext);
         assert!(result.is_err());
         check(&sq, &output, result, true, true);
     }

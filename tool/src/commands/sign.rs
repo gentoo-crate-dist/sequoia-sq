@@ -58,11 +58,12 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
     let stream = crate::output::sign::Stream::new(&sq);
 
     let signer = sq.sequoia.sign()
+        .prompt(prompt)
         .add_signers(signers.into_iter())
         .add_notations(notations.into_iter());
 
     let result = if command.cleartext {
-        signer.stream(stream).clear().sign(input, output, prompt)
+        signer.stream(stream).clear().sign(input, output)
     } else if append {
         if let Some(detached) = detached {
             let detached_signatures = if let Some(path) = detached.path() {
@@ -81,14 +82,14 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
                 .stream(stream)
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .append(input, detached_signatures, output, prompt)
+                .append(input, detached_signatures, output)
         } else {
             signer
                 .inline()
                 .stream(stream)
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .append(input, output, prompt)
+                .append(input, output)
         }
     } else {
         if detached.is_some() {
@@ -97,14 +98,14 @@ pub fn dispatch(sq: Sq, command: cli::sign::Command) -> Result<()> {
                 .detached()
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .sign(input, output, prompt)
+                .sign(input, output)
         } else {
             signer
                 .stream(stream)
                 .inline()
                 .hash_mode(command.mode)
                 .ascii_armor(! binary)
-                .sign(input, output, prompt)
+                .sign(input, output)
         }
     };
 

@@ -71,17 +71,23 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
+}
+
 /// Adds user IDs to a certificate.
 ///
 /// A builder providing control over how to add user IDs to a new
 /// certificate.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'prompt> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'prompt>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -89,6 +95,9 @@ impl<'sequoia> Builder<'sequoia>
                 emails: Vec::new(),
                 userids: Vec::new(),
                 allow_non_canonical_userids: false,
+            },
+            params_once: ParamsOnce {
+                prompt: None,
             },
         }
     }
@@ -99,6 +108,8 @@ impl<'sequoia> Builder<'sequoia>
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    prompt_builder_impl!(; );
 
     /// Adds the specified name to the certificate.
     pub fn name<S>(mut self, name: S) -> Self
@@ -170,25 +181,24 @@ impl<'sequoia> Builder<'sequoia>
     /// If `output` is `None`, then the key is saved to the key store.
     /// If `output` is `Some`, the certificate with the user user ID
     /// is written to the specified writer.
-    pub fn add<'p, P>(&self,
-                      cert: &Cert,
-                      prompt: P,
-                      output: Option<&mut dyn std::io::Write>)
+    pub fn add(mut self,
+               cert: &Cert,
+               output: Option<&mut dyn std::io::Write>)
         -> Result<()>
-    where
-        P: prompt::PromptFactory<'p>,
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                ref names,
-                ref emails,
-                ref userids,
-                allow_non_canonical_userids,
-            },
-        } = self;
+        let &Params {
+            sequoia,
+            ref names,
+            ref emails,
+            ref userids,
+            allow_non_canonical_userids,
+        } = &self.params;
+        let ParamsOnce {
+            ref mut prompt,
+        } = &mut self.params_once;
 
-        let mut signer = sequoia.get_primary_key(cert, None, &prompt)?;
+        let mut signer = sequoia.get_primary_key(
+            cert, None, prompt.clone())?;
 
         // Make sure the user IDs are in canonical form.  If not, and
         // `--allow-non-canonical-userids` is not set, error out.
@@ -334,6 +344,7 @@ impl<'sequoia> Builder<'sequoia>
             let trust_root = trust_root.into_cert();
 
             sequoia.pki_certify()
+                .prompt_(prompt.clone())
                 .recreate(false)
                 .trust_depth(0)
                 .trust_amount(TrustAmount::Full.amount())
@@ -342,8 +353,7 @@ impl<'sequoia> Builder<'sequoia>
                 .certify(
                     &trust_root,
                     &cert,
-                    &userids,
-                    &prompt)?;
+                    &userids)?;
         }
 
         // Merge the new User IDs into cert.

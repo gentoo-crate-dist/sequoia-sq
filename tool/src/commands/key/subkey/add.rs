@@ -49,6 +49,7 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
     };
 
     sq.sequoia.key_subkey_add()
+        .prompt(prompt)
         .password_policy(password_policy)
         .cipher_suite(ciphersuite)
         .expiration(command.expiration.value())
@@ -57,6 +58,5 @@ pub fn dispatch(sq: Sq, command: Command) -> Result<()>
         .can_encrypt(command.can_encrypt)
         .add(
             &cert,
-            prompt,
             output)
 }

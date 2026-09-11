@@ -366,10 +366,12 @@ impl Sq {
     {
         if may_prompt {
             let prompt = password::PromptFactory::new(self, allow_skipping);
-            self.sequoia.decrypt_key(cert, key, allow_skipping, prompt)
+            self.sequoia.decrypt_key(cert, key, allow_skipping,
+                                     Some(Arc::new(prompt)))
         } else {
             let prompt = prompt::Cancel::new();
-            self.sequoia.decrypt_key(cert, key, allow_skipping, prompt)
+            self.sequoia.decrypt_key(cert, key, allow_skipping,
+                                     Some(Arc::new(prompt)))
         }
     }
 
@@ -388,7 +390,7 @@ impl Sq {
         where P: key::KeyParts + Clone, R: key::KeyRole + Clone
     {
         let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_signer(ka, prompt)
+        self.sequoia.get_signer(ka, Some(Arc::new(prompt)))
     }
 
     /// Returns a signer for each certificate's primary key.
@@ -411,7 +413,8 @@ impl Sq {
     where C: std::borrow::Borrow<Cert>
     {
         let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_primary_keys(certs, options, prompt)
+        self.sequoia.get_primary_keys(certs, options,
+                                      Some(Arc::new(prompt)))
     }
 
     /// Returns a signer for the certificate's primary key.
@@ -434,7 +437,8 @@ impl Sq {
     where C: std::borrow::Borrow<Cert>
     {
         let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_primary_key(cert, options, prompt)
+        self.sequoia.get_primary_key(cert, options,
+                                     Some(Arc::new(prompt)))
     }
 
     /// Returns a signer for a signing-capable key for each
@@ -460,7 +464,8 @@ impl Sq {
     where C: Borrow<Cert>
     {
         let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_signing_keys(certs, options, prompt)
+        self.sequoia.get_signing_keys(certs, options,
+                                      Some(Arc::new(prompt)))
     }
 
     /// Returns a signer for a certification-capable key for the
@@ -485,7 +490,8 @@ impl Sq {
     where C: std::borrow::Borrow<Cert>
     {
         let prompt = password::PromptFactory::new(self, true);
-        self.sequoia.get_certification_key(cert, options, prompt)
+        self.sequoia.get_certification_key(cert, options,
+                                           Some(Arc::new(prompt)))
     }
 
     /// Prints additional information in verbose mode.

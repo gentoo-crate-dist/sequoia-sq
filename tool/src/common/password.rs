@@ -54,9 +54,10 @@ impl<'sq> PromptFactory<'sq> {
     }
 }
 
-impl<'p> prompt::PromptFactory<'p> for PromptFactory<'p> {
+impl<'sq> prompt::PromptFactory<'sq> for PromptFactory<'sq>
+{
     fn build<'a>(&self, context: &mut prompt::Context<'a>)
-        -> Box<dyn prompt::Prompt + 'p>
+        -> Box<dyn prompt::Prompt + 'sq>
     {
         let password = if self.password_count > 0
             && context.reason() == prompt::Reason::EncryptMessage

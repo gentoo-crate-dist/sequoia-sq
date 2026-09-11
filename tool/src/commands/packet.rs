@@ -94,7 +94,7 @@ pub fn dispatch(sq: Sq, command: Command)
                        &mut input, &mut output,
                        command.mpis, command.hex,
                        command.session_key, width,
-                       prompt)?;
+                       Some(std::sync::Arc::new(prompt)))?;
         },
 
         Subcommands::Decrypt(command) => {
@@ -116,9 +116,10 @@ pub fn dispatch(sq: Sq, command: Command)
 
             sq.sequoia.decrypt()
                 .stream(stream)
+                .prompt(prompt)
                 .add_secret_keys(secrets)
                 .add_session_keys(command.session_key)
-                .decrypt_unwrap(&mut input, &mut output, prompt)?;
+                .decrypt_unwrap(&mut input, &mut output)?;
 
             output.finalize()?;
         },

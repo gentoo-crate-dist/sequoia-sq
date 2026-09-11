@@ -83,7 +83,6 @@
 //! # use openpgp::serialize::Serialize;
 //! #
 //! # use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
@@ -102,8 +101,7 @@
 //!     .certify(
 //!         &alice,
 //!         &bob,
-//!         &["<bob@example.org>".into()],
-//!         Cancel::new())
+//!         &["<bob@example.org>".into()])
 //! {
 //!     eprintln!("Failed to certify the user ID: {}", err);
 //! }
@@ -125,7 +123,6 @@
 //! use sequoia::pki::certify::Output;
 //! use sequoia::pki::certify::output::*;
 //! use sequoia::pki::certify;
-//! use sequoia::prompt::Cancel;
 //!
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
@@ -170,8 +167,7 @@
 //!     .certify(
 //!         &alice,
 //!         &bob,
-//!         &["<bob@example.org>".into()],
-//!         Cancel::new())
+//!         &["<bob@example.org>".into()])
 //! {
 //!     eprintln!("Failed to certify the user ID: {}", err);
 //! }
@@ -1161,9 +1157,10 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'sequoia, 'writer, 'stream> {
+struct ParamsOnce<'sequoia, 'writer, 'stream, 'prompt> {
     destination: Destination<Writer<'writer>>,
     stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Makes third-party certifications.
@@ -1180,19 +1177,19 @@ struct ParamsOnce<'sequoia, 'writer, 'stream> {
 /// certificate's fingerprint.  Alice can record that information
 /// using a third-party certification.  This allows Alice's OpenPGP
 /// implementation to automatically
-pub struct Builder<'sequoia, 'writer, 'stream> {
+pub struct Builder<'sequoia, 'writer, 'stream, 'prompt> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'sequoia, 'writer, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'writer, 'stream, 'prompt>,
 }
 
-impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
+impl<'sequoia, 'writer, 'stream, 'prompt>
+    Builder<'sequoia, 'writer, 'stream, 'prompt>
 {
     /// The default expiration of a third-party certification.
     const DEFAULT_CERTIFICATION_EXPIRATION: Expiration
         = Expiration::from_duration(Duration::from_secs(10 * SECONDS_IN_YEAR));
 
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'writer, 'stream>
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self
     {
         Builder {
             params: Params {
@@ -1214,6 +1211,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
             params_once: ParamsOnce {
                 destination: Destination::Store,
                 stream: None,
+                prompt: None,
             }
         }
     }
@@ -1225,9 +1223,11 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         &self.params
     }
 
-    destination_builder_impl!('sequoia; 'stream; "certificate", "is");
+    destination_builder_impl!('sequoia; 'stream, 'prompt; "certificate", "is");
 
-    stream_builder_impl!('writer;);
+    stream_builder_impl!('writer; 'prompt,);
+
+    prompt_builder_impl!('writer, 'stream; );
 
     /// Sets whether certification errors are ignored.
     ///
@@ -1560,21 +1560,17 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
     /// If the trust amount is 0, the operation is interpreted as a
     /// retraction of any prior certifications by the certifier over
     /// the bindings.
-    pub fn certify<'p, P>(mut self,
-                          certifier: &Cert,
-                          cert: &Cert,
-                          userids: &[UserID],
-                          prompt: P)
+    pub fn certify(mut self,
+                   certifier: &Cert,
+                   cert: &Cert,
+                   userids: &[UserID])
         -> Result<Outcome, Error>
-    where
-        P: prompt::PromptFactory<'p>,
     {
         let mut outcome = Outcome::new(cert);
 
         let result = Self::certify_(
             &self.params, &mut self.params_once,
-            certifier, cert, userids, &prompt,
-            &mut outcome);
+            certifier, cert, userids, &mut outcome);
 
         let mut stream = self.params_once.stream;
 
@@ -1612,13 +1608,13 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         result.map(|_| outcome)
     }
 
-    fn certify_<'p>(params: &Params<'sequoia>,
-                    params_once: &mut ParamsOnce<'sequoia, 'writer, 'stream>,
-                    certifier: &Cert,
-                    cert: &Cert,
-                    userids: &[UserID],
-                    prompt: &dyn prompt::PromptFactory<'p>,
-                    outcome: &mut Outcome)
+    fn certify_(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'writer, 'stream, 'prompt>,
+        certifier: &Cert,
+        cert: &Cert,
+        userids: &[UserID],
+        outcome: &mut Outcome)
         -> Result<(), Error>
     {
         tracer!(false, "certify");
@@ -1642,6 +1638,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         let ParamsOnce {
             destination,
             stream,
+            prompt,
         } = params_once;
 
         assert!(userids.len() > 0);
@@ -1664,7 +1661,7 @@ impl<'sequoia, 'writer, 'stream> Builder<'sequoia, 'writer, 'stream>
         let prep = ||  -> Result<_, anyhow::Error> {
             // Get the signer to certify with.
             let signer = sequoia.get_certification_key(
-                certifier, None, prompt)?;
+                certifier, None, prompt.clone())?;
 
             let mut base
                 = SignatureBuilder::new(SignatureType::GenericCertification)
@@ -2028,8 +2025,6 @@ mod tests {
     use openpgp::parse::Parse;
     use openpgp::types::ReasonForRevocation;
 
-    use crate::prompt::Cancel;
-
     fn check(output: Vec<Output>,
              outcome: impl Into<Option<Outcome>>,
              expected_operational_errors: usize,
@@ -2151,7 +2146,7 @@ Failed:              {:8}{:8}",
             .name("alice")
             .without_password()
             .to_writer((&mut alice_key, &mut alice_rev))
-            .generate(prompt::Cancel::new())
+            .generate()
             .expect("Can generate key")
             .into_cert();
         sequoia
@@ -2166,7 +2161,7 @@ Failed:              {:8}{:8}",
             .name("bob")
             .without_password()
             .to_writer((&mut bob_key, &mut bob_rev))
-            .generate(prompt::Cancel::new())
+            .generate()
             .expect("Can generate key")
             .into_cert();
         sequoia.key_import()
@@ -2181,7 +2176,7 @@ Failed:              {:8}{:8}",
             .name("carol")
             .without_password()
             .to_writer((&mut carol_key, &mut carol_rev))
-            .generate(prompt::Cancel::new())
+            .generate()
             .expect("Can generate key")
             .into_cert();
         let mut dave_key = Vec::new();
@@ -2191,7 +2186,7 @@ Failed:              {:8}{:8}",
             .name("dave")
             .without_password()
             .to_writer((&mut dave_key, &mut dave_rev))
-            .generate(prompt::Cancel::new())
+            .generate()
             .expect("Can generate key")
             .into_cert();
 
@@ -2207,8 +2202,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &alice,
                     &bob,
-                    &["bob".into()],
-                    prompt::Cancel::new())
+                    &["bob".into()])
                 .expect("Can certify");
             check(output, outcome, 0, 0, 1, 0, 0);
         }
@@ -2225,8 +2219,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &alice,
                     &bob,
-                    &["bob".into(), "petname".into()],
-                    prompt::Cancel::new())
+                    &["bob".into(), "petname".into()])
                 .expect("Can certify");
             check(output, outcome, 0, 0, 2, 0, 0);
         }
@@ -2244,8 +2237,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &alice,
                     &bob,
-                    &["bob".into(), "petname".into()],
-                    prompt::Cancel::new())
+                    &["bob".into(), "petname".into()])
                 .unwrap_err();
             check(output, None, 0, 1, 0, 0, 0);
         }
@@ -2262,8 +2254,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &bob,
                     &bob,
-                    &["bob".into(), "petname".into()],
-                    prompt::Cancel::new())
+                    &["bob".into(), "petname".into()])
                 .unwrap_err();
             check(output, None, 0, 1, 0, 0, 0);
         }
@@ -2281,8 +2272,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &carol_pub,
                     &dave,
-                    &["dave".into(), "petname".into()],
-                    prompt::Cancel::new())
+                    &["dave".into(), "petname".into()])
                 .unwrap_err();
             check(output, None, 1, 0, 0, 0, 0);
         }
@@ -2297,8 +2287,7 @@ Failed:              {:8}{:8}",
                     &UserID::from("carol"),
                     ReasonForRevocation::UIDRetired,
                     "bye",
-                    Some(&mut output),
-                    Cancel::new())
+                    Some(&mut output))
                 .expect("Can revoke");
 
             let packets = PacketPile::from_bytes(&output)
@@ -2319,8 +2308,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &dave,
                     &carol_revoked,
-                    &["carol".into()],
-                    prompt::Cancel::new())
+                    &["carol".into()])
                 .unwrap_err();
             check(output, None, 1, 0, 0, 0, 1);
 
@@ -2336,8 +2324,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &dave,
                     &carol_revoked,
-                    &["carol".into()],
-                    prompt::Cancel::new())
+                    &["carol".into()])
                 .unwrap();
             check(output, outcome, 0, 0, 0, 0, 1);
         }
@@ -2353,8 +2340,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &alice,
                     &bob,
-                    &["bob".into()],
-                    prompt::Cancel::new())
+                    &["bob".into()])
                 .expect("Can certify");
             check(output, outcome, 0, 0, 1, 0, 0);
 
@@ -2371,8 +2357,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &alice,
                     &bob2,
-                    &["bob".into()],
-                    prompt::Cancel::new())
+                    &["bob".into()])
                 .expect("Can certify");
             check(output, outcome, 0, 0, 0, 1, 0);
 
@@ -2386,8 +2371,7 @@ Failed:              {:8}{:8}",
                 .certify(
                     &alice,
                     &bob2,
-                    &["bob".into()],
-                    prompt::Cancel::new())
+                    &["bob".into()])
                 .expect("Can certify");
             check(output, outcome, 0, 0, 1, 0, 0);
         }

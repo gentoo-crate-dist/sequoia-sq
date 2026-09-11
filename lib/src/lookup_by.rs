@@ -60,14 +60,13 @@
 //! ```
 //! use sequoia::openpgp::types::KeyFlags;
 //! # use sequoia::Sequoia;
-//! # use sequoia::prompt::Cancel;
 //! # fn main() -> sequoia::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let alice = sq.key_generate()
 //! #     .email("alice@example.org")
 //! #     .without_password()
-//! #     .generate(Cancel::new())
+//! #     .generate()
 //! #     .unwrap()
 //! #     .into_cert();
 //!
@@ -683,8 +682,6 @@ mod test {
     use openpgp::types::Curve;
     use openpgp::types::ReasonForRevocation;
 
-    use crate::prompt::Cancel;
-
     fn dump_cert(vc: &ValidCert) {
         let creation_time = vc.primary_key().key().creation_time();
 
@@ -733,7 +730,7 @@ mod test {
             .email("alice@example.org")
             .without_password()
             .can_authenticate(false)
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key")
             .into_cert();
         let vc_alice_s_e = alice_s_e.with_policy(sq.policy(), sq.time())
@@ -752,7 +749,7 @@ mod test {
             .without_password()
             .can_authenticate(false)
             .can_encrypt(None)
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key")
             .into_cert();
         let vc_alice_s = alice_s.with_policy(sq.policy(), sq.time())
@@ -837,7 +834,7 @@ mod test {
             .without_password()
             .can_authenticate(false)
             .can_sign(false)
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key")
             .into_cert();
 
@@ -938,7 +935,7 @@ mod test {
             .email("alice@example.org")
             .without_password()
             .can_authenticate(false)
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate key")
             .into_cert();
 

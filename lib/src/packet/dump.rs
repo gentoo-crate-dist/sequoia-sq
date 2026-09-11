@@ -1,4 +1,5 @@
 use std::io::{self, Read};
+use std::sync::Arc;
 
 use sequoia_openpgp as openpgp;
 use openpgp::KeyHandle;
@@ -40,7 +41,7 @@ pub enum Kind {
 }
 
 #[allow(clippy::redundant_pattern_matching)]
-pub fn dump<'sequoia, 'p, W, P>(
+pub fn dump<'sequoia, 'prompt, W>(
     sq: &'sequoia crate::Sequoia,
     secrets: Vec<Cert>,
     input: &mut (dyn io::Read + Sync + Send),
@@ -48,11 +49,10 @@ pub fn dump<'sequoia, 'p, W, P>(
     mpis: bool, hex: bool,
     session_keys: Vec<SessionKey>,
     width: W,
-    prompt: P)
+    prompt: Option<Arc<dyn PromptFactory<'prompt> + 'prompt>>)
     -> Result<Kind>
 where
     W: Into<Option<usize>>,
-    P: PromptFactory<'p>,
 {
     let mut ppr
         = self::openpgp::parse::PacketParserBuilder::from_reader(input)?;
@@ -72,7 +72,7 @@ where
     let mut is_keyring = true;
     let mut report = crate::verify::output::Report::new();
     let mut helper = crate::decrypt::Helper::new(
-        &sq, 0, None, secrets, session_keys.clone(), &prompt,
+        &sq, 0, None, secrets, session_keys.clone(), prompt,
         &mut report);
 
   loop {

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::DateTime;
 use chrono::Utc;
 
@@ -72,17 +74,23 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
+}
+
 /// Adds a subkey to a certificate.
 ///
 /// A builder providing control over how to add a subkey to a
 /// certificate.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'prompt> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'prompt>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -94,6 +102,9 @@ impl<'sequoia> Builder<'sequoia>
                 can_authenticate: true,
                 can_encrypt: Some(EncryptPurpose::Universal),
             },
+            params_once: ParamsOnce {
+                prompt: None,
+            }
         }
     }
 
@@ -103,6 +114,8 @@ impl<'sequoia> Builder<'sequoia>
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    prompt_builder_impl!(; );
 
     /// Sets the suite of ciphers that the certificate may use.
     ///
@@ -188,25 +201,23 @@ impl<'sequoia> Builder<'sequoia>
     /// If `output` is `None`, then the new key is saved to the key
     /// store.  If `output` is `Some`, the certificate with the new
     /// key is written to the specified writer.
-    pub fn add<'p, P>(&self,
-                      cert: &Cert,
-                      prompt: P,
-                      output: Option<&mut dyn std::io::Write>)
+    pub fn add(mut self,
+               cert: &Cert,
+               output: Option<&mut dyn std::io::Write>)
         -> Result<()>
-    where
-        P: prompt::PromptFactory<'p>,
     {
-        let &Builder {
-            params: Params {
-                sequoia,
-                cipher_suite,
-                ref password_policy,
-                ref expiration,
-                can_sign,
-                can_authenticate,
-                ref can_encrypt,
-            },
-        } = self;
+        let &Params {
+            sequoia,
+            cipher_suite,
+            ref password_policy,
+            ref expiration,
+            can_sign,
+            can_authenticate,
+            ref can_encrypt,
+        } = &self.params;
+        let &mut ParamsOnce {
+            ref mut prompt,
+        } = &mut self.params_once;
 
         let valid_cert = cert.with_policy(sequoia.policy(), sequoia.time())?;
 
@@ -227,7 +238,7 @@ impl<'sequoia> Builder<'sequoia>
 
         // If a password is needed to use the key, the user will be prompted.
         let (primary_key, password) =
-            match sequoia.get_primary_key(cert, None, &prompt) {
+            match sequoia.get_primary_key(cert, None, prompt.clone()) {
                 Ok(key) => {
                     // Don't use a password, or prompt for one.
                     match password_policy {
@@ -245,8 +256,8 @@ impl<'sequoia> Builder<'sequoia>
                                 .sequoia(sequoia)
                                 .build();
 
-                            let password = match prompt.prompt(
-                                &mut context, &mut checker)?
+                            let password = match prompt!(
+                                sequoia, prompt, &mut context, &mut checker)?
                             {
                                 prompt::Response::Password(password) => Some(password),
                                 prompt::Response::NoPassword => None,

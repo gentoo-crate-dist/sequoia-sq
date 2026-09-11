@@ -56,6 +56,7 @@ fn update(
     let sequoia = &sq.sequoia;
     let prompt = password::PromptFactory::new(&sq, true);
     sequoia.key_approvals_update()
+        .prompt(prompt)
         .userids(userids)
         .add_by(cmd.add_by)
         .remove_by(cmd.remove_by)
@@ -64,6 +65,5 @@ fn update(
         .remove_all(cmd.remove_all)
         .update(
             cert,
-            prompt,
             output)
 }

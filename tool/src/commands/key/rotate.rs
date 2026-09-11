@@ -522,7 +522,8 @@ pub fn dispatch(
                 let have_userids = cert.userids().next().is_some();
                 if have_userids {
                     let prompt = password::PromptFactory::new(&sq, true);
-                    cert = certify_generated(&sq.sequoia, &cert, prompt)?;
+                    cert = certify_generated(&sq.sequoia, &cert,
+                                             Some(Arc::new(prompt)))?;
                 }
 
                 match sq.import_key(cert.clone(), &mut Default::default())
@@ -570,6 +571,7 @@ pub fn dispatch(
                     // the key as a trusted introducer.
                     sq.sequoia.pki_certify()
                         .stream(stream)
+                        .prompt(prompt)
                         .recreate(false)
                         .trust_amount(FULLY_TRUSTED as u8)
                         // Make it an unconstrained trusted introducer.
@@ -579,12 +581,12 @@ pub fn dispatch(
                         .certify(
                             &trust_root,
                             &cert,
-                            &userids,
-                            prompt)?;
+                            &userids)?;
                 } else if command.shared_key && have_userids {
                     // Mark all user IDs as authenticated.
                     sq.sequoia.pki_certify()
                         .stream(stream)
+                        .prompt(prompt)
                         .recreate(false)
                         .trust_amount(FULLY_TRUSTED as u8)
                         // Not a trusted introducer.
@@ -594,8 +596,7 @@ pub fn dispatch(
                         .certify(
                             &trust_root,
                             &cert,
-                            &userids,
-                            prompt)?;
+                            &userids)?;
                 }
 
                 // And save any updates.

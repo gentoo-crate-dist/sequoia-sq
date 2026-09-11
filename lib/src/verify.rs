@@ -1779,8 +1779,6 @@ mod tests {
     use openpgp::Packet;
     use openpgp::PacketPile;
 
-    use crate::prompt::Cancel;
-
     // Mirrors Report.
     #[derive(Debug)]
     struct R {
@@ -1991,14 +1989,14 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
         let bob = sq.key_generate()
             .email("bob@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -2011,8 +2009,7 @@ mod tests {
             .add_signer(alice.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut alice_signed,
-                crate::prompt::Cancel::new())
+                &mut alice_signed)
             .expect("can sign");
 
         // Alice and Bob sign a message.
@@ -2023,8 +2020,7 @@ mod tests {
             .add_signer(bob.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut ab_signed,
-                crate::prompt::Cancel::new())
+                &mut ab_signed)
             .expect("can sign");
 
 
@@ -2163,7 +2159,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -2176,8 +2172,7 @@ mod tests {
             .add_signer(alice.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut alice_sig,
-                crate::prompt::Cancel::new())
+                &mut alice_sig)
             .expect("can sign");
 
         // Double check that the signature is valid.
@@ -2262,7 +2257,7 @@ mod tests {
         let alice = sq.key_generate()
             .email("alice@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -2275,8 +2270,7 @@ mod tests {
             .add_signer(alice.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut alice_sig,
-                crate::prompt::Cancel::new())
+                &mut alice_sig)
             .expect("can sign");
 
         // Double check that the signature is valid.

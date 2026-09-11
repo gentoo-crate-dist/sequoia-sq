@@ -44,6 +44,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
         &sq, DecryptContext::Decrypt, command.dump_session_key);
     let mut decryptor = sq.sequoia.decrypt()
         .stream(stream)
+        .prompt(&prompt)
         .signatures(signatures)
         .add_secret_keys(secret_keys)
         .add_session_keys(session_keys);
@@ -51,7 +52,7 @@ pub fn dispatch(sq: Sq, command: cli::decrypt::Command) -> Result<()> {
         decryptor = decryptor.add_designated_signers(signers);
     }
 
-    let result = decryptor.decrypt(&mut input, &mut output, prompt);
+    let result = decryptor.decrypt(&mut input, &mut output);
 
     if result.is_err() {
         if let Some(path) = output_path.path() {

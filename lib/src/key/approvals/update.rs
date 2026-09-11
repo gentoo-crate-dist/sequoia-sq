@@ -82,13 +82,18 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
-#[derive(Clone)]
-pub struct Builder<'sequoia> {
-    params: Params<'sequoia>,
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn PromptFactory<'prompt> + 'prompt>>,
 }
 
-impl<'sequoia> Builder<'sequoia> {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia>
+pub struct Builder<'sequoia, 'prompt> {
+    params: Params<'sequoia>,
+    params_once: ParamsOnce<'prompt>,
+}
+
+impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt> {
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self
     {
         Builder {
             params: Params {
@@ -99,7 +104,10 @@ impl<'sequoia> Builder<'sequoia> {
                 add_all: true,
                 add_authenticated: true,
                 remove_all: false
-            }
+            },
+            params_once: ParamsOnce {
+                prompt: None,
+            },
         }
     }
 
@@ -109,6 +117,8 @@ impl<'sequoia> Builder<'sequoia> {
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    prompt_builder_impl!();
 
     /// Sets the user IDs.
     ///
@@ -155,15 +165,12 @@ impl<'sequoia> Builder<'sequoia> {
         self
     }
 
-    pub fn update<'p, P>(
-        &self,
+    pub fn update(
+        self,
         cert: Cert,
-        prompt: P,
         output: Option<(Box<dyn std::io::Write + Send + Sync>,
                         Option<std::path::PathBuf>)>)
         -> Result<()>
-    where
-        P: PromptFactory<'p>
     {
         let sequoia = self.params.sequoia;
         let vcert = cert.with_policy(sequoia.policy(), sequoia.time())?;
@@ -177,14 +184,14 @@ impl<'sequoia> Builder<'sequoia> {
             self.params.remove_all,
             &self.params.remove_by,
             self.params.add_all,
-            prompt,
+            self.params_once.prompt,
             output)
 
     }
 }
 
 // output must be created with .for_secrets().create_safe()
-fn update_internal<'sequoia, 'p, P>(
+fn update_internal<'sequoia, 'prompt>(
         sequoia: &'sequoia Sequoia,
         vcert: &ValidCert,
         userids: &Vec<UserID>,
@@ -193,11 +200,9 @@ fn update_internal<'sequoia, 'p, P>(
         cmd_remove_all: bool,
         cmd_remove_by: &Vec<KeyHandle>,
         cmd_add_all: bool,
-        prompt: P,
+        prompt: Option<Arc<dyn PromptFactory<'prompt> + 'prompt>>,
         output: Option<(Box<dyn std::io::Write + Send + Sync>, Option<std::path::PathBuf>)>)
     -> Result<()>
-where
-    P: PromptFactory<'p>
 {
     let key = vcert.cert().clone();
 

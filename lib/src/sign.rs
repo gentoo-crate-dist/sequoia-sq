@@ -78,9 +78,7 @@
 //!     .add_signer(cert.clone())
 //!     .sign(
 //!         std::io::Cursor::new(message),
-//!         &mut signed_message,
-//!         // Fail if the signing key is password protected.
-//!         sequoia::prompt::Cancel::new())?;
+//!         &mut signed_message)?;
 //! #
 //! # sequoia.verify()
 //! #     .add_designated_signers(vec![ cert ])
@@ -142,9 +140,7 @@
 //!     .add_signer(cert.clone())
 //!     .sign(
 //!         std::io::Cursor::new(message),
-//!         &mut signed_message,
-//!         // Fail if the signing key is password protected.
-//!         sequoia::prompt::Cancel::new())?;
+//!         &mut signed_message)?;
 //! #
 //! # sequoia.verify()
 //! #     .add_designated_signers(vec![ cert ])
@@ -501,23 +497,24 @@ impl<'sequoia> Params<'sequoia> {
 }
 
 /// Owned parameters.
-struct ParamsOnce<'sequoia, 'stream> {
+struct ParamsOnce<'sequoia, 'stream, 'prompt> {
     stream: Option<Box<dyn Stream<'sequoia> + 'stream>>,
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
 }
 
 /// Sign messages.
 ///
 /// A builder providing control over how to sign a message.
-pub struct Builder<'sequoia, 'stream, T> {
+pub struct Builder<'sequoia, 'stream, 'prompt, T> {
     params: Params<'sequoia>,
-    params_once: ParamsOnce<'sequoia, 'stream>,
+    params_once: ParamsOnce<'sequoia, 'stream, 'prompt>,
     t: std::marker::PhantomData<T>,
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignatureType> {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia)
-        -> Builder<'sequoia, 'stream, builder::UnspecifiedSignatureType>
-    {
+impl<'sequoia, 'stream, 'prompt>
+    Builder<'sequoia, 'stream, 'prompt, builder::UnspecifiedSignatureType>
+{
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self {
         Builder {
             params: Params {
                 sequoia,
@@ -530,6 +527,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignature
             },
             params_once: ParamsOnce {
                 stream: None,
+                prompt: None,
             },
             t: std::marker::PhantomData,
         }
@@ -601,7 +599,8 @@ pub mod builder {
     impl SignatureType for CleartextSignature {}
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignatureType>
+impl<'sequoia, 'stream, 'prompt>
+    Builder<'sequoia, 'stream, 'prompt, builder::UnspecifiedSignatureType>
 {
     /// Sets that a detached signature should be created.
     ///
@@ -613,7 +612,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignature
     /// the signed data.
     ///
     ///   [detached signature]: https://www.rfc-editor.org/rfc/rfc9580.html#section-10.4
-    pub fn detached(self) -> Builder<'sequoia, 'stream, builder::DetachedSignature>
+    pub fn detached(self)
+        -> Builder<'sequoia, 'stream, 'prompt, builder::DetachedSignature>
     {
         Builder {
             params: self.params,
@@ -632,7 +632,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignature
     /// the signed data.
     ///
     ///   [detached signature]: https://www.rfc-editor.org/rfc/rfc9580.html#section-10.4
-    pub fn inline(self) -> Builder<'sequoia, 'stream, builder::InlineSignature>
+    pub fn inline(self)
+        -> Builder<'sequoia, 'stream, 'prompt, builder::InlineSignature>
     {
         Builder {
             params: self.params,
@@ -652,7 +653,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignature
     /// with a dash.
     ///
     ///   [cleartext-signed message]: https://www.rfc-editor.org/rfc/rfc9580.html#name-cleartext-signature-framewo
-    pub fn clear(self) -> Builder<'sequoia, 'stream, builder::CleartextSignature>
+    pub fn clear(self)
+        -> Builder<'sequoia, 'stream, 'prompt, builder::CleartextSignature>
     {
         Builder {
             params: self.params,
@@ -663,7 +665,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::UnspecifiedSignature
 
 }
 
-impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
+impl<'sequoia, 'stream, 'prompt, T> Builder<'sequoia, 'stream, 'prompt, T>
 where
     T: builder::SignatureType
 {
@@ -674,7 +676,9 @@ where
         &self.params
     }
 
-    stream_builder_impl!(; T);
+    stream_builder_impl!(; 'prompt, T);
+
+    prompt_builder_impl!('stream; T);
 
     /// Signs the message with the specified certificate.
     ///
@@ -730,7 +734,7 @@ where
     }
 }
 
-impl<T> Builder<'_, '_, T>
+impl<T> Builder<'_, '_, '_, T>
 where
     T: builder::RichSignature
 {
@@ -788,16 +792,15 @@ where
     }
 }
 
-impl<'sequoia, 'stream, T> Builder<'sequoia, 'stream, T>
+impl<'sequoia, 'stream, 'prompt, T> Builder<'sequoia, 'stream, 'prompt, T>
 where
     T: builder::SignatureType
 {
-    fn sign_<'a, 'w, 'p>(
+    fn sign_<'a, 'w>(
         params: &Params<'sequoia>,
-        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
         mut input: &mut (dyn std::io::Read + Send + Sync + 'a),
         output: Writer<'w>,
-        prompt: &dyn prompt::PromptFactory<'p>,
         detached_signature: bool,
         preexisting_signatures: Vec<Signature>)
         -> Result<(), Error>
@@ -812,7 +815,8 @@ where
             ref armor_headers,
         } = params;
         let ParamsOnce {
-            stream
+            stream,
+            prompt,
         } = params_once;
 
         if signers.is_empty() {
@@ -823,7 +827,7 @@ where
         }
 
         let mut signers = match sequoia.get_signing_keys(
-            &signers, None, &prompt)
+            &signers, None, prompt.clone())
         {
             Ok(signers) => {
                 stream.output(
@@ -923,7 +927,9 @@ where
     }
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
+impl<'sequoia, 'stream, 'prompt>
+    Builder<'sequoia, 'stream, 'prompt, builder::DetachedSignature>
+{
     /// Signs a message and generates a detached signature.
     ///
     /// The detached signature is written to `output`.  By default,
@@ -935,18 +941,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'w, 'p, I, O, P>(mut self, mut input: I, output: O, prompt: P)
+    pub fn sign<'w, I, O>(mut self, mut input: I, output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
         let result = Self::sign_(
             &self.params, &mut self.params_once,
-            &mut input, output.into(), &prompt,
+            &mut input, output.into(),
             true, Vec::new());
 
         let mut stream = self.params_once.stream;
@@ -1001,24 +1006,22 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn append<'a, 'w, 'p, I, D, O, P>(
+    pub fn append<'a, 'w, I, D, O>(
         mut self, mut input: I,
         detached_signatures: D,
-        output: O,
-        prompt: P)
+        output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         D: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
         let result = Self::append_(
             &self.params, &mut self.params_once,
             &mut input, Box::new(detached_signatures),
-            output.into(), &prompt);
+            output.into());
 
         let mut stream = self.params_once.stream;
 
@@ -1062,13 +1065,12 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
     // exist when `PartFileWriter` persists it.  This is only relevant
     // on Windows where it is not possible to replace a file that is
     // open.
-    fn append_<'a, 'w, 'p>(
+    fn append_<'a, 'w>(
         params: &Params<'sequoia>,
-        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
         mut input: &mut (dyn std::io::Read + Send + Sync),
         detached_signatures: Box<dyn std::io::Read + Send + Sync + 'a>,
-        output: Writer<'w>,
-        prompt: &dyn prompt::PromptFactory<'p>)
+        output: Writer<'w>)
         -> Result<(), Error>
     {
         // First, read the existing signatures.
@@ -1100,11 +1102,13 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::DetachedSignature> {
         drop(ppr);
 
         Self::sign_(params, params_once,
-                    &mut input, output.into(), &prompt, true, sigs)
+                    &mut input, output.into(), true, sigs)
     }
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
+impl<'sequoia, 'stream, 'prompt>
+    Builder<'sequoia, 'stream, 'prompt, builder::InlineSignature>
+{
     /// Signs a message and generates an inline-signed message.
     ///
     /// The inlined-signed message is written to `output`.  By
@@ -1116,18 +1120,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'w, 'p, I, O, P>(mut self, mut input: I, output: O, prompt: P)
+    pub fn sign<'w, I, O>(mut self, mut input: I, output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: Into<Writer<'w>>,
-        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
         let result = Self::sign_(
             &self.params, &mut self.params_once,
-            &mut input, output.into(), &prompt,
+            &mut input, output.into(),
             false, Vec::new());
 
         let mut stream = self.params_once.stream;
@@ -1192,18 +1195,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn append<'p, I, O, P>(mut self, input: I, mut output: O, prompt: P)
+    pub fn append<I, O>(mut self, input: I, mut output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
-        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
         let result = Self::append_(
             &self.params, &mut self.params_once,
-            Box::new(input), &mut output, &prompt);
+            Box::new(input), &mut output);
 
         let mut stream = self.params_once.stream;
 
@@ -1246,11 +1248,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     // referring to the same file, the file will not exist when
     // `PartFileWriter` persists it.  This is only relevant on Windows
     // where it is not possible to replace a file that is open.
-    fn append_<'a, 'p>(params: &Params<'sequoia>,
-                       params_once: &mut ParamsOnce<'sequoia, 'stream>,
-                       input: Box<dyn std::io::Read + Send + Sync + 'a>,
-                       output: &mut (dyn std::io::Write + Send + Sync),
-                       prompt: &dyn prompt::PromptFactory<'p>)
+    fn append_<'a>(
+        params: &Params<'sequoia>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
+        input: Box<dyn std::io::Read + Send + Sync + 'a>,
+        output: &mut (dyn std::io::Write + Send + Sync))
         -> Result<(), Error>
     {
         let Params {
@@ -1264,6 +1266,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         } = params;
         let ParamsOnce {
             stream,
+            prompt,
         } = params_once;
 
         if signers.is_empty() {
@@ -1274,7 +1277,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
         }
 
         let mut signers = match sequoia.get_signing_keys(
-            &signers, None, &prompt)
+            &signers, None, prompt.clone())
         {
             Ok(signers) => {
                 let (output, signers) = signers.into_iter()
@@ -1537,7 +1540,9 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::InlineSignature> {
     }
 }
 
-impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> {
+impl<'sequoia, 'stream, 'prompt>
+    Builder<'sequoia, 'stream, 'prompt, builder::CleartextSignature>
+{
     /// Clear signs a message.
     ///
     /// A clear-signed message is an inline signed text message that
@@ -1554,18 +1559,17 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
     ///
     /// On failure some of the signed data may have been written to
     /// the output writer.  This should be ignored.
-    pub fn sign<'p, I, O, P>(mut self, mut input: I, mut output: O, prompt: P)
+    pub fn sign<I, O>(mut self, mut input: I, mut output: O)
         -> Result<Outcome, Error>
     where
         I: std::io::Read + Send + Sync,
         O: std::io::Write + Send + Sync,
-        P: prompt::PromptFactory<'p>,
     {
         let outcome = Outcome::new();
 
         let result = Self::clear_sign_(
             &self.params, &mut self.params_once,
-            &mut input, &mut output, &prompt);
+            &mut input, &mut output);
 
         let mut stream = self.params_once.stream;
 
@@ -1603,12 +1607,11 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         result.map(|_| outcome)
     }
 
-    fn clear_sign_<'p>(
+    fn clear_sign_(
         params: &Params<'sequoia>,
-        params_once: &mut ParamsOnce<'sequoia, 'stream>,
+        params_once: &mut ParamsOnce<'sequoia, 'stream, 'prompt>,
         mut input: &mut (dyn std::io::Read + Send + Sync),
-        mut output: &mut (dyn std::io::Write + Send + Sync),
-        prompt: &dyn prompt::PromptFactory<'p>)
+        mut output: &mut (dyn std::io::Write + Send + Sync))
         -> Result<(), Error>
     {
         let Params {
@@ -1621,7 +1624,8 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
             armor_headers: _,
         } = params;
         let ParamsOnce {
-            stream
+            stream,
+            prompt,
         } = params_once;
 
         if signers.is_empty() {
@@ -1632,7 +1636,7 @@ impl<'sequoia, 'stream> Builder<'sequoia, 'stream, builder::CleartextSignature> 
         }
 
         let mut signers = match sequoia.get_signing_keys(
-            &signers, None, &prompt)
+            &signers, None, prompt.clone())
         {
             Ok(signers) => {
                 let (output, signers) = signers
@@ -1710,8 +1714,6 @@ mod tests {
     use sequoia_openpgp as openpgp;
     use openpgp::PacketPile;
     use openpgp::cert::CertBuilder;
-
-    use crate::prompt::Cancel;
 
     const MESSAGE: &[u8] = b"message";
 
@@ -1809,7 +1811,7 @@ mod tests {
                 let keystore = sq.key_generate()
                     .email("keystore@example.org")
                     .without_password()
-                    .generate(Cancel::new())
+                    .generate()
                     .expect("can generate a key")
                     .into_cert();
 
@@ -1819,7 +1821,7 @@ mod tests {
                     .email("ephemeral@example.org")
                     .without_password()
                     .ephemeral()
-                    .generate(Cancel::new())
+                    .generate()
                     .expect("can generate a key")
                     .into_cert();
 
@@ -1833,8 +1835,7 @@ mod tests {
                     .add_signer(keystore.clone())
                     .sign(
                         std::io::Cursor::new(MESSAGE),
-                        &mut sig,
-                        crate::prompt::Cancel::new());
+                        &mut sig);
 
                 assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
                 check(output, result, 1);
@@ -1849,8 +1850,7 @@ mod tests {
                     .add_signer(keystore.clone().strip_secret_key_material())
                     .sign(
                         std::io::Cursor::new(MESSAGE),
-                        &mut sig,
-                        crate::prompt::Cancel::new());
+                        &mut sig);
 
                 assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
                 check(output, result, 1);
@@ -1865,8 +1865,7 @@ mod tests {
                     .add_signer(ephemeral.clone().strip_secret_key_material())
                     .sign(
                         std::io::Cursor::new(MESSAGE),
-                        &mut sig,
-                        crate::prompt::Cancel::new());
+                        &mut sig);
 
                 assert!(result.is_err());
                 check(output, result, 0);
@@ -1879,8 +1878,7 @@ mod tests {
                     .$typ()
                     .sign(
                         std::io::Cursor::new(MESSAGE),
-                        &mut sig,
-                        crate::prompt::Cancel::new());
+                        &mut sig);
 
                 assert!(result.is_err());
                 check(output, result, 0);
@@ -1895,8 +1893,7 @@ mod tests {
                     .add_signer(ephemeral.clone())
                     .sign(
                         std::io::Cursor::new(MESSAGE),
-                        &mut sig,
-                        crate::prompt::Cancel::new());
+                        &mut sig);
 
                 assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
                 check(output, result, 2);
@@ -1911,8 +1908,7 @@ mod tests {
                     .add_signer(ephemeral.clone().strip_secret_key_material())
                     .sign(
                         std::io::Cursor::new(MESSAGE),
-                        &mut sig,
-                        crate::prompt::Cancel::new());
+                        &mut sig);
 
                 assert!(result.is_err());
                 check(output, result, 0);
@@ -1931,7 +1927,7 @@ mod tests {
         let keystore = sq.key_generate()
             .email("keystore@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1941,7 +1937,7 @@ mod tests {
             .email("ephemeral@example.org")
             .without_password()
             .ephemeral()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -1954,8 +1950,7 @@ mod tests {
             .add_signer(keystore.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut sig,
-                crate::prompt::Cancel::new());
+                &mut sig);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1);
@@ -1970,8 +1965,7 @@ mod tests {
             .append(
                 std::io::Cursor::new(MESSAGE),
                 std::io::Cursor::new(&sig),
-                &mut sig2,
-                crate::prompt::Cancel::new());
+                &mut sig2);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1);
@@ -1988,8 +1982,7 @@ mod tests {
             .append(
                 std::io::Cursor::new(MESSAGE),
                 std::io::Cursor::new(&sig),
-                &mut sig2,
-                crate::prompt::Cancel::new());
+                &mut sig2);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 2);
@@ -2013,8 +2006,7 @@ mod tests {
             .append(
                 std::io::Cursor::new(MESSAGE),
                 std::io::Cursor::new("junk"),
-                &mut sig2,
-                crate::prompt::Cancel::new());
+                &mut sig2);
 
         assert!(result.is_err());
         check(output, result, 0);
@@ -2028,7 +2020,7 @@ mod tests {
         let keystore = sq.key_generate()
             .email("keystore@example.org")
             .without_password()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -2038,7 +2030,7 @@ mod tests {
             .email("ephemeral@example.org")
             .without_password()
             .ephemeral()
-            .generate(Cancel::new())
+            .generate()
             .expect("can generate a key")
             .into_cert();
 
@@ -2051,8 +2043,7 @@ mod tests {
             .add_signer(keystore.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut sig,
-                crate::prompt::Cancel::new());
+                &mut sig);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1);
@@ -2066,8 +2057,7 @@ mod tests {
             .add_signer(ephemeral.clone())
             .append(
                 std::io::Cursor::new(&sig),
-                &mut sig2,
-                crate::prompt::Cancel::new());
+                &mut sig2);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1);
@@ -2083,8 +2073,7 @@ mod tests {
             .add_signer(keystore.clone())
             .append(
                 std::io::Cursor::new(&sig),
-                &mut sig2,
-                crate::prompt::Cancel::new());
+                &mut sig2);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 2);
@@ -2117,8 +2106,7 @@ mod tests {
             .add_signer(ephemeral.clone())
             .append(
                 std::io::Cursor::new("junk"),
-                &mut sig2,
-                crate::prompt::Cancel::new());
+                &mut sig2);
 
         assert!(result.is_err());
         check(output, result, 1);
@@ -2153,8 +2141,7 @@ mod tests {
             .add_signer(cert.clone().strip_secret_key_material())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut sig,
-                crate::prompt::Cancel::new());
+                &mut sig);
 
         assert!(result.is_ok(), "Failed: {}", result.unwrap_err());
         check(output, result, 1);
@@ -2180,8 +2167,7 @@ mod tests {
             .add_signer(cert.clone())
             .sign(
                 std::io::Cursor::new(MESSAGE),
-                &mut sig,
-                crate::prompt::Cancel::new());
+                &mut sig);
 
         assert!(result.is_err());
         check(output, result, 0);

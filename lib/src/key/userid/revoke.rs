@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sequoia_openpgp as openpgp;
 use openpgp::cert::UserIDRevocationBuilder;
 use openpgp::packet::signature::subpacket::NotationData;
@@ -23,7 +25,7 @@ struct UserIDRevocation {
 
 impl UserIDRevocation {
     /// Create a new UserIDRevocation
-    pub fn new<'sequoia, 'p, P>(
+    pub fn new<'sequoia, 'prompt>(
         sequoia: &'sequoia Sequoia,
         revoker: Option<Cert>,
         cert: Cert,
@@ -31,10 +33,8 @@ impl UserIDRevocation {
         reason: ReasonForRevocation,
         message: &str,
         notations: &[(bool, NotationData)],
-        prompt: P
+        prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
     ) -> Result<Self>
-    where
-        P: prompt::PromptFactory<'p>,
     {
         let (revoker, mut signer)
             = get_secret_signer(sequoia, &cert, revoker.as_ref(), prompt)?;
@@ -116,21 +116,30 @@ impl<'sequoia> Params<'sequoia> {
     }
 }
 
+/// Owned parameters.
+struct ParamsOnce<'prompt> {
+    prompt: Option<Arc<dyn prompt::PromptFactory<'prompt> + 'prompt>>,
+}
+
 /// Revokes user IDs.
 ///
 /// A builder providing control over how to revoke user IDs.
-pub struct Builder<'sequoia> {
+pub struct Builder<'sequoia, 'prompt> {
     params: Params<'sequoia>,
+    params_once: ParamsOnce<'prompt>,
 }
 
-impl<'sequoia> Builder<'sequoia>
+impl<'sequoia, 'prompt> Builder<'sequoia, 'prompt>
 {
-    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Builder<'sequoia>
+    pub(crate) fn new(sequoia: &'sequoia Sequoia) -> Self
     {
         Builder {
             params: Params {
                 sequoia,
                 notations: Vec::new(),
+            },
+            params_once: ParamsOnce {
+                prompt: None,
             },
         }
     }
@@ -141,6 +150,8 @@ impl<'sequoia> Builder<'sequoia>
     pub fn params(&self) -> &Params<'sequoia> {
         &self.params
     }
+
+    prompt_builder_impl!();
 
     /// Adds a notation to the new revocation signatures.
     ///
@@ -178,23 +189,24 @@ impl<'sequoia> Builder<'sequoia>
     ///
     /// Returns an error if reading of the [`Cert`] fails, if retrieval of
     /// [`NotationData`] fails or if the eventual revocation fails.
-    pub fn revoke<'p, P>(&self,
-                         revoker: Option<&Cert>,
-                         cert: &Cert,
-                         userid: &UserID,
-                         reason: ReasonForRevocation,
-                         message: &str,
-                         output: Option<&mut dyn std::io::Write>,
-                         prompt: P)
+    pub fn revoke(
+        self,
+        revoker: Option<&Cert>,
+        cert: &Cert,
+        userid: &UserID,
+        reason: ReasonForRevocation,
+        message: &str,
+        output: Option<&mut dyn std::io::Write>)
         -> Result<()>
-    where
-        P: prompt::PromptFactory<'p>
     {
-        let &Builder {
+        let Builder {
             params: Params {
                 sequoia,
                 ref notations,
             },
+            params_once: ParamsOnce {
+                prompt,
+            }
         } = self;
 
         let revocation = UserIDRevocation::new(

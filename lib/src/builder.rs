@@ -8,6 +8,7 @@ use crate::Sequoia;
 use crate::StateDirectory;
 use crate::config::ConfigFile;
 use crate::openpgp;
+use crate::prompt;
 
 enum Home {
     /// Use the default.
@@ -52,6 +53,9 @@ pub struct SequoiaBuilder {
     /// The current time.
     time: Clock,
 
+    /// The default prompt.
+    prompt: Box<dyn prompt::PromptFactory<'static>>,
+
     /// Overrides the path to the cert store.
     cert_store_path: Option<crate::types::StateDirectory>,
 
@@ -75,6 +79,7 @@ impl SequoiaBuilder {
             home: Home::Default,
             policy_as_of: None,
             time: Default::default(),
+            prompt: Box::new(prompt::Cancel::new()),
             cert_store_path: Default::default(),
             keyrings: Default::default(),
             key_store_path: Default::default(),
@@ -161,6 +166,22 @@ impl SequoiaBuilder {
     pub fn stateless(mut self) -> Self {
         self.home = Home::Stateless;
 
+        self
+    }
+
+    /// Sets the default password prompt.
+    ///
+    /// By default the [`Cancel`](prompt::Cancel) implementation is
+    /// used.  The password prompt can be overwritten on a
+    /// per-operation basis, e.g., to use an alternate prompt when
+    /// generating a key, use
+    /// [`key::generate::Builder::prompt`](crate::key::generate::Builder::prompt).
+    pub fn prompt<P>(mut self, prompt: P)
+        -> Self
+    where
+        P: prompt::PromptFactory<'static> + 'static
+    {
+        self.prompt = Box::new(prompt);
         self
     }
 
@@ -262,6 +283,7 @@ impl SequoiaBuilder {
             config_file,
             config,
             time: self.time.clone(),
+            prompt: self.prompt,
             cert_store_path: self.cert_store_path.clone(),
             cert_store: Default::default(),
             keyrings: self.keyrings.clone(),

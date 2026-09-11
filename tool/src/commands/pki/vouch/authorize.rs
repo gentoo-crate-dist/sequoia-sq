@@ -67,6 +67,7 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
 
     sq.sequoia.pki_certify()
         .stream(stream)
+        .prompt(prompt)
         .to_writer(output.map(|(_, f)| f))
         // Always recreate.
         .recreate(true)
@@ -82,8 +83,7 @@ pub fn authorize(sq: Sq, mut c: authorize::Command)
         .certify(
             &certifier,
             &cert,
-            &userids,
-            prompt)?;
+            &userids)?;
 
     if let Some(message) = message_ {
         message.finalize()?;

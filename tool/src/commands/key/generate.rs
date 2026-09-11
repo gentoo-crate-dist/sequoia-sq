@@ -99,7 +99,7 @@ pub fn generate(
     if let Some((key, rev)) = output {
         builder = builder.to_writer((key, rev));
     }
-    let result = builder.generate(prompt)?;
+    let result = builder.prompt(prompt).generate()?;
 
     if let Some(key_import_status) = result.key_import_status() {
         for (fpr, status) in key_import_status.iter() {
