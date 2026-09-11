@@ -243,6 +243,7 @@ pub use errors::SystemError;
 pub mod cert;
 pub mod consts;
 pub mod decrypt;
+mod decrypt_key;
 pub mod encrypt;
 pub mod inspect;
 pub mod key;
