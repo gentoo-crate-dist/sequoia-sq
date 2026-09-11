@@ -663,3 +663,214 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::io::Write;
+
+    use openpgp::serialize::Serialize;
+
+    #[test]
+    fn keystore() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Default cert.
+        let mut alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        // No signing subkey.
+        let mut bob = sq.key_generate()
+            .email("bob@example.org")
+            .can_sign(false)
+            .without_password()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        for secret_key_in_cert in [true, false] {
+            eprintln!("Testing with secret key material {}in cert",
+                      if secret_key_in_cert {
+                          ""
+                      } else {
+                          "NOT "
+                      });
+
+            // Test with Alice's certificate.
+            let vc = alice.with_policy(sq.policy(), sq.time())
+                .expect("have a valid cert");
+
+            let signer = sq.signer().get_primary_key(&alice)
+                .expect("have a usable primary key");
+            assert_eq!(signer.public().fingerprint(),
+                       alice.fingerprint());
+
+            let signer = sq.signer().get_certification_key(&alice)
+                .expect("have a usable certification key");
+            assert_eq!(signer.public().fingerprint(),
+                       alice.fingerprint());
+
+            let signer = sq.signer().get_signing_key(&alice)
+                .expect("have a usable signing key");
+            assert_eq!(signer.public().fingerprint(),
+                       vc.keys()
+                       .for_signing()
+                       .next()
+                       .expect("have signing key")
+                       .key()
+                       .fingerprint());
+
+
+            // Test with Bob's certificate, which doesn't have a
+            // signing-capable key.
+            let vc = bob.with_policy(sq.policy(), sq.time())
+                .expect("have a valid cert");
+
+            let signer = sq.signer().get_primary_key(&bob)
+                .expect("have a usable primary key");
+            assert_eq!(signer.public().fingerprint(),
+                       bob.fingerprint());
+
+            let signer = sq.signer().get_certification_key(&bob)
+                .expect("have a usable certification key");
+            assert_eq!(signer.public().fingerprint(),
+                       bob.fingerprint());
+
+            assert!(vc.keys().for_signing().next().is_none(),
+                    "don't have signing key");
+            assert!(sq.signer().get_signing_key(&bob).is_err(),
+                    "don't have a usable signing key");
+
+            // Test with both certificates.
+            let signers = sq.signer().get_primary_keys(&[&alice, &bob][..])
+                .expect("have usable primary keys");
+            let mut signers = signers
+                .into_iter()
+                .map(|(_, signer)| signer.public().fingerprint())
+                .collect::<Vec<_>>();
+            signers.sort();
+
+            let mut expected = vec![ alice.fingerprint(), bob.fingerprint() ];
+            expected.sort();
+
+            assert_eq!(&signers, &expected);
+
+            let signers = sq.signer().get_certification_keys(&[&alice, &bob][..])
+                .expect("have usable certification keys");
+            let mut signers = signers
+                .into_iter()
+                .map(|(_, signer)| signer.public().fingerprint())
+                .collect::<Vec<_>>();
+            signers.sort();
+
+            let mut expected = vec![ alice.fingerprint(), bob.fingerprint() ];
+            expected.sort();
+
+            assert_eq!(&signers, &expected);
+
+
+            let result = sq.signer().get_signing_keys(&[&alice, &bob][..]);
+            assert!(result.is_err(),
+                    "bob does not have a signing-capable key");
+
+            alice = alice.strip_secret_key_material();
+            bob = bob.strip_secret_key_material();
+        }
+    }
+
+    #[test]
+    fn in_cert() {
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        // Default cert, not imported to the certificate store.
+        let mut alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .ephemeral()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        let vc = alice.with_policy(sq.policy(), sq.time())
+            .expect("have a valid cert");
+
+        eprintln!("Testing with secret key material in cert");
+
+        let signer = sq.signer().get_primary_key(&alice)
+            .expect("have a usable primary key");
+        assert_eq!(signer.public().fingerprint(),
+                   alice.fingerprint());
+
+        let signer = sq.signer().get_certification_key(&alice)
+            .expect("have a usable certification key");
+        assert_eq!(signer.public().fingerprint(),
+                   alice.fingerprint());
+
+        let signer = sq.signer().get_signing_key(&alice)
+            .expect("have a usable signing key");
+        assert_eq!(signer.public().fingerprint(),
+                   vc.keys()
+                   .for_signing()
+                   .next()
+                   .expect("have signing key")
+                   .key()
+                   .fingerprint());
+
+        alice = alice.strip_secret_key_material();
+
+        eprintln!("Testing after stripping secret key material from cert");
+
+        assert!(sq.signer().get_primary_key(&alice).is_err());
+        assert!(sq.signer().get_certification_key(&alice).is_err());
+        assert!(sq.signer().get_signing_key(&alice).is_err());
+    }
+
+    /// Check that we can use secret key material from a keyring.
+    #[test]
+    fn keyring() {
+        let (alice, _) = CertBuilder::general_purpose(Some("alice@example.org"))
+            .generate().expect("can generate certificate");
+
+        let mut keyring = tempfile::NamedTempFile::new()
+            .expect("can create temporary file");
+
+        alice.as_tsk()
+            .serialize(&mut keyring)
+            .expect("can serialize certificate");
+
+        keyring.flush().expect("can flush");
+
+        let sq = Sequoia::builder().ephemeral().unwrap()
+            .add_keyring(keyring.path())
+            .build().unwrap();
+
+        let alice = alice.strip_secret_key_material();
+
+        let vc = alice.with_policy(sq.policy(), sq.time())
+            .expect("have a valid cert");
+
+        let signer = sq.signer().get_primary_key(&alice)
+            .expect("have a usable primary key");
+        assert_eq!(signer.public().fingerprint(),
+                   alice.fingerprint());
+
+        let signer = sq.signer().get_certification_key(&alice)
+            .expect("have a usable certification key");
+        assert_eq!(signer.public().fingerprint(),
+                   alice.fingerprint());
+
+        let signer = sq.signer().get_signing_key(&alice)
+            .expect("have a usable signing key");
+        assert_eq!(signer.public().fingerprint(),
+                   vc.keys()
+                   .for_signing()
+                   .next()
+                   .expect("have signing key")
+                   .key()
+                   .fingerprint());
+    }
+}
