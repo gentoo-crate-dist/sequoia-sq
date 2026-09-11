@@ -495,14 +495,14 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
     pub fn get_primary_keys<C>(self, certs: &[C])
-        -> Result<Vec<Box<dyn crypto::Signer + Send + Sync>>, CertError>
+        -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
+                  CertError>
     where
         C: std::borrow::Borrow<Cert>,
     {
         certs.into_iter()
             .map(|cert| {
                 self.get_key(cert, KeyType::Primary)
-                    .map(|(_cert, signer)| signer)
             })
             .collect::<Result<_, _>>()
     }
