@@ -79,7 +79,7 @@ need not be self signed.
 
 The converse operation is `sq sign`.
 
-If you are looking for a standalone program to verify clear text signatures,\
+If you are looking for a standalone program to verify clear text signatures, \
 detached signatures or inline signatures, consider using sequoia-sqv.
 
 `sq verify` respects the reference time set by the top-level \
