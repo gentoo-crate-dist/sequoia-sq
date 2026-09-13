@@ -383,10 +383,9 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    fn get_key<C>(&self, cert: &C, key_type: KeyType)
+    fn get_key(&self, cert: &Cert, key_type: KeyType)
         -> Result<(Cert, Box<dyn crypto::Signer + Send + Sync>),
                   CertError>
-    where C: Borrow<Cert>,
     {
         let &Params {
             sequoia,
@@ -403,8 +402,6 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
         } else {
             sequoia.policy() as _
         };
-
-        let cert = cert.borrow();
 
         if ! allow_revoked {
             let revocation_status
@@ -571,7 +568,7 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     {
         certs.into_iter()
             .map(|cert| {
-                self.get_key(cert, KeyType::Primary)
+                self.get_key(cert.borrow(), KeyType::Primary)
             })
             .collect::<Result<_, _>>()
     }
@@ -599,7 +596,7 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     where
         C: std::borrow::Borrow<Cert>,
     {
-        self.get_key(&cert, KeyType::Primary)
+        self.get_key(cert.borrow(), KeyType::Primary)
             .map(|(_cert, signer)| signer)
     }
 
@@ -631,7 +628,7 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
         certs.into_iter()
             .map(|cert| {
                 self.get_key(
-                    cert,
+                    cert.borrow(),
                     KeyType::KeyFlags(KeyFlags::signing()))
             })
             .collect::<Result<_, _>>()
@@ -662,7 +659,7 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
         C: Borrow<Cert>,
     {
         self.get_key(
-            &cert,
+            cert.borrow(),
             KeyType::KeyFlags(KeyFlags::signing()))
             .map(|(_cert, signer)| signer)
     }
@@ -695,7 +692,7 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
         certs.into_iter()
             .map(|cert| {
                 self.get_key(
-                    cert,
+                    cert.borrow(),
                     KeyType::KeyFlags(KeyFlags::certification()))
             })
             .collect::<Result<_, _>>()
@@ -726,7 +723,7 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
         C: std::borrow::Borrow<Cert>,
     {
         self.get_key(
-            &cert,
+            cert.borrow(),
             KeyType::KeyFlags(KeyFlags::certification()))
             .map(|(_cert, signer)| signer)
     }
