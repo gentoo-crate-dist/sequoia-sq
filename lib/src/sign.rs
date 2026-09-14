@@ -828,7 +828,7 @@ where
 
         let mut signers = match sequoia.signer()
             .prompt_(prompt.clone())
-            .get_signing_keys(&signers)
+            .get_signing_keys(signers)
         {
             Ok(signers) => {
                 stream.output(
@@ -1280,7 +1280,7 @@ impl<'sequoia, 'stream, 'prompt>
         let mut signers = match sequoia
             .signer()
             .prompt_(prompt.clone())
-            .get_signing_keys(&signers)
+            .get_signing_keys(signers)
         {
             Ok(signers) => {
                 let (output, signers) = signers.into_iter()
@@ -1641,7 +1641,7 @@ impl<'sequoia, 'stream, 'prompt>
         let mut signers = match sequoia
             .signer()
             .prompt_(prompt.clone())
-            .get_signing_keys(&signers)
+            .get_signing_keys(signers)
         {
             Ok(signers) => {
                 let (output, signers) = signers

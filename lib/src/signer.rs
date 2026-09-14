@@ -560,11 +560,12 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_primary_keys<C>(self, certs: &[C])
+    pub fn get_primary_keys<I, C>(self, certs: I)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
-        C: std::borrow::Borrow<Cert>,
+        I: IntoIterator<Item=C>,
+        C: Borrow<Cert>,
     {
         certs.into_iter()
             .map(|cert| {
@@ -619,10 +620,11 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_signing_keys<C>(self, certs: &[C])
+    pub fn get_signing_keys<I, C>(self, certs: I)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
+        I: IntoIterator<Item=C>,
         C: Borrow<Cert>,
     {
         certs.into_iter()
@@ -683,11 +685,12 @@ impl<'sequoia, 'policy, 'prompt> Builder<'sequoia, 'policy, 'prompt>
     ///
     /// If a key is locked, then the user will be prompted to enter
     /// the password.
-    pub fn get_certification_keys<C>(self, certs: &[C])
+    pub fn get_certification_keys<I, C>(self, certs: I)
         -> Result<Vec<(Cert, Box<dyn crypto::Signer + Send + Sync>)>,
                   CertError>
     where
-        C: std::borrow::Borrow<Cert>,
+        I: IntoIterator<Item=C>,
+        C: Borrow<Cert>,
     {
         certs.into_iter()
             .map(|cert| {
@@ -812,7 +815,7 @@ mod tests {
                     "don't have a usable signing key");
 
             // Test with both certificates.
-            let signers = sq.signer().get_primary_keys(&[&alice, &bob][..])
+            let signers = sq.signer().get_primary_keys([&alice, &bob])
                 .expect("have usable primary keys");
             let mut signers = signers
                 .into_iter()
@@ -825,7 +828,7 @@ mod tests {
 
             assert_eq!(&signers, &expected);
 
-            let signers = sq.signer().get_certification_keys(&[&alice, &bob][..])
+            let signers = sq.signer().get_certification_keys([&alice, &bob])
                 .expect("have usable certification keys");
             let mut signers = signers
                 .into_iter()
@@ -839,7 +842,7 @@ mod tests {
             assert_eq!(&signers, &expected);
 
 
-            let result = sq.signer().get_signing_keys(&[&alice, &bob][..]);
+            let result = sq.signer().get_signing_keys([&alice, &bob]);
             assert!(result.is_err(),
                     "bob does not have a signing-capable key");
 
