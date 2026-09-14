@@ -25,7 +25,7 @@ use crate::utils::get_subkeys;
 
 /// Key expiration parameters.
 ///
-/// These parameters are used by [`generate`](Builder::generate).
+/// These parameters are used by [`expire`](Builder::expire).
 #[derive(Clone)]
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
