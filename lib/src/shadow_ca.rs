@@ -53,7 +53,7 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.trust_root()?;
+        let (cert, created) = certd.trust_root_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -83,7 +83,8 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca_wkd()?;
+        let (cert, created)
+            = certd.shadow_ca_wkd_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -99,7 +100,8 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca_dane()?;
+        let (cert, created)
+            = certd.shadow_ca_dane_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -115,7 +117,8 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca_autocrypt()?;
+        let (cert, created)
+            = certd.shadow_ca_autocrypt_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -131,7 +134,8 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca_proton_me()?;
+        let (cert, created)
+            = certd.shadow_ca_proton_me_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -147,7 +151,8 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca_keys_openpgp_org()?;
+        let (cert, created)
+            = certd.shadow_ca_keys_openpgp_org_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -163,7 +168,8 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca_keys_mailvelope_com()?;
+        let (cert, created)
+            = certd.shadow_ca_keys_mailvelope_com_with_policy(self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
@@ -184,7 +190,9 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        if let Some((cert, created)) = certd.shadow_ca_keyserver(uri)? {
+        if let Some((cert, created))
+            = certd.shadow_ca_keyserver_with_policy(uri, self.policy())?
+        {
             let cert = cert.to_cert()?.clone();
 
             Ok(Some(Ca {
@@ -212,7 +220,9 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        if let Some((cert, created)) = certd.shadow_ca_keyserver(uri)? {
+        if let Some((cert, created))
+            = certd.shadow_ca_keyserver_with_policy(uri, self.policy())?
+        {
             let cert = cert.to_cert()?.clone();
 
             Ok(Some(Ca {
@@ -241,8 +251,9 @@ impl Sequoia {
         let certd = cert_store.certd()
             .ok_or_else(|| anyhow::anyhow!(NO_CERTD_ERR))?;
 
-        let (cert, created) = certd.shadow_ca(
-                    name, create, userid, trust_amount, intermediaries)?;
+        let (cert, created) = certd.shadow_ca_with_policy(
+            name, create, userid, trust_amount, intermediaries,
+            self.policy())?;
 
         let cert = cert.to_cert()?.clone();
 
