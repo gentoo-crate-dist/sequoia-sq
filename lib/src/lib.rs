@@ -250,6 +250,7 @@ pub mod inspect;
 pub mod key;
 #[cfg(feature = "net")]
 pub mod network;
+mod parallel;
 pub mod pki;
 pub mod provenance;
 mod shadow_ca;

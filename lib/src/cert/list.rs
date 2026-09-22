@@ -144,6 +144,7 @@ use cert_store::store::UserIDQueryParams;
 use crate::Result;
 use crate::Sequoia;
 use crate::SystemError;
+use crate::parallel::par_map_unordered;
 use crate::types::Safe;
 use crate::types::TrustAmount;
 
@@ -1187,13 +1188,18 @@ impl<'sequoia> Builder<'sequoia> {
         };
 
         // bool: true if the lint is for the certificate (not the user ID).
-        let mut lints: Vec<(Option<anyhow::Error>, bool, &[usize])>
+        let mut lints: Vec<(Option<anyhow::Error>, bool, Vec<usize>)>
             = Vec::with_capacity(queries.len());
 
         stream.output(&self.params, Output::StartOfBindings)
             .map_err(|err| Error::StreamOutputError(err))?;
 
-        for (fingerprint, cert, userid, cert_authenticated, i) in bindings.iter() {
+        let bindings_count = bindings.len();
+
+        let paths = par_map_unordered(bindings.into_iter(), None, |binding| {
+            let (fingerprint, _cert, userid, _cert_authenticated, _i)
+                = &binding;
+
             if let Some(userid) = userid {
                 let paths = if gossip {
                     n.gossip(fingerprint, userid.clone())
@@ -1201,6 +1207,16 @@ impl<'sequoia> Builder<'sequoia> {
                     n.authenticate(
                         userid.clone(), fingerprint, required_amount)
                 };
+
+                (binding, Some(paths))
+            } else {
+                (binding, None)
+            }
+        });
+
+        for ((fingerprint, cert, userid, cert_authenticated, i), paths) in paths {
+            if let Some(userid) = userid {
+                let paths = paths.expect("looked up paths");
 
                 let aggregated_amount = paths.amount();
                 t!("{}, {:?}: {}", fingerprint, userid, aggregated_amount);
@@ -1217,7 +1233,7 @@ impl<'sequoia> Builder<'sequoia> {
                             t!("Skipping {}: certificate not valid: {}",
                                fingerprint, err);
                             bindings_unusable += 1;
-                            lints.push((Some(err), true, &i));
+                            lints.push((Some(err), true, i));
                             continue;
                         }
                         Ok(cert) => cert
@@ -1227,22 +1243,22 @@ impl<'sequoia> Builder<'sequoia> {
                     if let Err(err) = check_userid(&cert, &userid)
                     {
                         t!("Skipping {}, {}: {}", fingerprint, userid, err);
-                        if ! *cert_authenticated {
+                        if ! cert_authenticated {
                             bindings_unusable += 1;
-                            lints.push((Some(err), false, &i));
+                            lints.push((Some(err), false, i));
                             continue;
                         }
                         false
                     } else {
                         true
                     }
-                } else if *cert_authenticated {
+                } else if cert_authenticated {
                     // The binding is not authenticated, but we should
                     // show the certificate if it is valid.
                     if let Err(err) = check_cert(&fingerprint) {
                         t!("Skipping {}: {}", fingerprint, err);
                         bindings_unusable += 1;
-                        lints.push((Some(err), true, &i));
+                        lints.push((Some(err), true, i));
                         continue;
                     }
 
@@ -1255,17 +1271,17 @@ impl<'sequoia> Builder<'sequoia> {
                         if let Err(err) = check_cert(&fingerprint) {
                             t!("{}: {}", fingerprint, err);
                             bindings_unusable += 1;
-                            lints.push((Some(err), true, &i));
+                            lints.push((Some(err), true, i));
                         } else {
-                            if ! n.certified_userids_of(fingerprint)
-                                .contains(userid)
+                            if ! n.certified_userids_of(&fingerprint)
+                                .contains(&userid)
                             {
                                 lints.push((
                                     Some(anyhow::anyhow!(
                                         "{:?} was never certified for {}",
                                         String::from_utf8_lossy(userid.value()),
                                         fingerprint)),
-                                    false, &i));
+                                    false, i));
                             }
                         }
                     }
@@ -1293,13 +1309,15 @@ impl<'sequoia> Builder<'sequoia> {
                     }))
                     .map_err(|err| Error::StreamOutputError(err))?;
             } else {
+                assert!(paths.is_none(), "didn't lookup paths");
+
                 // A certificate with no User ID bindings.
-                if gossip || *cert_authenticated {
+                if gossip || cert_authenticated {
                     if ! unusable {
-                        if let Err(err) = check_cert(fingerprint) {
+                        if let Err(err) = check_cert(&fingerprint) {
                             t!("Skipping {}: {}", fingerprint, err);
                             bindings_unusable += 1;
-                            lints.push((Some(err), true, &i));
+                            lints.push((Some(err), true, i));
                             continue;
                         }
                     }
@@ -1325,7 +1343,7 @@ impl<'sequoia> Builder<'sequoia> {
             }
 
             for i in i.into_iter() {
-                queries_satisfied[*i] = true;
+                queries_satisfied[i] = true;
             }
         }
 
@@ -1380,7 +1398,7 @@ impl<'sequoia> Builder<'sequoia> {
         }
 
         let bindings_not_authenticated
-            = bindings.len() - bindings_authenticated - bindings_unusable;
+            = bindings_count - bindings_authenticated - bindings_unusable;
 
         *report = output::Report {
             missing_trust_roots: if ! unsatisfied.is_empty() {
@@ -1389,7 +1407,7 @@ impl<'sequoia> Builder<'sequoia> {
                 None
             },
             query_lints: unsatisfied_lints,
-            matching_bindings: bindings.len(),
+            matching_bindings: bindings_count,
             unsatisfied_queries: unsatisfied.clone(),
             authenticated_bindings: bindings_authenticated,
             unusable_bindings: bindings_unusable,
