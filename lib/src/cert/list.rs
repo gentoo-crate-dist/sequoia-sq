@@ -807,13 +807,9 @@ impl<'sequoia> Builder<'sequoia> {
             queries
         };
 
-        let return_all = queries.iter().any(|q| matches!(q.kind, QueryKind::All));
 
         // Build the network.
         let cert_store = sequoia.cert_store_or_else()?;
-        if return_all {
-            cert_store.precompute();
-        }
 
         let mut n = wot::NetworkBuilder::rooted(
             cert_store.as_ref(), &*sequoia.trust_roots());
@@ -1208,6 +1204,15 @@ impl<'sequoia> Builder<'sequoia> {
             .map_err(|err| Error::StreamOutputError(err))?;
 
         let bindings_count = bindings.len();
+
+        let return_all = queries.iter().any(|q| matches!(q.kind, QueryKind::All));
+        if return_all {
+            // `Network::preprocess` doesn't call
+            // `Backend::precompute`, because the store doesn't
+            // necessarily implement `Backend`.
+            n.precompute();
+            n.preprocess();
+        }
 
         let paths = par_map_unordered(bindings.into_iter(), None, |binding| {
             let (fingerprint, _cert, userid, _cert_authenticated, _i)
