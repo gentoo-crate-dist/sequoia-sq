@@ -1007,7 +1007,9 @@ impl<'sequoia> PacketDumper<'sequoia> {
                     write!(output, "{}    Signature expiration time: {} ({})",
                         i, t.convert(),
                         if let Some(creation) = sig.signature_creation_time() {
-                            (creation + (*t).into()).convert().to_string()
+                            (creation + std::time::Duration::from(*t))
+                                .convert()
+                                .to_string()
                         } else {
                             " (no Signature Creation Time subpacket)".into()
                         })?
