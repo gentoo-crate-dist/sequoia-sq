@@ -737,6 +737,19 @@ impl<'sequoia> Builder<'sequoia> {
 
         let result = self.list_(&mut stream, &mut report);
 
+        // After doing a list, save the signature verification cache.
+        // If any operation is going to add a lot of entries to the
+        // signature verification cache, it is this one.  Doing this
+        // here ensures that new cache entries are available to other
+        // applications.  Further if the program exits without
+        // dropping `Sequoia`, then this ensures that the cache is
+        // saved.
+        if let Ok(cert_store) = self.params.sequoia.cert_store_or_else() {
+            if let Some(certd) = cert_store.certd() {
+                certd.save_cache();
+            }
+        }
+
         let result = match result {
             Ok(()) => {
                 Ok(report.to_outcome())
