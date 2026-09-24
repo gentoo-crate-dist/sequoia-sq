@@ -3259,7 +3259,9 @@ fn target_cert_expired() -> Result<()> {
 
     let trust_root = Some(&alice_fpr);
     let command = "authenticate";
-    // Bob's certificate is expired.
+    let human_output =
+        [(1, format!("- {} {}", HR_OK, &bob_uid))];
+    // Bob's certificate is now expired, but that's okay.
     test(
         keyring,
         trust_root,
@@ -3269,14 +3271,14 @@ fn target_cert_expired() -> Result<()> {
         60,
         Some(&bob_uid),
         Some(&bob_fpr),
-        false,
-        no_output(),
+        true,
+        &output_map(&human_output),
     );
 
     let trust_root = None;
     let command = "path";
     let human_output =
-        [(1, format!("{} {} {}: ", HR_NOT_OK_EMPTY, &bob_fpr, &bob_uid))];
+        [(1, format!("{} {} {}: ", HR_OK, &bob_fpr, &bob_uid))];
     test(
         keyring,
         trust_root,
@@ -3291,7 +3293,7 @@ fn target_cert_expired() -> Result<()> {
         60,
         Some(&bob_uid),
         None,
-        false,
+        true,
         &output_map(&human_output),
     );
 
@@ -3415,9 +3417,9 @@ fn target_cert_soft_revoked() -> Result<()> {
 
     let human_output =
         [(1, format!("- {} {}", HR_OK, &bob_uid))];
-    // Bob's certificate is soft revoked on 20200301.  If the
-    // reference time is before that, we should be able to
-    // authenticate Bob.  After that and we should fail to do so.
+    // Bob's certificate is soft revoked on 20200301.  We should be
+    // able to authenticate it whether the reference time is before or
+    // after that.
     test(
         keyring,
         trust_root,
@@ -3454,6 +3456,8 @@ fn target_cert_soft_revoked() -> Result<()> {
     let trust_root: Option<&Fingerprint> = Some(&alice_fpr);
     let command = "authenticate";
     let sqwot_args = &["--time", "20200302"]; // setting time again
+    let human_output =
+        [(1, format!("- {} {}", HR_OK, &bob_uid))];
 
     test(
         keyring,
@@ -3464,13 +3468,13 @@ fn target_cert_soft_revoked() -> Result<()> {
         60,
         Some(&bob_uid),
         Some(&bob_fpr),
-        false,
-        no_output(),
+        true,
+        &output_map(&human_output),
     );
 
     let command = "path";
     let human_output =
-        [(1, format!("{} {} {}: ", HR_NOT_OK_EMPTY, &bob_fpr, &bob_uid))];
+        [(1, format!("{} {} {}: ", HR_OK, &bob_fpr, &bob_uid))];
     test(
         keyring,
         trust_root,
@@ -3483,7 +3487,7 @@ fn target_cert_soft_revoked() -> Result<()> {
         60,
         Some(&bob_uid),
         None,
-        false,
+        true,
         &output_map(&human_output),
     );
 

@@ -4199,14 +4199,13 @@ dependencies = [
 
 [[package]]
 name = "sequoia-wot"
-version = "0.15.2"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc825dbf5b5d5d20b16a01e39319a0e4d6368ea8b6ea7e88d12d2bd30532b011"
+checksum = "94b0131ea5e4b75d6f8f79b82658a99ab9133d6877994288bbab9d0a01bbbe4e"
 dependencies = [
  "anyhow",
  "chrono",
  "crossbeam",
- "num_cpus",
  "sequoia-cert-store",
  "sequoia-openpgp",
  "thiserror 2.0.20",
