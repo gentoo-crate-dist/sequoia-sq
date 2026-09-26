@@ -133,6 +133,7 @@ use openpgp::types::RevocationStatus;
 
 use sequoia_wot as wot;
 use wot::store::Backend;
+use wot::Paths;
 use wot::store::Store;
 use wot::store::StoreError;
 
@@ -206,7 +207,7 @@ pub mod output {
         /// If the set of paths are sufficient to authenticate the binding
         /// at the required confidence level, then the set of paths may
         /// not be exhaustive.
-        pub paths: Vec<(wot::Path, usize)>,
+        pub paths: Paths,
 
         /// The aggregate trust amount across all paths.
         ///
@@ -1309,9 +1310,9 @@ impl<'sequoia> Builder<'sequoia> {
 
                 let paths = if userid_authenticated {
                     bindings_authenticated += 1;
-                    paths.into_iter().collect::<Vec<(wot::Path, usize)>>()
+                    paths
                 } else {
-                    vec![]
+                    Paths::new()
                 };
                 stream.output(
                     &self.params, Output::Binding(output::Binding {
@@ -1349,7 +1350,7 @@ impl<'sequoia> Builder<'sequoia> {
                                 OnceLock::new()
                             },
                             userid: None,
-                            paths: vec![],
+                            paths: Paths::new(),
                             aggregate_trust_amount: 0,
                         }))
                         .map_err(|err| Error::StreamOutputError(err))?;

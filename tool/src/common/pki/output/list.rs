@@ -71,8 +71,10 @@ impl sequoia::cert::list::Stream<'_> for Stream<'_, '_> {
             }) => {
                 self.network.add_cert(&fingerprint)?;
                 if let Some(userid) = userid {
-                    self.network.add_paths(paths, &fingerprint, &userid,
-                                           aggregate_trust_amount)?;
+                    self.network.add_paths(
+                        paths.into_iter().collect(),
+                        &fingerprint, &userid,
+                        aggregate_trust_amount)?;
                 }
             }
             EndOfBindings => self.network.finalize()?,
