@@ -2,7 +2,7 @@
 name = "sequoia"
 description = "A high-Level library for Sequoia PGP"
 version = "0.1.0"
-documentation = "https://docs.rs/sequoia"
+documentation = "https://docs.rs/sequoia-sq"
 homepage = "https://sequoia-pgp.org/"
 keywords = ["cryptography", "openpgp", "pgp", "encryption", "signing"]
 categories = ["cryptography", "authentication"]
