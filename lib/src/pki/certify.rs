@@ -77,6 +77,14 @@
 //! Alice certifies that a certificate is controlled by
 //! `bob@example.org`.
 //!
+//! [`certify`](Builder::certify) takes two certificates: the
+//! certifier's certificate and the certificate to be certified.  If
+//! you have a `Fingerprint` or `KeyID`, use
+//! [`Sequoia::lookup`](crate::lookup) to find the corresponding
+//! certificate.  If you have an email address, use
+//! [`Sequoia::lookup_by`](crate::lookup_by) to find an authenticated
+//! certificate.
+//!
 //! Note: The certifier's certificate does not itself need to contain
 //! the secret key material.  The certify function looks for secret
 //! key material in the certificate itself, in any [specified
