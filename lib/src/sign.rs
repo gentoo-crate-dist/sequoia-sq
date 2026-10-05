@@ -46,7 +46,7 @@
 //! given a `Cert`.  If you have a `Fingerprint` or `KeyID`, use
 //! [`Sequoia::lookup`](crate::lookup) to find the corresponding
 //! certificate.  If you have an email address, use
-//! [`Sequoia::cert_list`](crate::cert::list) to find an authenticated
+//! [`Sequoia::lookup_by`](crate::lookup_by) to find an authenticated
 //! certificate.
 //!
 //! Note: the certificate itself does not need to contain the secret
