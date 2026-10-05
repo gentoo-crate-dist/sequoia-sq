@@ -3,7 +3,7 @@ use anyhow::Result;
 
 use typenum::Unsigned;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::cert::ValidCert;
 use openpgp::packet::UserID;
@@ -1003,7 +1003,7 @@ impl From<UserID> for ResolvedUserID {
     }
 }
 
-use sequoia::types::MyAsRef;
+use sqz::types::MyAsRef;
 impl MyAsRef<UserID> for &ResolvedUserID {
     fn as_ref(&self) -> &UserID {
         &self.userid

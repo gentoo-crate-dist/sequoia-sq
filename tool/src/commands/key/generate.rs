@@ -1,13 +1,13 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 use openpgp::parse::buffered_reader;
 use openpgp::serialize::Serialize;
 
-use sequoia::inspect::inspect;
-use sequoia::key::PasswordPolicy;
-use sequoia::types::EncryptPurpose;
+use sqz::inspect::inspect;
+use sqz::key::PasswordPolicy;
+use sqz::types::EncryptPurpose;
 
 use crate::Sq;
 use crate::cli;

@@ -1,4 +1,4 @@
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::cert::amalgamation::key::PrimaryKey;
 use openpgp::cert::Cert;
 use openpgp::packet::Packet;
@@ -6,7 +6,7 @@ use openpgp::serialize::Serialize;
 
 use anyhow::Context;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;

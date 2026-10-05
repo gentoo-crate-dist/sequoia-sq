@@ -6,7 +6,7 @@ use std::{
 use std::ops::Deref;
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{
     Result,
     armor,
@@ -34,7 +34,7 @@ use openpgp::{
     serialize::Serialize,
 };
 
-use sequoia::types::PartFileWriter;
+use sqz::types::PartFileWriter;
 
 use crate::{
     Sq,
@@ -321,7 +321,7 @@ fn split(input: &mut (dyn io::Read + Sync + Send), prefix: &str, binary: bool)
                 },
             }
         } else {
-            use sequoia::openpgp::serialize::stream::{Message, Armorer};
+            use sqz::openpgp::serialize::stream::{Message, Armorer};
             let message = Message::new(sink);
             let mut message = Armorer::new(message)
                 .kind(if has_secrets {

@@ -1,6 +1,6 @@
-use sequoia::openpgp::Result;
+use sqz::openpgp::Result;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::key::approvals;

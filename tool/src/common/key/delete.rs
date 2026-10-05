@@ -1,7 +1,7 @@
 //! Deletes secret key material.
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::Result;
@@ -10,9 +10,9 @@ use openpgp::cert::amalgamation::key::ValidErasedKeyAmalgamation;
 use openpgp::packet::key::KeyParts;
 use openpgp::serialize::Serialize;
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 
-use sequoia::types::FileStdinOrKeyHandle;
+use sqz::types::FileStdinOrKeyHandle;
 
 use crate::Sq;
 use crate::cli::types::FileOrStdout;

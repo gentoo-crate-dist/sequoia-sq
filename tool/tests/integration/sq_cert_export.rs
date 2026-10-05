@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::ops::Deref;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::Result;

@@ -106,7 +106,7 @@ pub enum Source {
 /// the configuration from a file, use [`ConfigFile::parse_home`]:
 ///
 /// ```rust,no_run
-/// use sequoia::config::ConfigFile;
+/// use sqz::config::ConfigFile;
 ///
 /// # fn main() -> anyhow::Result<()> {
 /// let config_file = ConfigFile::parse_default_home()?;
@@ -221,7 +221,7 @@ impl Default for ParsedConfig {
 /// the configuration from a file, use [`ConfigFile::parse_home`]:
 ///
 /// ```rust,no_run
-/// use sequoia::config::ConfigFile;
+/// use sqz::config::ConfigFile;
 ///
 /// # fn main() -> anyhow::Result<()> {
 /// let config_file = ConfigFile::parse_default_home()?;

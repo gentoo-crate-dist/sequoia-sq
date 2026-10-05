@@ -1,6 +1,6 @@
-use sequoia::cert;
-use sequoia::config::Config;
-use sequoia::encrypt;
+use sqz::cert;
+use sqz::config::Config;
+use sqz::encrypt;
 
 use crate::Result;
 use crate::Sq;

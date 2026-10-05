@@ -2,11 +2,11 @@
 
 use anyhow::Context as _;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::armor;
 
-use sequoia::types::FileOrStdin;
-use sequoia::types::TrustThreshold;
+use sqz::types::FileOrStdin;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;

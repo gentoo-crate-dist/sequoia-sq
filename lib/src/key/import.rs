@@ -45,13 +45,13 @@
 //! example):
 //!
 //! ```
-//! # use sequoia::openpgp;
+//! # use sqz::openpgp;
 //! # use openpgp::cert::CertBuilder;
 //! # use openpgp::serialize::Serialize;
 //! #
-//! # use sequoia::Sequoia;
+//! # use sqz::Sequoia;
 //! #
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let (alice, _alice_rev) = CertBuilder::new()
@@ -82,16 +82,16 @@
 //! the call returns.
 //!
 //! ```
-//! # use sequoia::openpgp;
+//! # use sqz::openpgp;
 //! # use openpgp::cert::CertBuilder;
 //! # use openpgp::serialize::Serialize;
 //! #
-//! # use sequoia::Sequoia;
-//! use sequoia::key::import::Output;
-//! use sequoia::key::import::output::*;
-//! use sequoia::key::import;
+//! # use sqz::Sequoia;
+//! use sqz::key::import::Output;
+//! use sqz::key::import::output::*;
+//! use sqz::key::import;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let (alice, _alice_rev) = CertBuilder::new()
@@ -112,7 +112,7 @@
 //!     fn output(&mut self,
 //!               _params: &import::Params,
 //!               output: import::Output)
-//!         -> sequoia::Result<()>
+//!         -> sqz::Result<()>
 //!     {
 //!         match output {
 //!             Output::Imported(Imported { cert, .. }) => {

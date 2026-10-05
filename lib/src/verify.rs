@@ -39,8 +39,8 @@
 //! about the signatures is discarded:
 //!
 //! ```
-//! use sequoia::Sequoia;
-//! use sequoia::verify;
+//! use sqz::Sequoia;
+//! use sqz::verify;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! let message = b"-----BEGIN PGP MESSAGE-----
@@ -83,12 +83,12 @@
 //! the status of any [`output::Signature`]s.
 //!
 //! ```
-//! use sequoia::Sequoia;
-//! use sequoia::verify;
+//! use sqz::Sequoia;
+//! use sqz::verify;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! struct VerifyOutputHandler<'sequoia> {
-//!     sequoia: &'sequoia sequoia::Sequoia,
+//!     sequoia: &'sequoia Sequoia,
 //! }
 //!
 //! impl<'sequoia>
@@ -96,7 +96,7 @@
 //!     for &mut VerifyOutputHandler<'sequoia>
 //! {
 //!     fn output(&mut self, _params: &verify::Params, output: verify::Output)
-//!         -> sequoia::Result<()>
+//!         -> sqz::Result<()>
 //!     {
 //!         match output {
 //!             verify::Output::MessageStructure(structure) => {

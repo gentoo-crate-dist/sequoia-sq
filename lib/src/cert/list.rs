@@ -23,11 +23,11 @@
 //! other types of queries.)
 //!
 //! ```
-//! # use sequoia::Sequoia;
-//! use sequoia::cert::list::Output;
-//! use sequoia::cert::list::Query;
+//! # use sqz::Sequoia;
+//! use sqz::cert::list::Output;
+//! use sqz::cert::list::Query;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 //! #
 //! # // Generate a key and import it into the certificate store.
@@ -67,14 +67,14 @@
 //! which is called with each result.
 //!
 //! ```
-//! use sequoia::Result;
-//! # use sequoia::Sequoia;
-//! use sequoia::cert::list::Output;
-//! use sequoia::cert::list::Params;
-//! use sequoia::cert::list::Query;
-//! use sequoia::cert::list::Stream;
+//! use sqz::Result;
+//! # use sqz::Sequoia;
+//! use sqz::cert::list::Output;
+//! use sqz::cert::list::Params;
+//! use sqz::cert::list::Query;
+//! use sqz::cert::list::Stream;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 //! #
 //! # // Generate a key and import it into the certificate store.

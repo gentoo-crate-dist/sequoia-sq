@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::Result;
@@ -13,12 +13,12 @@ use openpgp::crypto::Password;
 use openpgp::packet::key::KeyParts;
 use openpgp::serialize::Serialize;
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 use keystore::Protection;
 
-use sequoia::prompt;
-use sequoia::prompt::PromptFactory as _;
-use sequoia::types::FileStdinOrKeyHandle;
+use sqz::prompt;
+use sqz::prompt::PromptFactory as _;
+use sqz::types::FileStdinOrKeyHandle;
 
 use crate::Sq;
 use crate::cli::types::FileOrStdout;

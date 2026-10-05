@@ -6,7 +6,7 @@ use clap::{
     Subcommand,
 };
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 
 use crate::cli::types::ClapData;

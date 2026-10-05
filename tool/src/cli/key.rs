@@ -2,7 +2,7 @@
 
 use clap::{ValueEnum, Parser, Subcommand};
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::types::ReasonForRevocation;
 
 pub mod approvals;

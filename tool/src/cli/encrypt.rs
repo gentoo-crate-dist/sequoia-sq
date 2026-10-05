@@ -2,12 +2,12 @@
 
 use clap::Parser;
 
-use sequoia::config::Config;
-use sequoia::config::Profile;
+use sqz::config::Config;
+use sqz::config::Profile;
 
-use sequoia::types::CompressionMode;
-use sequoia::types::EncryptPurpose;
-use sequoia::types::FileOrStdin;
+use sqz::types::CompressionMode;
+use sqz::types::EncryptPurpose;
+use sqz::types::FileOrStdin;
 
 use super::types::ClapData;
 use super::types::FileOrStdout;

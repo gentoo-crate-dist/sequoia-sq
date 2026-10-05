@@ -1,11 +1,11 @@
 use clap::Args;
 use clap::ArgGroup;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 
-use sequoia::Time;
-use sequoia::types::EncryptPurpose;
+use sqz::Time;
+use sqz::types::EncryptPurpose;
 
 use crate::cli::examples;
 use examples::Action;

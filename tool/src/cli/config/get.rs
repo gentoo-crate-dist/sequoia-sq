@@ -2,7 +2,7 @@
 
 use clap::Args;
 
-use sequoia::config::Config;
+use sqz::config::Config;
 
 use crate::cli::examples::*;
 

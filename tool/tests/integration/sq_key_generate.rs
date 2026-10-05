@@ -1,6 +1,6 @@
 use std::time;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Result;
 use openpgp::crypto::mpi::PublicKey;

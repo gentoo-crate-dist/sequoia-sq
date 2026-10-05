@@ -56,9 +56,9 @@
 //! store.
 //!
 //! ```
-//! use sequoia::Sequoia;
-//! use sequoia::sign;
-//! # use sequoia::openpgp::cert::CertBuilder;
+//! use sqz::Sequoia;
+//! use sqz::sign;
+//! # use sqz::openpgp::cert::CertBuilder;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! # let (cert, _) =
@@ -94,13 +94,13 @@
 //! an implementation of [`Stream`]:
 //!
 //! ```
-//! use sequoia::Result;
-//! use sequoia::Sequoia;
-//! use sequoia::sign::Output;
-//! use sequoia::sign::Params;
-//! use sequoia::sign::Stream;
-//! use sequoia::sign;
-//! # use sequoia::openpgp::cert::CertBuilder;
+//! use sqz::Result;
+//! use sqz::Sequoia;
+//! use sqz::sign::Output;
+//! use sqz::sign::Params;
+//! use sqz::sign::Stream;
+//! use sqz::sign;
+//! # use sqz::openpgp::cert::CertBuilder;
 //!
 //! struct MyStream {
 //! }

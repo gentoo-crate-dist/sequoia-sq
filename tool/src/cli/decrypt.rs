@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use sequoia::types::FileOrStdin;
-use sequoia::types::SessionKey;
+use sqz::types::FileOrStdin;
+use sqz::types::SessionKey;
 
 use super::types::ClapData;
 use super::types::FileOrStdout;

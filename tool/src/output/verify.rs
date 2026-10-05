@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::packet::UserID;
 
-use sequoia::inspect::Kind;
-use sequoia::types::PreferredUserID;
-use sequoia::types::TrustThreshold;
-use sequoia::verify;
+use sqz::inspect::Kind;
+use sqz::types::PreferredUserID;
+use sqz::types::TrustThreshold;
+use sqz::verify;
 
-use sequoia::wot::Paths;
+use sqz::wot::Paths;
 
 use crate::Result;
 use crate::Sq;
@@ -337,7 +337,7 @@ impl Stream<'_> {
                 .filter_map(|(userid, paths)| {
                     let amount = paths.amount();
 
-                    let authenticated = if amount >= sequoia::wot::FULLY_TRUSTED {
+                    let authenticated = if amount >= sqz::wot::FULLY_TRUSTED {
                         weprintln!(indent=prefix,
                                    "Fully authenticated \
                                     ({} of {}) {}, {}",

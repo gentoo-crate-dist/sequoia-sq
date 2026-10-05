@@ -62,10 +62,10 @@
 //! store.
 //!
 //! ```
-//! # use sequoia::Sequoia;
-//! use sequoia::cert::list::Query;
-//! use sequoia::cert;
-//! use sequoia::sign;
+//! # use sqz::Sequoia;
+//! use sqz::cert::list::Query;
+//! use sqz::cert;
+//! use sqz::sign;
 //!
 //! use sequoia_openpgp as openpgp;
 //! use openpgp::types::KeyFlags;
@@ -128,13 +128,13 @@
 //! provide an implementation of [`Stream`]:
 //!
 //! ```
-//! use sequoia::Result;
-//! use sequoia::Sequoia;
-//! use sequoia::encrypt::Output;
-//! use sequoia::encrypt::Params;
-//! use sequoia::encrypt::Stream;
-//! use sequoia::encrypt;
-//! # use sequoia::openpgp::cert::CertBuilder;
+//! use sqz::Result;
+//! use sqz::Sequoia;
+//! use sqz::encrypt::Output;
+//! use sqz::encrypt::Params;
+//! use sqz::encrypt::Stream;
+//! use sqz::encrypt;
+//! # use sqz::openpgp::cert::CertBuilder;
 //!
 //! struct MyStream {
 //! }

@@ -3,8 +3,8 @@
 use clap::ArgGroup;
 use clap::Parser;
 
-use sequoia::config::DEFAULT_THIRD_PARTY_CERTIFICATION_VALIDITY_IN_YEARS;
-use sequoia::types::TrustAmount;
+use sqz::config::DEFAULT_THIRD_PARTY_CERTIFICATION_VALIDITY_IN_YEARS;
+use sqz::types::TrustAmount;
 
 use crate::cli::types::ClapData;
 use crate::cli::types::expiration;

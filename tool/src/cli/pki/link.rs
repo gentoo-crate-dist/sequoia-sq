@@ -2,7 +2,7 @@
 
 use clap::{ArgGroup, Parser, Subcommand};
 
-use sequoia::types::TrustAmount;
+use sqz::types::TrustAmount;
 
 use crate::cli::examples::*;
 use crate::cli::types::CertDesignators;

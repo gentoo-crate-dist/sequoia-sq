@@ -2,7 +2,7 @@
 
 use clap::Parser;
 
-use sequoia::types::FileOrStdin;
+use sqz::types::FileOrStdin;
 
 use super::types::ClapData;
 use super::types::cert_designator::*;

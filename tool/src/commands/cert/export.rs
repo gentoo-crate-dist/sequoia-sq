@@ -1,17 +1,17 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{
     armor,
     Result,
     serialize::Serialize,
 };
 
-use sequoia::cert_store;
+use sqz::cert_store;
 use cert_store::Store;
 
-use sequoia::types::TrustThreshold;
-use sequoia::cert::cert_exportable;
+use sqz::types::TrustThreshold;
+use sqz::cert::cert_exportable;
 
 use crate::{
     Sq,

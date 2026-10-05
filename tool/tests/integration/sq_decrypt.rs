@@ -3,7 +3,7 @@ use std::io::Write;
 
 use predicates::prelude::*;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 
 use super::common::{Sq, artifact};

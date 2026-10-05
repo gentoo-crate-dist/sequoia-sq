@@ -5,7 +5,7 @@ use std::{
     time::SystemTime,
 };
 
-use sequoia::openpgp::{
+use sqz::openpgp::{
     Cert,
     Fingerprint,
     KeyHandle,
@@ -15,12 +15,12 @@ use sequoia::openpgp::{
     types::RevocationStatus,
 };
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 use keystore::Protection;
 
-use sequoia::types::Convert;
-use sequoia::types::PreferredUserID;
-use sequoia::types::TrustThreshold;
+use sqz::types::Convert;
+use sqz::types::PreferredUserID;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;
@@ -409,7 +409,7 @@ pub fn list(sq: Sq, mut cmd: cli::key::list::Command) -> Result<()> {
     {
         if let Some(q) = q.as_ref() {
             let paths = q.authenticate(
-                userid, &cert.fingerprint(), sequoia::wot::FULLY_TRUSTED);
+                userid, &cert.fingerprint(), sqz::wot::FULLY_TRUSTED);
             let amount = paths.amount();
             (amount, PreferredUserID::from_userid(userid.clone(), amount))
         } else {

@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::Result;
 
-use sequoia::openpgp::{
+use sqz::openpgp::{
     packet,
     policy::{
         AsymmetricAlgorithm,
@@ -24,9 +24,9 @@ use sequoia::openpgp::{
 
 use sequoia_policy_config::ConfiguredStandardPolicy;
 
-use sequoia::config::ConfigFile;
-use sequoia::config::toml_edit_tree::Node;
-use sequoia::types::Convert;
+use sqz::config::ConfigFile;
+use sqz::config::toml_edit_tree::Node;
+use sqz::types::Convert;
 
 use crate::{
     Sq,
@@ -106,7 +106,7 @@ where
 fn explain_hashes(sink: &mut dyn io::Write, p: &StandardPolicy)
                   -> Result<()>
 {
-    use sequoia::openpgp::policy::HashAlgoSecurity::*;
+    use sqz::openpgp::policy::HashAlgoSecurity::*;
 
     wwriteln!(stream = sink, initial_indent = " - ", "Hash algorithms");
 

@@ -809,8 +809,8 @@ pub trait Prompt<T=()>: Send + Sync {
     /// use std::sync::mpsc;
     /// use std::sync::Mutex;
     ///
-    /// use sequoia::prompt;
-    /// use sequoia::prompt::Prompt as _;
+    /// use sqz::prompt;
+    /// use sqz::prompt::Prompt as _;
     ///
     /// struct MyPrompt {
     ///     sender: mpsc::Sender<()>,

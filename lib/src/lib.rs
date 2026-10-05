@@ -45,10 +45,10 @@
 //! can do:
 //!
 //! ```rust
-//! use sequoia::Sequoia;
-//! use sequoia::prompt::Cancel;
+//! use sqz::Sequoia;
+//! use sqz::prompt::Cancel;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! let sequoia = Sequoia::new(Cancel::new())?;
 //! # Ok(()) }
 //! ```
@@ -69,9 +69,9 @@
 //! can be authenticated.
 //!
 //! ```
-//! use sequoia::Sequoia;
-//! use sequoia::openpgp::Cert;
-//! use sequoia::openpgp::parse::Parse;
+//! use sqz::Sequoia;
+//! use sqz::openpgp::Cert;
+//! use sqz::openpgp::parse::Parse;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! # let sequoia = Sequoia::builder().ephemeral()?.build()?;

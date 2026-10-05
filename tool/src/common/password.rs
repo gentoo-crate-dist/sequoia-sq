@@ -2,13 +2,13 @@
 
 use std::sync::Mutex;
 
-use sequoia::openpgp as openpgp;
+use sqz::openpgp as openpgp;
 use openpgp::packet::Key;
 use openpgp::packet::key;
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 
-use sequoia::prompt;
+use sqz::prompt;
 
 use crate::Sq;
 
@@ -175,13 +175,13 @@ fn flatten_eof(err: anyhow::Error) -> Option<anyhow::Error> {
         }
         Err(err) => {
             // For remote keys.
-            match err.downcast::<sequoia::key_store::Error>() {
+            match err.downcast::<sqz::key_store::Error>() {
                 Ok(err) => {
                     match err {
-                        sequoia::key_store::Error::EOF => {
+                        sqz::key_store::Error::EOF => {
                             None
                         }
-                        sequoia::key_store::Error::GenericError(Some(ref s)) => {
+                        sqz::key_store::Error::GenericError(Some(ref s)) => {
                             // At the RPC boundary, UnexpectedEof may
                             // be mapped to a string.  Use a sledgehammer.
 

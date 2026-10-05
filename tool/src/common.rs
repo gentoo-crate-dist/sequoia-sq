@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Fingerprint;
 use openpgp::KeyHandle;
 use openpgp::KeyID;

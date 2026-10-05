@@ -31,7 +31,7 @@ enum Home {
 /// Create a [`Sequoia`] context using the default home directory:
 ///
 /// ```rust
-/// use sequoia::SequoiaBuilder;
+/// use sqz::SequoiaBuilder;
 ///
 /// # fn main() -> anyhow::Result<()> {
 ///
@@ -98,7 +98,7 @@ impl SequoiaBuilder {
     /// directory:
     ///
     /// ```rust
-    /// use sequoia::SequoiaBuilder;
+    /// use sqz::SequoiaBuilder;
     ///
     /// # fn main() -> anyhow::Result<()> {
     /// # let tempdir = tempfile::tempdir()?;
@@ -153,7 +153,7 @@ impl SequoiaBuilder {
     /// (i.e., without a home directory):
     ///
     /// ```rust
-    /// use sequoia::SequoiaBuilder;
+    /// use sqz::SequoiaBuilder;
     ///
     /// # fn main() -> anyhow::Result<()> {
     ///

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::KeyID;

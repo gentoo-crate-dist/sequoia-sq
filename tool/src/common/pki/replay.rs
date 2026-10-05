@@ -5,7 +5,7 @@ use std::collections::btree_map::Entry;
 
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Fingerprint;
 use openpgp::Packet;
@@ -16,7 +16,7 @@ use openpgp::policy::HashAlgoSecurity;
 use openpgp::policy::Policy;
 use openpgp::types::RevocationStatus;
 
-use sequoia::pki::certify::CertificationDiff;
+use sqz::pki::certify::CertificationDiff;
 
 use crate::Sq;
 use crate::common::pki::list::summarize_certification;

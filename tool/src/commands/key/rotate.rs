@@ -8,7 +8,7 @@ use chrono::Utc;
 
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Fingerprint;
 use openpgp::Packet;
@@ -26,18 +26,18 @@ use openpgp::types::ReasonForRevocation;
 use openpgp::types::RevocationStatus;
 use openpgp::types::SignatureType;
 
-use sequoia::wot;
+use sqz::wot;
 use wot::FULLY_TRUSTED;
 
-use sequoia::cert_store;
+use sqz::cert_store;
 use cert_store::StoreUpdate;
 
-use sequoia::inspect::inspect;
-use sequoia::key::certify_generated;
-use sequoia::prompt::PromptFactory as _;
-use sequoia::prompt;
-use sequoia::types::TrustThreshold;
-use sequoia::types::import_stats::ImportStatus;
+use sqz::inspect::inspect;
+use sqz::key::certify_generated;
+use sqz::prompt::PromptFactory as _;
+use sqz::prompt;
+use sqz::types::TrustThreshold;
+use sqz::types::import_stats::ImportStatus;
 
 use crate::Sq;
 use crate::cli::types::Expiration;
@@ -197,7 +197,7 @@ pub fn dispatch(
     }
 
     // Encryption Capability
-    use sequoia::types::EncryptPurpose::*;
+    use sqz::types::EncryptPurpose::*;
     match (command.can_encrypt, command.cannot_encrypt) {
         (Some(Universal), false) => {
             builder = builder.add_subkey(
@@ -288,7 +288,7 @@ pub fn dispatch(
         rev_cert
     } else if on_keystore {
         if let Some(home) = sq.sequoia.home() {
-            let dir = home.data_dir(sequoia::directories::Component::Other(
+            let dir = home.data_dir(sqz::directories::Component::Other(
                 "revocation-certificates".into()));
             std::fs::create_dir_all(&dir)
                 .with_context(|| {
@@ -625,7 +625,7 @@ pub fn dispatch(
         wwriteln!(stream = o);
         if let Err(err) = inspect(
             &sq.sequoia,
-            sequoia::openpgp::parse::buffered_reader::Memory::with_cookie(&bytes, Default::default()),
+            sqz::openpgp::parse::buffered_reader::Memory::with_cookie(&bytes, Default::default()),
             command.output
                 .as_ref()
                 .and_then(|output| {

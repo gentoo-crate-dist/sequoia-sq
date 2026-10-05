@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use sequoia::types::FileOrStdin;
-use sequoia::types::import_stats::ImportStats;
+use sqz::types::FileOrStdin;
+use sqz::types::import_stats::ImportStats;
 
 use crate::cli;
 use crate::Sq;
@@ -55,7 +55,7 @@ pub fn import(sq: Sq, command: cli::key::import::Command)
     // to do this we need to strip the outer `Error`.
     let result = result.map_err(|e| {
         match e {
-            sequoia::key::import::Error::SystemError(e) => anyhow::Error::from(e),
+            sqz::key::import::Error::SystemError(e) => anyhow::Error::from(e),
             e => anyhow::Error::from(e),
         }
     });

@@ -67,7 +67,7 @@ impl Model {
 
 // Model output as a data type that can be serialized.
 mod keyring {
-    use sequoia::openpgp;
+    use sqz::openpgp;
     use openpgp::{
         Result,
         cert::Cert,

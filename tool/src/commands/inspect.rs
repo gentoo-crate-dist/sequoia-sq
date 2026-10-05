@@ -1,11 +1,11 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{KeyHandle, Result};
 use openpgp::serialize::Serialize;
 
-use sequoia::inspect::inspect;
-use sequoia::types::TrustThreshold;
+use sqz::inspect::inspect;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 
@@ -46,8 +46,8 @@ pub fn dispatch(sq: Sq, c: inspect::Command)
             cert.serialize(&mut bytes).context("Serializing certificate")?;
         }
 
-        let br = sequoia::openpgp::parse::buffered_reader::Memory::with_cookie(
-            &bytes, sequoia::openpgp::parse::Cookie::default());
+        let br = sqz::openpgp::parse::buffered_reader::Memory::with_cookie(
+            &bytes, sqz::openpgp::parse::Cookie::default());
         inspect(&sq.sequoia, br, None, output,
                 print_certifications, dump_bad_signatures)?;
     }

@@ -24,7 +24,7 @@ use net::reqwest;
 
 use tempfile::NamedTempFile;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Fingerprint;
 use openpgp::KeyHandle;
@@ -34,10 +34,10 @@ use openpgp::parse::PacketParserResult;
 use openpgp::parse::Parse;
 use openpgp::types::KeyFlags;
 
-use sequoia::network::CONNECT_TIMEOUT;
-use sequoia::network::USER_AGENT;
-use sequoia::types::TrustAmount;
-use sequoia::types::TrustThreshold;
+use sqz::network::CONNECT_TIMEOUT;
+use sqz::network::USER_AGENT;
+use sqz::types::TrustAmount;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;

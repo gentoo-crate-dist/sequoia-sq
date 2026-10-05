@@ -5,7 +5,7 @@ use std::{
 use anyhow::Context as _;
 use terminal_size::terminal_size;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{
     KeyHandle,
     armor::{
@@ -24,10 +24,10 @@ use openpgp::{
 };
 use openpgp::serialize::stream::Message;
 
-use sequoia::packet::dump;
-use sequoia::types::Convert;
-use sequoia::types::TrustThreshold;
-use sequoia::types::PartFileWriter;
+use sqz::packet::dump;
+use sqz::types::Convert;
+use sqz::types::TrustThreshold;
+use sqz::types::PartFileWriter;
 
 use crate::Sq;
 use crate::Result;

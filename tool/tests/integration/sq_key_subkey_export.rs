@@ -1,4 +1,4 @@
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::cert::amalgamation::ValidAmalgamation;
 use openpgp::parse::Parse;

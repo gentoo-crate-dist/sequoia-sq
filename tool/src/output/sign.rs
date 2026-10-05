@@ -1,5 +1,5 @@
-use sequoia::cert;
-use sequoia::sign;
+use sqz::cert;
+use sqz::sign;
 
 use crate::Result;
 use crate::Sq;

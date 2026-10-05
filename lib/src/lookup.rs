@@ -52,9 +52,9 @@
 //! fingerprint, they can only ever be a single match:
 //!
 //! ```
-//! use sequoia::openpgp::Fingerprint;
-//! # use sequoia::Sequoia;
-//! # fn main() -> sequoia::Result<()> {
+//! use sqz::openpgp::Fingerprint;
+//! # use sqz::Sequoia;
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let alice = sq.key_generate()
@@ -82,14 +82,14 @@
 //! can attach any subkey to a certificate they control.
 //!
 //! ```
-//! use sequoia::openpgp;
+//! use sqz::openpgp;
 //! use openpgp::Fingerprint;
 //! use openpgp::packet::Packet;
 //! use openpgp::parse::Parse;
 //! use openpgp::types::KeyFlags;
 //! #
-//! # use sequoia::Sequoia;
-//! # fn main() -> sequoia::Result<()> {
+//! # use sqz::Sequoia;
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let alice = sq.key_generate()

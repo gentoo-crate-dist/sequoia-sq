@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::ArgGroup;
 
-use sequoia::config::CipherSuite;
-use sequoia::config::Config;
-use sequoia::types::EncryptPurpose;
+use sqz::config::CipherSuite;
+use sqz::config::Config;
+use sqz::types::EncryptPurpose;
 
 use crate::cli::examples;
 use examples::Action;

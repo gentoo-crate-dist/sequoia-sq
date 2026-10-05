@@ -4,10 +4,10 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 
-use sequoia::types::FileOrStdin;
+use sqz::types::FileOrStdin;
 
 use crate::cli::examples::*;
 use crate::cli::types::ClapData;

@@ -1,7 +1,7 @@
 use predicates::prelude::*;
 
+use sqz::openpgp;
 use openpgp::Result;
-use sequoia::openpgp;
 
 use super::common::{Sq, artifact};
 

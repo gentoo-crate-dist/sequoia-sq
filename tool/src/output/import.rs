@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 
-use sequoia::cert_store::{
+use sqz::cert_store::{
     LazyCert,
     store::{
         MergeCerts,
@@ -15,7 +15,7 @@ use sequoia::cert_store::{
     },
 };
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 
 use crate::output::pluralize::Pluralize;
 

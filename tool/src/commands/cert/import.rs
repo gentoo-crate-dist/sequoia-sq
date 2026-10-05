@@ -2,10 +2,10 @@ use anyhow::Context;
 
 use std::path::PathBuf;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 
-use sequoia::types::import_stats::ImportStats;
+use sqz::types::import_stats::ImportStats;
 
 use crate::Sq;
 use crate::cli::cert::import;

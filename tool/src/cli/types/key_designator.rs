@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use typenum::Unsigned;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 
 // Argument parser options.

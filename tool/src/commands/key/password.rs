@@ -2,10 +2,10 @@
 
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;

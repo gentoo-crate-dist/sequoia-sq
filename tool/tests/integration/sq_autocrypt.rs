@@ -1,4 +1,4 @@
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{
     KeyHandle,
     Result,

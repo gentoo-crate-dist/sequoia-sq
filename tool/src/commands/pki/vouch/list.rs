@@ -1,13 +1,13 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 use openpgp::Result;
 use openpgp::policy::HashAlgoSecurity;
 use openpgp::policy::Policy;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::pki::vouch::list;

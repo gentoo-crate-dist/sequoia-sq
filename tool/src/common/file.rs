@@ -9,13 +9,13 @@ use std::os::unix::fs::FileTypeExt;
 
 use anyhow::{Context, Result};
 
-use sequoia::openpgp::{
+use sqz::openpgp::{
     self as openpgp,
     armor,
     serialize::stream::{Armorer, Message},
 };
 
-use sequoia::types::PartFileWriter;
+use sqz::types::PartFileWriter;
 
 use crate::{
     cli::types::FileOrStdout,

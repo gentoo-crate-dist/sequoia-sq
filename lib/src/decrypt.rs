@@ -16,7 +16,7 @@
 //! provided using [`Builder::add_session_key`].
 //!
 //! ```rust
-//! # use sequoia::Sequoia;
+//! # use sqz::Sequoia;
 //! #
 //! # fn main() -> anyhow::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
@@ -70,8 +70,8 @@
 //! the user before the decryption is completely decrypted.
 //!
 //! ```rust
-//! use sequoia::Sequoia;
-//! use sequoia::decrypt;
+//! use sqz::Sequoia;
+//! use sqz::decrypt;
 //!
 //! struct Stream {
 //! }

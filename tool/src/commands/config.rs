@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
 
-use sequoia::config::toml_edit::{
+use sqz::config::toml_edit::{
     Item,
     Value,
 };
 
-use sequoia::config::toml_edit_tree::{
+use sqz::config::toml_edit_tree::{
     Error,
     Node,
     Path,

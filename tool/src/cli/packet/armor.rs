@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use sequoia::types::FileOrStdin;
+use sqz::types::FileOrStdin;
 
 use crate::cli::examples::*;
 use crate::cli::types::ArmorKind;

@@ -4,9 +4,9 @@ use sequoia_openpgp as openpgp;
 use openpgp::Cert;
 use openpgp::packet::UserID;
 
-use sequoia::pki::certify;
-use sequoia::types::Convert;
-use sequoia::types::Safe;
+use sqz::pki::certify;
+use sqz::types::Convert;
+use sqz::types::Safe;
 
 use certify::output::*;
 use certify::error::*;

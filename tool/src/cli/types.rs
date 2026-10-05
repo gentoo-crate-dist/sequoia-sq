@@ -15,9 +15,9 @@ use anyhow::Result;
 /// Common types for arguments of sq.
 use clap::ValueEnum;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 
-use sequoia::types::FileOrStdin;
+use sqz::types::FileOrStdin;
 
 pub mod cert_designator;
 pub use cert_designator::CertDesignators;

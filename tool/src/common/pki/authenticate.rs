@@ -1,6 +1,6 @@
 use typenum::Unsigned;
 
-use sequoia::cert::list::QueryKind;
+use sqz::cert::list::QueryKind;
 
 use crate::cli;
 use cli::types::CertDesignators;

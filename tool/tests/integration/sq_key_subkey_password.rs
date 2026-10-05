@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::KeyID;

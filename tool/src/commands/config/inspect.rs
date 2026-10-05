@@ -56,7 +56,7 @@ fn network(sq: Sq, _: inspect::network::Command) -> Result<()> {
     }
 
     let key_servers = sq.config().resolve_key_servers(
-        &sequoia::config::DEFAULT_KEYSERVERS,
+        &sqz::config::DEFAULT_KEYSERVERS,
         Some(clap::parser::ValueSource::DefaultValue))
         .collect::<Vec<_>>();
 

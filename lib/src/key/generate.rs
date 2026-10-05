@@ -63,8 +63,8 @@
 //! Generate a key and import it to the key store:
 //!
 //! ```
-//! # use sequoia::Sequoia;
-//! # fn main() -> sequoia::Result<()> {
+//! # use sqz::Sequoia;
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! let outcome = sq.key_generate()
@@ -82,9 +82,9 @@
 //! Generate a key and write it and the revocation certificate to a `Write`r:
 //!
 //! ```
-//! # use sequoia::Sequoia;
+//! # use sqz::Sequoia;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! let mut key = Vec::new();

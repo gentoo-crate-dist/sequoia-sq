@@ -1,8 +1,8 @@
 use sequoia_openpgp as openpgp;
 use openpgp::KeyHandle;
 
-use sequoia::cert::list::Query as InnerQuery;
-pub use sequoia::cert::list::QueryKind;
+use sqz::cert::list::Query as InnerQuery;
+pub use sqz::cert::list::QueryKind;
 
 #[derive(Debug, Clone)]
 pub struct Query {

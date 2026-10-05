@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use clap::{ArgGroup, Parser};
 
-use sequoia::types::FileOrStdin;
-use sequoia::types::HashMode;
+use sqz::types::FileOrStdin;
+use sqz::types::HashMode;
 
 use super::types::ClapData;
 use super::types::FileOrStdout;

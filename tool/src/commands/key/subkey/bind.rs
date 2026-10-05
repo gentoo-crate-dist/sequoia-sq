@@ -15,12 +15,12 @@ use openpgp::Cert;
 use openpgp::KeyHandle;
 use openpgp::Packet;
 use openpgp::Result;
-use sequoia::openpgp;
+use sqz::openpgp;
 
-use sequoia::prompt::PromptFactory as _;
-use sequoia::prompt;
-use sequoia::types::EncryptPurpose;
-use sequoia::types::TrustThreshold;
+use sqz::prompt::PromptFactory as _;
+use sqz::prompt;
+use sqz::types::EncryptPurpose;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli;

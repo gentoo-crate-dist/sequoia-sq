@@ -1,7 +1,7 @@
 use clap::Parser;
 
-use sequoia::config::Config;
-use sequoia::config::DEFAULT_KEYSERVERS;
+use sqz::config::Config;
+use sqz::config::DEFAULT_KEYSERVERS;
 
 use crate::cli::config;
 use crate::cli::examples::Action;

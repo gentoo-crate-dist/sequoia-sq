@@ -7,11 +7,11 @@ use anyhow::Result;
 
 use typenum::Unsigned;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 use openpgp::packet::UserID;
 
-use sequoia::config::Config;
+use sqz::config::Config;
 
 use crate::cli::config;
 use crate::cli::escape_for_shell;

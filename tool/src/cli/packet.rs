@@ -7,8 +7,8 @@ use std::{
 
 use clap::{Args, Parser, Subcommand};
 
-use sequoia::types::FileOrStdin;
-use sequoia::types::SessionKey;
+use sqz::types::FileOrStdin;
+use sqz::types::SessionKey;
 
 use crate::cli::examples::*;
 use crate::cli::types::ArmorKind;

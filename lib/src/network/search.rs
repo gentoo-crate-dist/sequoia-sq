@@ -40,8 +40,8 @@
 //! automatically add the results to the certificate store:
 //!
 //! ```rust
-//! # use sequoia::Sequoia;
-//! use sequoia::network::search::Query;
+//! # use sqz::Sequoia;
+//! use sqz::network::search::Query;
 //!
 //! # fn main() -> anyhow::Result<()> {
 //! # let rt = tokio::runtime::Runtime::new()
@@ -72,9 +72,9 @@
 //! relevant [`Output`] variants:
 //!
 //! ```
-//! use sequoia::Sequoia;
-//! use sequoia::network::search::Query;
-//! use sequoia::network::search;
+//! use sqz::Sequoia;
+//! use sqz::network::search::Query;
+//! use sqz::network::search;
 //!
 //! struct Stream {
 //!     requests: usize,

@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::KeyHandle;
 
 use crate::cli::examples;

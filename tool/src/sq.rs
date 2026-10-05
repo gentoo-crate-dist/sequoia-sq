@@ -11,10 +11,10 @@ use typenum::Unsigned;
 
 use anyhow::Context as _;
 
-use sequoia::config::Config;
-use sequoia::config::ConfigFile;
+use sqz::config::Config;
+use sqz::config::ConfigFile;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::crypto;
 use openpgp::crypto::Password;
@@ -30,25 +30,25 @@ use openpgp::types::KeyFlags;
 use openpgp::types::RevocationStatus;
 use openpgp::types::RevocationType;
 
-use sequoia::cert_store;
+use sqz::cert_store;
 use cert_store::LazyCert;
 use cert_store::Store;
 use cert_store::store::MergePublicCollectStats;
 use cert_store::store::StoreUpdate;
 
-use sequoia::wot;
+use sqz::wot;
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 
-use sequoia::Sequoia;
-use sequoia::SystemError;
-use sequoia::cert::CertError;
-use sequoia::prompt;
-use sequoia::types::FileStdinOrKeyHandle;
-use sequoia::types::import_stats::ImportStats;
-use sequoia::types::import_stats::ImportStatus;
-use sequoia::types::PreferredUserID;
-use sequoia::types::TrustThreshold;
+use sqz::Sequoia;
+use sqz::SystemError;
+use sqz::cert::CertError;
+use sqz::prompt;
+use sqz::types::FileStdinOrKeyHandle;
+use sqz::types::import_stats::ImportStats;
+use sqz::types::import_stats::ImportStatus;
+use sqz::types::PreferredUserID;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::cli::types::CertDesignators;
@@ -180,7 +180,7 @@ impl Sq {
     /// If the key store is disabled, returns an error.
     pub fn key_store_or_else(&self) -> Result<&Mutex<keystore::Keystore>> {
         self.sequoia.key_store_or_else().map_err(|err| {
-            if let &sequoia::SystemError::KeyStoreDisabled = &err {
+            if let &sqz::SystemError::KeyStoreDisabled = &err {
                 Self::no_key_store_err().into()
             } else {
                 err.into()
@@ -392,7 +392,7 @@ impl Sq {
     }
 
     /// A thin wrapper around `Sequoia::signer`, which sets the prompt.
-    pub fn signer(&self) -> sequoia::signer::Builder<'_, '_, '_>
+    pub fn signer(&self) -> sqz::signer::Builder<'_, '_, '_>
     {
         let prompt = password::PromptFactory::new(self, true);
         self.sequoia.signer().prompt(prompt)

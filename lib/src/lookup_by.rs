@@ -66,9 +66,9 @@
 //! This filters out unusable certificates.
 //!
 //! ```
-//! use sequoia::openpgp::types::KeyFlags;
-//! # use sequoia::Sequoia;
-//! # fn main() -> sequoia::Result<()> {
+//! use sqz::openpgp::types::KeyFlags;
+//! # use sqz::Sequoia;
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let alice = sq.key_generate()

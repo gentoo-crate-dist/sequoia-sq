@@ -2,7 +2,7 @@ use std::fs::File;
 use std::time;
 use std::time::Duration;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 use openpgp::KeyHandle;
 use openpgp::Packet;

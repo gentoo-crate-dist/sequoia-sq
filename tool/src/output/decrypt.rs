@@ -1,12 +1,12 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::fmt::hex;
 use openpgp::types::KeyFlags;
 
-use sequoia::decrypt;
-use sequoia::decrypt::output::Decryptor;
-use sequoia::verify::Stream as _;
+use sqz::decrypt;
+use sqz::decrypt::output::Decryptor;
+use sqz::verify::Stream as _;
 
 use crate::Result;
 use crate::Sq;
@@ -70,7 +70,7 @@ impl decrypt::Stream<'_> for Stream<'_> {
             decrypt::Output::MessageStructure(structure) => {
                 self.vstream.output(
                     params.verify_params(),
-                    sequoia::verify::Output::MessageStructure(structure))?;
+                    sqz::verify::Output::MessageStructure(structure))?;
             }
 
             decrypt::Output::Report(decrypt::output::Report {
@@ -79,7 +79,7 @@ impl decrypt::Stream<'_> for Stream<'_> {
             }) => {
                 self.vstream.output(
                     params.verify_params(),
-                    sequoia::verify::Output::Report(verification))?;
+                    sqz::verify::Output::Report(verification))?;
             }
 
             decrypt::Output::Info(info) => {
@@ -176,8 +176,8 @@ impl decrypt::Stream<'_> for Stream<'_> {
                                     }
                                 }
                                 Err(err) => {
-                                    if let sequoia::lookup::Error::OperationalError(
-                                        sequoia::lookup::error::OperationalError::NotFound(_)) = &err
+                                    if let sqz::lookup::Error::OperationalError(
+                                        sqz::lookup::error::OperationalError::NotFound(_)) = &err
                                     {
                                         weprintln!(initial_indent = " - ",
                                                    "{}, certificate not found", r);

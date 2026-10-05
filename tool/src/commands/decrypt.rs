@@ -1,7 +1,7 @@
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::{
     Sq,

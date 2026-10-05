@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::ArgMatches;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{
     Result,
     cert::{
@@ -26,12 +26,12 @@ use net::{
     reqwest::StatusCode,
 };
 
-use sequoia::cert_store;
+use sqz::cert_store;
 use cert_store::Store;
 
-use sequoia::network::http_client;
-use sequoia::network::search::Query;
-use sequoia::types::TrustThreshold;
+use sqz::network::http_client;
+use sqz::network::search::Query;
+use sqz::types::TrustThreshold;
 
 use crate::{
     output::pluralize::Pluralize,
@@ -646,7 +646,7 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             for cert in certs {
                 let vc = cert.with_policy(sq.policy(), sq.time())?;
 
-                use sequoia::types::ResourceRecordType;
+                use sqz::types::ResourceRecordType;
                 let records = match c.typ {
                     ResourceRecordType::OpenPGP =>
                         dane::generate(&vc, &c.domain, c.ttl, c.size_limit)?,

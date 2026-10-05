@@ -1,6 +1,6 @@
 use clap::{ValueEnum, ArgGroup, Args, Subcommand};
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::packet::UserID;
 use openpgp::types::ReasonForRevocation;
 

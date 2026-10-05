@@ -1,6 +1,6 @@
 use std::io;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::armor;
 
 use crate::Sq;

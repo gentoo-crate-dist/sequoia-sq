@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use sequoia::cert_store::store::UserIDQueryParams;
+use sqz::cert_store::store::UserIDQueryParams;
 
 use crate::cli::types::cert_designator::{
     CertDesignator,

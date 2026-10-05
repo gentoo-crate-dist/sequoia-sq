@@ -13,16 +13,16 @@ use std::path::Path;
 use std::str::FromStr;
 use std::time::SystemTime;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 
 use openpgp::Cert;
 use openpgp::parse::Parse;
 use openpgp::cert::prelude::*;
 
-use sequoia::Result;
-use sequoia::Sequoia;
-use sequoia::Time;
-use sequoia::config;
+use sqz::Result;
+use sqz::Sequoia;
+use sqz::Time;
+use sqz::config;
 
 use clap::FromArgMatches;
 
@@ -228,9 +228,9 @@ fn real_main() -> Result<()> {
 
     let home = match &c.home {
         Some(StateDirectory::Absolute(p)) =>
-            Some(sequoia::directories::Home::new(p.clone())?),
+            Some(sqz::directories::Home::new(p.clone())?),
         None | Some(StateDirectory::Default) =>
-            Some(sequoia::directories::Home::default()
+            Some(sqz::directories::Home::default()
                  .ok_or(anyhow::anyhow!("no default SEQUOIA_HOME \
                                          on this platform"))?
                  .clone()),
@@ -320,8 +320,8 @@ fn real_main() -> Result<()> {
         Ok(()) => Ok(()),
         Err(mut err) => {
             // Map some errors.
-            if let Some(e) = err.downcast_ref::<sequoia::SystemError>() {
-                if let &sequoia::SystemError::KeyStoreDisabled = e {
+            if let Some(e) = err.downcast_ref::<sqz::SystemError>() {
+                if let &sqz::SystemError::KeyStoreDisabled = e {
                     err = clap::Error::raw(
                         clap::error::ErrorKind::ArgumentConflict,
                         "Operation requires a key store, \

@@ -2,14 +2,14 @@ use std::path::PathBuf;
 
 use clap::{ArgGroup, Args};
 
-use sequoia::config::CipherSuite;
-use sequoia::config::Config;
-use sequoia::config::DEFAULT_KEY_ROTATE_RETIRE_IN_DURATION;
-use sequoia::config::DEFAULT_KEY_ROTATE_RETIRE_IN_IN_DAYS;
-use sequoia::config::DEFAULT_KEY_VALIDITY_DURATION;
-use sequoia::config::DEFAULT_KEY_VALIDITY_IN_YEARS;
-use sequoia::config::Profile;
-use sequoia::types::EncryptPurpose;
+use sqz::config::CipherSuite;
+use sqz::config::Config;
+use sqz::config::DEFAULT_KEY_ROTATE_RETIRE_IN_DURATION;
+use sqz::config::DEFAULT_KEY_ROTATE_RETIRE_IN_IN_DAYS;
+use sqz::config::DEFAULT_KEY_VALIDITY_DURATION;
+use sqz::config::DEFAULT_KEY_VALIDITY_IN_YEARS;
+use sqz::config::Profile;
+use sqz::types::EncryptPurpose;
 
 use crate::cli::config;
 use crate::cli::types::ClapData;
@@ -245,9 +245,9 @@ When `--output` is specified, the revocation certificate is written to \
 the file specified by `--rev-cert`.
 
 If `--output` is `-`, then this option must not also be `-`.",
-            sequoia::directories::Home::default()
+            sqz::directories::Home::default()
             .map(|home| {
-                let p = home.data_dir(sequoia::directories::Component::Other(
+                let p = home.data_dir(sqz::directories::Component::Other(
                     "revocation-certificates".into()));
                 let p = p.display().to_string();
                 if let Some(home) = dirs::home_dir() {

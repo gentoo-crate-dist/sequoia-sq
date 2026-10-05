@@ -3,16 +3,16 @@ use std::collections::HashSet;
 
 use typenum::Unsigned;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::cert::amalgamation::ValidAmalgamation;
 use openpgp::cert::ValidCert;
 use openpgp::packet::UserID;
 use openpgp::types::RevocationStatus;
 use openpgp::cert::amalgamation::ValidateAmalgamation;
 
-use sequoia::userid::lint_email;
-use sequoia::userid::lint_name;
-use sequoia::userid::lint_userid;
+use sqz::userid::lint_email;
+use sqz::userid::lint_name;
+use sqz::userid::lint_userid;
 
 use crate::Result;
 use crate::cli::types::UserIDDesignators;

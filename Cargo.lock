@@ -3836,42 +3836,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
-name = "sequoia"
-version = "0.1.0"
-dependencies = [
- "aho-corasick",
- "anyhow",
- "chrono",
- "clap",
- "crossbeam",
- "dirs 6.0.0",
- "filetime",
- "fs_extra",
- "gethostname 0.5.0",
- "humantime",
- "libc",
- "once_cell",
- "regex",
- "rusqlite",
- "sequoia-autocrypt",
- "sequoia-cert-store",
- "sequoia-directories",
- "sequoia-ipc",
- "sequoia-keystore",
- "sequoia-net",
- "sequoia-openpgp",
- "sequoia-policy-config",
- "sequoia-wot",
- "tempfile",
- "terminal_size",
- "textwrap",
- "thiserror 2.0.20",
- "tokio",
- "toml_edit",
- "url",
-]
-
-[[package]]
 name = "sequoia-autocrypt"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4180,12 +4144,12 @@ dependencies = [
  "reqwest",
  "roff",
  "rpassword",
- "sequoia",
  "sequoia-man",
  "sequoia-net",
  "sequoia-openpgp",
  "sequoia-policy-config",
  "serde",
+ "sqz",
  "subplot-build",
  "subplotlib",
  "tempfile",
@@ -4496,6 +4460,42 @@ dependencies = [
  "js-sys",
  "rsqlite-vfs",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "sqz"
+version = "0.1.0"
+dependencies = [
+ "aho-corasick",
+ "anyhow",
+ "chrono",
+ "clap",
+ "crossbeam",
+ "dirs 6.0.0",
+ "filetime",
+ "fs_extra",
+ "gethostname 0.5.0",
+ "humantime",
+ "libc",
+ "once_cell",
+ "regex",
+ "rusqlite",
+ "sequoia-autocrypt",
+ "sequoia-cert-store",
+ "sequoia-directories",
+ "sequoia-ipc",
+ "sequoia-keystore",
+ "sequoia-net",
+ "sequoia-openpgp",
+ "sequoia-policy-config",
+ "sequoia-wot",
+ "tempfile",
+ "terminal_size",
+ "textwrap",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml_edit",
+ "url",
 ]
 
 [[package]]

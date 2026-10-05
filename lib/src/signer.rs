@@ -38,9 +38,9 @@
 //! # Examples
 //!
 //! ```
-//! # use sequoia::Sequoia;
+//! # use sqz::Sequoia;
 //! #
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
 //! #
 //! # // Default cert.

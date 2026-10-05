@@ -92,13 +92,13 @@
 //! store.
 //!
 //! ```
-//! # use sequoia::openpgp;
+//! # use sqz::openpgp;
 //! # use openpgp::cert::CertBuilder;
 //! # use openpgp::serialize::Serialize;
 //! #
-//! # use sequoia::Sequoia;
+//! # use sqz::Sequoia;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let (alice, _alice_rev) = CertBuilder::new()
@@ -129,16 +129,16 @@
 //! the call returns.
 //!
 //! ```
-//! # use sequoia::openpgp;
+//! # use sqz::openpgp;
 //! # use openpgp::cert::CertBuilder;
 //! # use openpgp::serialize::Serialize;
 //! #
-//! # use sequoia::Sequoia;
-//! use sequoia::pki::certify::Output;
-//! use sequoia::pki::certify::output::*;
-//! use sequoia::pki::certify;
+//! # use sqz::Sequoia;
+//! use sqz::pki::certify::Output;
+//! use sqz::pki::certify::output::*;
+//! use sqz::pki::certify;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let (alice, _alice_rev) = CertBuilder::new()
@@ -158,7 +158,7 @@
 //!     fn output(&mut self,
 //!               _params: &certify::Params,
 //!               output: certify::Output)
-//!         -> sequoia::Result<()>
+//!         -> sqz::Result<()>
 //!     {
 //!         match output {
 //!             Output::Report(Report { certifications, ..}) => {

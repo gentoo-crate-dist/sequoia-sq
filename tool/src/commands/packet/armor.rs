@@ -1,10 +1,10 @@
 use std::io;
 
-use sequoia::openpgp::parse::buffered_reader::BufferedReader;
-use sequoia::openpgp::parse::buffered_reader::Dup;
-use sequoia::openpgp::parse::buffered_reader::Limitor;
+use sqz::openpgp::parse::buffered_reader::BufferedReader;
+use sqz::openpgp::parse::buffered_reader::Dup;
+use sqz::openpgp::parse::buffered_reader::Limitor;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Packet;
 use openpgp::armor;
 use openpgp::parse::Cookie;

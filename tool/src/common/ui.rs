@@ -2,13 +2,13 @@
 
 use anyhow::Result;
 
-use sequoia::openpgp::{
+use sqz::openpgp::{
     self as openpgp,
     KeyHandle,
     packet::UserID,
 };
 
-pub use sequoia::types::Safe;
+pub use sqz::types::Safe;
 
 use crate::{
     Sq,

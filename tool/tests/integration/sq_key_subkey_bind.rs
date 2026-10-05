@@ -3,7 +3,7 @@ use super::common::{Sq, artifact};
 
 use std::path;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 
 use openpgp::Fingerprint;
 use openpgp::KeyHandle;

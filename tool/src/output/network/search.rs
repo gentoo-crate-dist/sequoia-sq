@@ -6,12 +6,12 @@ use indicatif::ProgressBar;
 use sequoia_openpgp as openpgp;
 use openpgp::types::RevocationStatus;
 
-use sequoia::network::search::Output;
-use sequoia::network::search::output::*;
-use sequoia::network::search;
-use sequoia::network::search::Source;
-use sequoia::network::search::Query;
-use sequoia::types::Convert;
+use sqz::network::search::Output;
+use sqz::network::search::output::*;
+use sqz::network::search;
+use sqz::network::search::Source;
+use sqz::network::search::Query;
+use sqz::types::Convert;
 
 use crate::Result;
 use crate::Sq;

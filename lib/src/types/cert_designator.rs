@@ -31,7 +31,7 @@ use crate::transitional::stdin::StdinWarning;
 /// ## Examples
 /// ```no_compile
 /// use clap::Args;
-/// use sequoia::types::FileOrStdin;
+/// use sqz::types::FileOrStdin;
 ///
 /// #[derive(Debug, Args)]
 /// #[clap(name = "example", about = "an example")]

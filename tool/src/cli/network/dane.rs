@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
 
-use sequoia::types::ResourceRecordType;
+use sqz::types::ResourceRecordType;
 
 use crate::cli::types::ClapData;
 use crate::cli::types::FileOrCertStore;

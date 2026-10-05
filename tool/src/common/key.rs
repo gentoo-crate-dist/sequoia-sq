@@ -1,11 +1,11 @@
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 use openpgp::cert::amalgamation::key::ValidErasedKeyAmalgamation;
 use openpgp::packet::key::KeyParts;
 
-use sequoia::key_store as keystore;
+use sqz::key_store as keystore;
 
-use sequoia::types::FileStdinOrKeyHandle;
+use sqz::types::FileStdinOrKeyHandle;
 
 use crate::Sq;
 

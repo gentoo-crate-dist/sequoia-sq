@@ -1,12 +1,12 @@
 //! Operations on certs.
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::{
     Fingerprint,
     KeyHandle,
 };
 
-use sequoia::cert::list::QueryKind;
+use sqz::cert::list::QueryKind;
 
 use crate::{
     Result,

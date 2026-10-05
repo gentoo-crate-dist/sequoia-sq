@@ -6,8 +6,8 @@ use sequoia_openpgp as openpgp;
 use openpgp::KeyHandle;
 use openpgp::types::KeyFlags;
 
-use sequoia::cert::import;
-use sequoia::decrypt;
+use sqz::cert::import;
+use sqz::decrypt;
 
 use import::ArtifactType;
 use import::Output;
@@ -15,7 +15,7 @@ use import::error::*;
 use import::output::*;
 use import::output;
 
-use sequoia::types::import_stats::ImportStats;
+use sqz::types::import_stats::ImportStats;
 
 use crate::Result;
 use crate::Sq;

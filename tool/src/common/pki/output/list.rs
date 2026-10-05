@@ -1,8 +1,8 @@
-use sequoia::cert_store::Store;
+use sqz::cert_store::Store;
 
-use sequoia::cert::list::QueryKind;
-use sequoia::cert::list::required_trust_amount;
-use sequoia::cert::list;
+use sqz::cert::list::QueryKind;
+use sqz::cert::list::required_trust_amount;
+use sqz::cert::list;
 
 use crate::Result;
 use crate::Sq;
@@ -50,7 +50,7 @@ impl<'sq, 'a> Stream<'sq, 'a> {
     }
 }
 
-impl sequoia::cert::list::Stream<'_> for Stream<'_, '_> {
+impl sqz::cert::list::Stream<'_> for Stream<'_, '_> {
     fn output(&mut self,
               params: &list::Params,
               output: list::Output)

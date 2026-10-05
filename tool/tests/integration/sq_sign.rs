@@ -3,7 +3,7 @@ use std::io;
 
 use tempfile::TempDir;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Fingerprint;
 use openpgp::KeyHandle;
 use openpgp::Result;

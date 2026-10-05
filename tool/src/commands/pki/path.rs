@@ -1,10 +1,10 @@
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
 
-use sequoia::wot;
+use sqz::wot;
 
-use sequoia::cert::list::required_trust_amount;
-use sequoia::types::TrustThreshold;
+use sqz::cert::list::required_trust_amount;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::pki::path::Command;

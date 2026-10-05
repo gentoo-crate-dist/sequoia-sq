@@ -2,10 +2,10 @@ use std::ops::Deref;
 
 use typenum::Unsigned;
 
-pub use sequoia::config::Expiration;
-use sequoia::config::Config;
-use sequoia::config::DEFAULT_KEY_ROTATE_RETIRE_IN_DURATION;
-use sequoia::config::DEFAULT_THIRD_PARTY_CERTIFICATION_VALIDITY_DURATION;
+pub use sqz::config::Expiration;
+use sqz::config::Config;
+use sqz::config::DEFAULT_KEY_ROTATE_RETIRE_IN_DURATION;
+use sqz::config::DEFAULT_THIRD_PARTY_CERTIFICATION_VALIDITY_DURATION;
 
 use crate::cli::config;
 

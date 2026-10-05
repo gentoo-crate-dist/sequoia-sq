@@ -4,8 +4,8 @@ use std::{
 
 use anyhow::Result;
 
-use sequoia::pki::certify::CertificationTemplateBuilder;
-use sequoia::types::TrustThreshold;
+use sqz::pki::certify::CertificationTemplateBuilder;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 use crate::common::NULL_POLICY;

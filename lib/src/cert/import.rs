@@ -21,13 +21,13 @@
 //! or certificates from an email with autocrypt headers:
 //!
 //! ```
-//! # use sequoia::openpgp;
+//! # use sqz::openpgp;
 //! # use openpgp::cert::CertBuilder;
 //! # use openpgp::serialize::Serialize;
 //! #
-//! # use sequoia::Sequoia;
+//! # use sqz::Sequoia;
 //! #
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let (alice, _alice_rev) = CertBuilder::new()
@@ -53,16 +53,16 @@
 //! the call returns.
 //!
 //! ```
-//! # use sequoia::openpgp;
+//! # use sqz::openpgp;
 //! # use openpgp::cert::CertBuilder;
 //! # use openpgp::serialize::Serialize;
 //! #
-//! # use sequoia::Sequoia;
-//! use sequoia::cert::import::Output;
-//! use sequoia::cert::import::output::*;
-//! use sequoia::cert::import;
+//! # use sqz::Sequoia;
+//! use sqz::cert::import::Output;
+//! use sqz::cert::import::output::*;
+//! use sqz::cert::import;
 //!
-//! # fn main() -> sequoia::Result<()> {
+//! # fn main() -> sqz::Result<()> {
 //! # let sq = Sequoia::builder().ephemeral()?.build()?;
 //! #
 //! # let (alice, _alice_rev) = CertBuilder::new()
@@ -83,7 +83,7 @@
 //!     fn output(&mut self,
 //!               _params: &import::Params,
 //!               output: Output)
-//!         -> sequoia::Result<()>
+//!         -> sqz::Result<()>
 //!     {
 //!         match output {
 //!             Output::Imported(Imported { merged, .. }) => {

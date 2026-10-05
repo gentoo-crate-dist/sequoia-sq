@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-pub use sequoia::types::StateDirectory;
+pub use sqz::types::StateDirectory;
 
 /// A value parser for absolute directories with explicit default.
 ///

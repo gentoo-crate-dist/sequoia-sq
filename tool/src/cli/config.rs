@@ -13,9 +13,9 @@ use clap::{
 };
 use clap_lex::OsStrExt;
 
-use sequoia::config::Config;
-use sequoia::config::Source;
-use sequoia::directories::Home;
+use sqz::config::Config;
+use sqz::config::Source;
+use sqz::directories::Home;
 
 pub mod get;
 pub mod inspect;
@@ -200,9 +200,9 @@ file{}, and to create a template that can be edited to your liking.
 
 Configuration file: {}
 ",
-        sequoia::directories::Home::default()
+        sqz::directories::Home::default()
         .map(|home| {
-            let p = home.config_dir(sequoia::directories::Component::Sq);
+            let p = home.config_dir(sqz::directories::Component::Sq);
             let p = p.join("config.toml");
             let p = p.display().to_string();
             if let Some(home) = dirs::home_dir() {
@@ -217,7 +217,7 @@ Configuration file: {}
         .unwrap_or("".to_string()),
         find_home()
         .map(|home| {
-            let p = home.config_dir(sequoia::directories::Component::Sq);
+            let p = home.config_dir(sqz::directories::Component::Sq);
             let p = p.join("config.toml");
             let p = p.display().to_string();
             if let Some(home) = dirs::home_dir() {

@@ -1,12 +1,12 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Cert;
 use openpgp::Packet;
 use openpgp::cert::amalgamation::key::PrimaryKey;
 use openpgp::serialize::Serialize;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::Result;
 use crate::Sq;

@@ -6,7 +6,7 @@ use std::time;
 
 use regex::bytes::Regex;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 
 use openpgp::Fingerprint;
 use openpgp::Result;

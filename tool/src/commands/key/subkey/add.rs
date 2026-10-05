@@ -1,10 +1,10 @@
 use anyhow::Context;
 
-use sequoia::openpgp;
+use sqz::openpgp;
 use openpgp::Result;
-use sequoia::key::PasswordPolicy;
+use sqz::key::PasswordPolicy;
 
-use sequoia::types::TrustThreshold;
+use sqz::types::TrustThreshold;
 
 use crate::Sq;
 use crate::cli::key::subkey::add::Command;

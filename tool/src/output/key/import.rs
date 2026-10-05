@@ -3,15 +3,15 @@ use std::error::Error as _;
 use std::path::Path;
 use std::path::PathBuf;
 
-use sequoia::key::import::error;
-use sequoia::key::import;
-use sequoia::types::PreferredUserID;
-use sequoia::types::import_stats::ImportStatus;
+use sqz::key::import::error;
+use sqz::key::import;
+use sqz::types::PreferredUserID;
+use sqz::types::import_stats::ImportStatus;
 
 use import::output::*;
 use import::Output;
 
-use sequoia::types::import_stats::ImportStats;
+use sqz::types::import_stats::ImportStats;
 
 use crate::Result;
 use crate::Sq;
