@@ -1,5 +1,13 @@
 //! Lookup certificates.
 //!
+//! [`Sequoia::lookup`] looks up certificates in the certificate store
+//! and in any [specified
+//! keyrings](crate::SequoiaBuilder::add_keyring) by fingerprint or
+//! key ID.  To lookup a certificate by a human-meaningful identifier,
+//! use [`Sequoia::lookup_by`](crate::lookup_by).  To search for
+//! certificates on the network, use
+//! [`Sequoia::network_search`](crate::network::search).
+//!
 //! # Fingerprints
 //!
 //! Certificates are often designated using their so-called
@@ -18,7 +26,7 @@
 //! not unambiguously identify certificates and they are not self
 //! authenticating.
 //!
-//! To work around this, fingerprints are sometimes used to bootstrap
+//! To workaround this, fingerprints are sometimes used to bootstrap
 //! communication.  Then the association between the name and the
 //! certificate is saved.  This can be done using certifications, see
 //! [`Sequoia::pki_certify`](crate::pki::certify).

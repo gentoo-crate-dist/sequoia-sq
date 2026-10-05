@@ -1,5 +1,13 @@
 //! Lookup certificates by human meaningful identifiers.
 //!
+//! [`Sequoia::lookup_by`] looks up certificates in the certificate
+//! store and in any [specified
+//! keyrings](crate::SequoiaBuilder::add_keyring) by a
+//! human-meaningful identifier.  To lookup a certificate by
+//! fingerprint or key ID, by use [`Sequoia::lookup`](crate::lookup).
+//! To search for certificates on the network, use
+//! [`Sequoia::network_search`](crate::network::search).
+//!
 //! # Fingerprints
 //!
 //! Certificates are often designated using their so-called
