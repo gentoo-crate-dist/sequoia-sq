@@ -49,8 +49,9 @@
 //! [`Sequoia::cert_list`](crate::cert::list) to find an authenticated
 //! certificate.
 //!
-//! The signing function looks for secret key material in the
-//! certificate itself, in any [specified
+//! Note: the certificate itself does not need to contain the secret
+//! key material.  The signing function looks for secret key material
+//! in the certificate itself, in any [specified
 //! keyrings](crate::SequoiaBuilder::add_keyring), and on the key
 //! store.
 //!

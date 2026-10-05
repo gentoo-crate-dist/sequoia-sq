@@ -75,7 +75,13 @@
 //! # Examples
 //!
 //! Alice certifies that a certificate is controlled by
-//! `bob@example.org`:
+//! `bob@example.org`.
+//!
+//! Note: The certifier's certificate does not itself need to contain
+//! the secret key material.  The certify function looks for secret
+//! key material in the certificate itself, in any [specified
+//! keyrings](crate::SequoiaBuilder::add_keyring), and on the key
+//! store.
 //!
 //! ```
 //! # use sequoia::openpgp;

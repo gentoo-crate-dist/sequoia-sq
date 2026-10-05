@@ -5,6 +5,16 @@
 //!
 //! # Examples
 //!
+//! Decrypt a message.
+//!
+//! The decryption function will look for the secret key material to
+//! decrypt the message in any [specified
+//! keyrings](crate::SequoiaBuilder::add_keyring), and on the key
+//! store.  You can also supply the secret key material explicitly
+//! using [`Builder::add_secret_key`].  And, if you already have the
+//! decrypted session key (e.g., because you cached it), this can be
+//! provided using [`Builder::add_session_key`].
+//!
 //! ```rust
 //! # use sequoia::Sequoia;
 //! #
