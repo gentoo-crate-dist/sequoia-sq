@@ -1190,7 +1190,17 @@ struct ParamsOnce<'sequoia, 'writer, 'stream, 'prompt> {
 /// Consider Alice who has met Bob and Bob has told her his
 /// certificate's fingerprint.  Alice can record that information
 /// using a third-party certification.  This allows Alice's OpenPGP
-/// implementation to automatically
+/// implementation to automatically determine the right certificate
+/// for Bob in the future.
+///
+/// If Alice is also willing to rely on Bob to introduce her to other
+/// people, then she could record that in the certification as well
+/// using [`Builder::trust_depth`].  Depending on how much she trusts
+/// Bob, she might want to constrain Bob to, for example, only allow
+/// him to introduce people with an email address from a particular
+/// domain using [`Builder::add_domain_constraint`].  Then if Bob were
+/// to certify Carol's certificate, Alice would also find the right
+/// certificate for Carol.
 pub struct Builder<'sequoia, 'writer, 'stream, 'prompt> {
     params: Params<'sequoia>,
     params_once: ParamsOnce<'sequoia, 'writer, 'stream, 'prompt>,
