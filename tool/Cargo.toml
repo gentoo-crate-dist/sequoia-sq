@@ -32,7 +32,7 @@ clap_lex = { version = "0.7", default-features = false }
 futures-util = "0.3"
 indicatif = "0.18"
 reqwest = { version = ">=0.12, <0.13", features = ["hickory-dns", "stream"] }
-sqz = { path = "../lib", default-features = false, features = ["clap", "net"] }
+sqz = { version = "0.1", path = "../lib", default-features = false, features = ["clap", "net"] }
 tempfile = "3.1"
 thiserror = { version = ">=1, <3" }
 tokio = { version = "1.13.1" }
@@ -59,7 +59,7 @@ chrono = "0.4.38"
 dirs = ">=5, <7"
 roff = "0.2.1"
 serde = { version = "1.0.137", features = ["derive"] }
-sqz = { path = "../lib", default-features = false, features = ["clap"] }
+sqz = { version = "0.1", path = "../lib", default-features = false, features = ["clap"] }
 sequoia-man = "0.3"
 sequoia-openpgp = { version = "2", default-features = false }
 sequoia-net = { version = "0.30", default-features = false }
