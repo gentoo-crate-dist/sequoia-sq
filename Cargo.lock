@@ -4129,7 +4129,7 @@ dependencies = [
 
 [[package]]
 name = "sequoia-sq"
-version = "1.4.1"
+version = "1.5.0"
 dependencies = [
  "aho-corasick",
  "anyhow",

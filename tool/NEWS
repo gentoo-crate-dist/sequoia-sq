@@ -8,6 +8,9 @@
 ** Notable fixes
    - `sq verify --message` now rejects cleartext signatures, and `sq
      verify --cleartext` rejects inline messages.
+** Notable changes
+   - `sq` now uses the `sqz` high-level library.  This is a major
+     internal change, but should not change `sq`'s behavior.
 
 * Changes in 1.4.0
 ** New functionality
