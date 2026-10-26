@@ -16,5 +16,4 @@
           with:
             ssh-private-key: ${{ secrets.ssh_key }}
             upstream-repo: https://gitlab.com/sequoia-pgp/sequoia-sq.git
-            
-            
+            directories: tool
