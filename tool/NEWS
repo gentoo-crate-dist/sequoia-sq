@@ -3,6 +3,11 @@
 #+STARTUP: content hidestars
 
 * Changes in 1.5.1
+** New features
+  - `dane-client`.  Enable this to get support for fetching
+    certificates using DANE.  This impacts `sq network search` and `sq
+    network dane search`.
+
 ** Notable fixes
    - Upgrade sequoia-openpgp to fix:
 
@@ -37,6 +42,14 @@
 
      CVE-2026-121477: Following symbolic links when reading
      certificates enables information disclosure
+
+   - Upgrade `sequoia-net`, which addresses:
+
+     CVE-2026-121473: Unbounded download buffering enables denial of
+     service via malicious HKP or WKD server
+
+     CVE-2026-121474: Following symbolic links when writing to a WKD
+     enables arbitrary file truncation
 
 * Changes in 1.5.0
 ** New functionality

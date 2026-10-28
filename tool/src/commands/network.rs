@@ -18,7 +18,7 @@ use openpgp::{
     parse::Parse,
     types::KeyFlags,
 };
-use sequoia_net as net;
+use sqz::net;
 use net::{
     KeyServer,
     wkd,
@@ -189,7 +189,7 @@ pub fn dispatch_keyserver(
         Publish(c) => {
             let servers = servers
                 .into_iter()
-                .map(|uri| KeyServer::with_client(uri, http_client()?)
+                .map(|uri| KeyServer::with_client(uri, Box::new(http_client()?))
                      .with_context(|| format!("Malformed keyserver URI: {}", uri))
                      .map(Arc::new))
                 .collect::<Result<Vec<_>>>()?;
@@ -659,6 +659,10 @@ pub fn dispatch_dane(sq: Sq, c: cli::network::dane::Command)
             }
         },
         Search(c) => {
+            if ! cfg!(feature = "dane-client") {
+                return Err(anyhow::anyhow!("Support for DANE is disabled."));
+            }
+
             let queries = if c.all {
                 Query::all_addresses(&sq.sequoia)?
             } else {

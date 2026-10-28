@@ -36,3 +36,8 @@ directly used with clap without having to wrap them, which would
 otherwise be required due to Rust's orphan rule (a crate can only
 implement a trait for a given struct or enum if the crate defines the
 struct or enum, or the crate defines the trait).
+
+Enable the `net` feature to enable network supporting.
+
+Enable the `dane-client` feature to enable DANE support.  This also
+enables the `net` feature.

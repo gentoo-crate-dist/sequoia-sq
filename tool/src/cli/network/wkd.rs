@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
-use sequoia_net::wkd;
+use sqz::net::wkd;
 
 use crate::cli::types::ClapData;
 use crate::cli::types::FileOrCertStore;

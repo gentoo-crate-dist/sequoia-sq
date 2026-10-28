@@ -8,11 +8,12 @@ stages:
 include:
   - component: "gitlab.com/sequoia-pgp/common-ci/sequoia-pipeline@main"
     inputs:
-      extra_features: ",subplot"
+      extra_features: ",subplot,net"
 
 variables:
   SEQUOIA_CRYPTO_POLICY: ""
-
+  # Don't compile DANE, which requires a newer version of rustc than we test with.
+  NO_DEFAULT_FEATURES: true
 
 container-build-push:
   # Official OCI container image.

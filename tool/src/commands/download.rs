@@ -19,8 +19,7 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use indicatif::WeakProgressBar;
 
-use sequoia_net as net;
-use net::reqwest;
+use sqz::net::reqwest;
 
 use tempfile::NamedTempFile;
 

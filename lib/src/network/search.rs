@@ -158,7 +158,9 @@ use openpgp::parse::Parse;
 use openpgp::serialize::Serialize;
 
 use sequoia_net as net;
+use net::HttpClientOptions;
 use net::KeyServer;
+#[cfg(feature = "dane-client")]
 use net::dane;
 use net::reqwest::Url;
 use net::wkd;
@@ -1133,6 +1135,9 @@ impl<'sequoia, 'writer, 'stream, 'prompt>
     ///
     /// See [RFC 7929](https://datatracker.ietf.org/doc/rfc7929/) for
     /// more information.
+    ///
+    /// DANE is only supported if the `dane-client` feature is
+    /// enabled.
     pub fn query_dane(mut self, query_dane: bool) -> Self {
         self.params.query_dane = query_dane;
         self
@@ -1262,7 +1267,7 @@ impl<'sequoia, 'writer, 'stream, 'prompt>
             servers
                 .iter()
                 .map(|s| {
-                    let ks = KeyServer::with_client(s, http_client.clone())
+                    let ks = KeyServer::with_client(s, Box::new(http_client.clone()))
                         .map_err(|err| {
                             Error::ArgumentError(
                                 error::ArgumentError::MalformedKeyserverUri(
@@ -1399,8 +1404,10 @@ impl<'sequoia, 'writer, 'stream, 'prompt>
                         let http_client = http_client.clone();
 
                         requests.spawn(async move {
+                            let options = HttpClientOptions::certificate();
                             let results =
-                                wkd::get(&http_client, &a).await;
+                                wkd::get_with_client(
+                                    &http_client, &options, &a).await;
                             let results = massage_query_results(
                                 results, query.clone(), source.clone());
 
@@ -1415,6 +1422,7 @@ impl<'sequoia, 'writer, 'stream, 'prompt>
                     }
                 }
 
+                #[cfg(feature = "dane-client")]
                 if query_dane {
                     if let Some(address) = query.as_address() {
                         let query = query.clone();

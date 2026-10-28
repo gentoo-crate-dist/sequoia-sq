@@ -37,7 +37,7 @@ sequoia-cert-store = { version = "0.7.6", default-features = false }
 sequoia-directories = "0.1"
 sequoia-keystore = { version = "0.7" }
 sequoia-ipc = { version = "0.36", default-features = false }
-sequoia-net = { version = "0.30", default-features = false, optional = true }
+sequoia-net = { version = "0.32", default-features = false, features = ["reqwest"], optional = true }
 sequoia-openpgp = { version = "2.5", default-features = false, features = ["compression"] }
 sequoia-policy-config = "0.8"
 sequoia-wot = { version = "0.15.3", default-features = false }
@@ -68,7 +68,8 @@ allow-experimental-crypto = ["sequoia-openpgp/allow-experimental-crypto"]
 allow-variable-time-crypto = ["sequoia-openpgp/allow-variable-time-crypto"]
 
 clap = ["dep:clap"]
-net = ["dep:sequoia-net", "dep:tokio"]
+net = ["dep:sequoia-net", "dep:tokio", "sequoia-net/reqwest"]
+dane-client = ["net", "sequoia-net/dane-client"]
 
 [target.'cfg(not(windows))'.dev-dependencies]
 # Enables a crypto backend for the tests:
