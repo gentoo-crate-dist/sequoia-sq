@@ -1810,8 +1810,7 @@ impl<'sequoia, 'writer, 'stream, 'prompt>
             .into_iter()
         {
             t!("Considering certification of {}: {:?}",
-               String::from_utf8_lossy(userid.value()),
-               active_certification);
+               userid, active_certification);
 
             if let Some(ua) = cert.userids().find(|ua| ua.userid() == userid) {
                 t!("  Known user ID");

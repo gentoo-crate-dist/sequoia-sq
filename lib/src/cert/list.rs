@@ -49,9 +49,8 @@
 //!         eprintln!("{}, {:?} matches",
 //!                   binding.fingerprint,
 //!                   binding.userid
-//!                       .map(|u| {
-//!                           String::from_utf8_lossy(u.value()).to_string()
-//!                       })
+//!                       .as_ref()
+//!                       .map(|u| u.display())
 //!                       .unwrap_or_else(|| "<bare certificate>".into()));
 //! #       bindings += 1;
 //!     }
@@ -96,9 +95,8 @@
 //!             eprintln!("{}, {:?} matches",
 //!                       binding.fingerprint,
 //!                       binding.userid
-//!                           .map(|u| {
-//!                               String::from_utf8_lossy(u.value()).to_string()
-//!                           })
+//!                           .as_ref()
+//!                           .map(|u| u.display())
 //!                           .unwrap_or_else(|| "<bare certificate>".into()));
 //! #           self.bindings += 1;
 //!         }
@@ -1031,7 +1029,7 @@ impl<'sequoia> Builder<'sequoia> {
                                             .filter(|userid| {
                                                 t!("Checking {}, {}",
                                                    cert.fingerprint(),
-                                                   String::from_utf8_lossy(userid.value()));
+                                                   userid);
 
                                                 query_params.check(&userid, pattern)
                                             })
@@ -1297,9 +1295,8 @@ impl<'sequoia> Builder<'sequoia> {
                             {
                                 lints.push((
                                     Some(anyhow::anyhow!(
-                                        "{:?} was never certified for {}",
-                                        String::from_utf8_lossy(userid.value()),
-                                        fingerprint)),
+                                        "{} was never certified for {}",
+                                        userid, fingerprint)),
                                     false, i));
                             }
                         }
@@ -1491,10 +1488,7 @@ mod tests {
                               binding.fingerprint,
                               binding.userid
                                   .as_ref()
-                                  .map(|userid| {
-                                      String::from_utf8_lossy(userid.value())
-                                          .to_string()
-                                  })
+                                  .map(|userid| userid.display())
                                   .unwrap_or_else(|| "<none>".into()),
                               binding.aggregate_trust_amount);
                     assert!(saw_start_of_bindings);
@@ -1580,10 +1574,7 @@ mod tests {
                               fingerprint,
                               userid
                               .as_ref()
-                              .map(|userid| {
-                                  String::from_utf8_lossy(userid.value())
-                                      .to_string()
-                              })
+                              .map(|userid| userid.display())
                               .unwrap_or_else(|| "<none>".into()),
                               aggregate_trust_amount);
                 }
@@ -1597,10 +1588,7 @@ mod tests {
                               fingerprint,
                               userid
                               .as_ref()
-                              .map(|userid| {
-                                  String::from_utf8_lossy(userid.value())
-                                      .to_string()
-                              })
+                              .map(|userid| userid.display())
                               .unwrap_or_else(|| "<none>".into()),
                               aggregate_trust_amount);
                 }

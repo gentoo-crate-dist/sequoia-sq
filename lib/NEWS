@@ -54,4 +54,25 @@
      CVE-2026-121474: Following symbolic links when writing to a WKD
      enables arbitrary file truncation
 
+   - CVE-2026-121478: Unescaped control characters in user IDs enable
+     terminal output spoofing
+
+     We were not always careful to ensure that control characters in e.g.,
+     user IDs, were escaped.  For instance, `sq verify` did not correctly
+     sanitize the signer's user ID.  An attacker could use this to embed
+     ANSI cursor movement sequences in a user ID to overwrite a
+     verification warning with fake "Fully authenticated" text thereby
+     spoofing the signature verification result.
+
+     Note: this attack can be used to modify the human readable output; it
+     cannot be used to influence the control plane, like in the sigspoof
+     attacks.
+
+       https://en.wikipedia.org/wiki/SigSpoof
+
+     This has been fixed by upgrading to the latest version of
+     `sequoia-openpgp`, whose implementations of `Display` and `Debug` for
+     `UserID` (as well as other data structures) escape any control
+     characters.
+
 * Started the NEWS file.

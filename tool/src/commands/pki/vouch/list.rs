@@ -99,7 +99,7 @@ pub fn list(sq: Sq, c: list::Command)
                 t!("Certification by {} on {}, {} is invalid: {}",
                    certifier.key_handle(),
                    cert.fingerprint(),
-                   String::from_utf8_lossy(userid.value()),
+                   userid,
                    err);
 
                 Some(err)

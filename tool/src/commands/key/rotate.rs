@@ -47,7 +47,6 @@ use crate::common::password::CheckNewPassword;
 use crate::common::password;
 use crate::common::pki::list::summarize_certification;
 use crate::common::pki::replay::replay;
-use crate::common::ui;
 use crate::output::pki::certify::Stream;
 
 pub fn dispatch(
@@ -353,8 +352,7 @@ pub fn dispatch(
             &userid)
             .with_context(|| {
                 format!("Creating certification for {}, {}",
-                        cert.fingerprint(),
-                        ui::Safe(String::from_utf8_lossy(userid.value())))
+                        cert.fingerprint(), userid)
             })?;
 
         new_cert_updates.extend([
@@ -369,8 +367,7 @@ pub fn dispatch(
             &userid)
             .with_context(|| {
                 format!("Creating certification for {}, {}",
-                        old_cert.fingerprint(),
-                        ui::Safe(String::from_utf8_lossy(userid.value())))
+                        old_cert.fingerprint(), userid)
             })?;
 
         old_cert_updates.extend([
@@ -406,8 +403,7 @@ pub fn dispatch(
             {
                 wwriteln!(stream = o, indent="  ",
                            "Copying link for {}:",
-                           ui::Safe(String::from_utf8_lossy(
-                               ua.userid().value())));
+                           ua.userid());
                 summarize_certification(o, "  ", &sig, true)?;
 
                 let builder: SignatureBuilder = sig.clone().into();
@@ -419,9 +415,7 @@ pub fn dispatch(
                     &ua.userid())
                     .with_context(|| {
                         format!("Creating link for {}, {}",
-                                cert.fingerprint(),
-                                ui::Safe(String::from_utf8_lossy(
-                                    ua.userid().value())))
+                                cert.fingerprint(), ua.userid())
                     })?;
 
                 packets.extend([

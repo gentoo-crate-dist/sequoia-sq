@@ -6,8 +6,7 @@ use openpgp::packet::UserID;
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum UserIDLint {
     /// Not UTF-8 Encoded.
-    #[error("{:?} is not UTF-8 encoded",
-            String::from_utf8_lossy(.0.value()))]
+    #[error("{:?} is not UTF-8 encoded", .0)]
     NotUTF8Encoded(UserID, #[source] std::str::Utf8Error),
 
     /// Not in canonical form.
@@ -15,13 +14,9 @@ pub enum UserIDLint {
     /// Canonical form is: `Display Name (Comment)
     /// <email@example.org>` where either the display name, comment or
     /// email address is required.
-    #[error("The user ID {:?} is not in canonical form{}",
-            String::from_utf8_lossy(.0.value()),
-            .1.as_ref()
-                .map(|u| {
-                    format!(", try {:?}",
-                            String::from_utf8_lossy(u.value()))
-                })
+    #[error("The user ID {} is not in canonical form{}",
+            .0,
+            .1.as_ref().map(|u| format!(", try {}", u))
             .unwrap_or_else(|| "".to_string()))]
     NotCanonical(UserID, Option<UserID>),
 
@@ -32,8 +27,7 @@ pub enum UserIDLint {
     /// match on email addresses usually assume the email address is
     /// in angle brackets.
     #[error("{:?} is a bare email address, try \"<{}>\"",
-            String::from_utf8_lossy(.0.value()),
-            String::from_utf8_lossy(.0.value()))]
+            .0, .0)]
     BareEmail(UserID),
 
     /// The name has excessive space characters at the beginning or
@@ -169,7 +163,7 @@ pub fn lint_userids(uids: &[UserID]) -> Result<(), anyhow::Error> {
                    if let Some(uid) = bare_email {
                        format!("Bare email addresses should be wrapped in angle \
                                 brackets like so `<{}>`.  ",
-                               String::from_utf8_lossy(uid.value()))
+                               uid)
                    } else {
                        "".to_string()
                    });

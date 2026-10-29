@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::Path;
 
 use sequoia_openpgp as openpgp;
@@ -93,10 +94,9 @@ impl certify::Stream<'_> for Stream<'_, '_> {
                             .arg("key").arg("userid").arg("add")
                             .arg_value("--cert", cert.fingerprint())
                             .arg_value("--userid",
-                                       String::from_utf8_lossy(
-                                           self.userids.get(0)
-                                               .map(|u| u.value())
-                                               .unwrap_or(b"<userid>")))
+                                       self.userids.get(0)
+                                           .map(|u| u.display())
+                                           .unwrap_or(Cow::Borrowed("<userid>")))
                             .done();
                     }
                     ArgumentError::NoRegularExpressions(

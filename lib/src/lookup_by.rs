@@ -704,8 +704,7 @@ mod test {
                   chrono::DateTime::<chrono::offset::Utc>::from(creation_time),
                   caps);
         for ua in vc.userids() {
-            eprintln!("  - {}",
-                      String::from_utf8_lossy(ua.userid().value()));
+            eprintln!("  - {}", ua.userid());
         }
         for k in vc.keys() {
             eprintln!("  {}: {:?}, {} -> {}, {}",

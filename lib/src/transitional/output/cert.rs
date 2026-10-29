@@ -35,7 +35,7 @@ pub fn emit_cert_userid(o: &mut dyn std::io::Write,
                         userid: &UserID)
                         -> Result<()>
 {
-    emit_cert_userid_str(o, cert, &String::from_utf8_lossy(userid.value()))
+    emit_cert_userid_str(o, cert, &userid.display())
 }
 
 /// Emits a certificate header.
@@ -46,7 +46,7 @@ pub fn emit_cert_userid_indent(o: &mut dyn std::io::Write,
                         -> Result<()>
 {
     emit_cert_userid_str_indent(
-        o, indent, cert, &String::from_utf8_lossy(userid.value()))
+        o, indent, cert, &userid.display())
 }
 
 /// Emits a certificate header.

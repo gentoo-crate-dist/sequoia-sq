@@ -401,14 +401,12 @@ impl Stream<'_> {
                             .then_some(u)
                     })
                 {
-                    signer_userid = PreferredUserID::from_string(
-                        String::from_utf8_lossy(u),
-                        TrustThreshold::Full.into());
+                    signer_userid = PreferredUserID::from_userid(
+                        u, TrustThreshold::Full.into());
                 } else {
                     // Else just pick the first one.
-                    signer_userid = PreferredUserID::from_string(
-                        String::from_utf8_lossy(
-                            authenticated_userids[0].value()),
+                    signer_userid = PreferredUserID::from_userid(
+                        authenticated_userids[0].clone(),
                         TrustThreshold::Full.into());
                 }
             }

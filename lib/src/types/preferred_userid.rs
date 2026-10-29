@@ -45,7 +45,7 @@ impl<'p> std::fmt::Display for PreferredUserIDDisplay<'p> {
                 return write!(f, "<unknown>");
             }
             UserIDLike::UserID(ref userid) => {
-                userid_ = String::from_utf8_lossy(userid.value());
+                userid_ = userid.display();
                 &userid_[..]
             }
             UserIDLike::String(ref userid) => {
@@ -131,7 +131,7 @@ impl PreferredUserID {
     /// Do not use for arguments in hints.
     pub fn userid_lossy(&self) -> Cow<'_, str> {
         match &self.userid {
-            UserIDLike::UserID(u) => String::from_utf8_lossy(u.value()),
+            UserIDLike::UserID(u) => u.display(),
             UserIDLike::String(u) => Cow::Borrowed(&u),
             UserIDLike::Unknown => Cow::Borrowed("<unknown userid>"),
         }

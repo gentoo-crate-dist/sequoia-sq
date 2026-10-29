@@ -139,7 +139,7 @@ impl import::Stream<'_> for Stream<'_, '_> {
                             .map(|userid| {
                                 Cow::Owned(format!(
                                     "{} (UNAUTHENTICATED)",
-                                    String::from_utf8_lossy(userid.value())))
+                                    userid))
                             })
                             .unwrap_or_else(|| {
                                 Cow::Borrowed("<unknown>")

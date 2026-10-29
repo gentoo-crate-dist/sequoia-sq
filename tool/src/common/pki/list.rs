@@ -115,9 +115,9 @@ pub fn list_certifications(sq: &Sq,
                             .lookup_all(&kh)
                         {
                             for certifier in certifiers.into_iter() {
-                                t!("  Possible certification of {}, {:?} by {}, {}",
+                                t!("  Possible certification of {}, {} by {}, {}",
                                    target_cert_fpr,
-                                   String::from_utf8_lossy(ua.userid().value()),
+                                   ua.userid(),
                                    certifier.fingerprint(),
                                    sq.best_userid(&certifier, true).display());
                                 candidates.push(
@@ -160,10 +160,8 @@ pub fn list_certifications(sq: &Sq,
             t!("Considering {}, {}",
                cert.fingerprint(),
                cert.userids().next()
-                   .map(|userid| {
-                       String::from_utf8_lossy(userid.value()).to_string()
-                   })
-                   .unwrap_or_else(|| "<no userids>".to_string()));
+                   .map(|userid| userid.to_string())
+                   .unwrap_or_else(|| "<no userids>".into()));
             if cert.userids().next().is_none() {
                 // The certificate has no user IDs.  Thus, it can't
                 // have been certified.
@@ -245,7 +243,7 @@ pub fn list_certifications(sq: &Sq,
                             {
                                 t!("  Possible certification of {}, {:?}",
                                    cert.fingerprint(),
-                                   String::from_utf8_lossy(ua.userid().value()));
+                                   ua.userid());
                                 candidates.push(
                                     (RefCell::clone(&certifier).into(),
                                      RefCell::clone(&cert_cell).into(),

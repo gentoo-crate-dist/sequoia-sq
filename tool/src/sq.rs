@@ -935,7 +935,7 @@ impl Sq {
                                             ui::Safe(&userid),
                                             cert.fingerprint(),
                                             cert.fingerprint(),
-                                            String::from_utf8_lossy(userid.value()))));
+                                            userid.display_quoted())));
                                     } else {
                                         authenticated = true;
                                         break;

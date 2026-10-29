@@ -139,9 +139,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
         }
 
         t!("{}: {}, {} certifications",
-           cert.fingerprint(),
-           String::from_utf8_lossy(userid.value()),
-           certifications.len());
+           cert.fingerprint(), userid, certifications.len());
 
         wwriteln!(stream = o, indent = indent,
                   "Considering the source certificate's certification \
@@ -249,7 +247,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
                    ct_str,
                    source_kh,
                    cert.fingerprint(),
-                   String::from_utf8_lossy(userid.value()),
+                   userid,
                    err);
 
                 reasons.push((ct_str, err));
@@ -261,7 +259,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
                    ct_str,
                    source_pk,
                    cert.fingerprint(),
-                   String::from_utf8_lossy(userid.value()),
+                   userid,
                    err);
 
                 reasons.push((ct_str, err));
@@ -341,8 +339,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
                     &userid)
                     .with_context(|| {
                         format!("Creating certification for {}, {}",
-                                cert.fingerprint(),
-                                ui::Safe(String::from_utf8_lossy(userid.value())))
+                                cert.fingerprint(), userid)
                     })?;
 
                 let packets = [
@@ -375,7 +372,7 @@ pub fn replay(sq: &Sq, o: &mut dyn std::io::Write, indent: &str,
                        certifications are usable:",
                       source_kh,
                       cert.fingerprint(),
-                      String::from_utf8_lossy(userid.value()));
+                      userid);
             for (ct, err) in reasons.into_iter() {
                 wwriteln!(stream = o, indent = strcat(indent, "  "),
                           "Certification made at {} is invalid: {}",
