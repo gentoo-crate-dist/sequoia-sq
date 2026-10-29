@@ -75,4 +75,27 @@
      `UserID` (as well as other data structures) escape any control
      characters.
 
+   - CVE-2026-121479: Improper quoting of command arguments in hints
+     enables command injection
+
+     `sq` emits hints, which can include a suggested command that the
+     user can run.  Some hints are derived from the input and thus can
+     partially be influenced by an attacker.  Because the quoting was
+     not careful enough, it was possible to craft a user ID that would
+     be used in the command and when the hint is copy and pasted would
+     execute arbitrary commands.  Consider the user ID `$(touch
+     /tmp/pwned)`.  If the corresponding certificate is not considered
+     authenticated and the user runs `sq verify` on a message signed
+     by that certificate, `sq` would show:
+
+     Hint: After checking that FINGERPRINT belongs to $(touch /tmp/pwned),
+           you can mark it as authenticated using:
+
+       $ sq pki link add --cert=FINGERPRINT --userid="$(touch /tmp/pwned)"
+
+     If the user copy and pasted the command, then most shells would
+     create the file `/tmp/pwned`.
+
+     This was fixed by improving the argument quoting.
+
 * Started the NEWS file.

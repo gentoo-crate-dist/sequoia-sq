@@ -274,20 +274,15 @@ pub fn wrap_command<S: AsRef<str>>(command: &[S],
 
             // Quote the argument, if necessary.
             let quote = |arg: &str| -> String {
-                if arg.contains(&[
-                    '\"',
-                ]) {
-                    format!("'{}'", arg)
-                } else if arg.chars().any(char::is_whitespace)
-                    || arg.contains(&[
-                        '`', '#', '$', '&', '*', '(', ')',
-                        '\\', '|', '[', ']', '{', '}',
-                        ';', '\'', '<', '>', '?', '!',
-                    ])
-                {
-                    format!("\"{}\"", arg)
-                } else {
+                if arg.chars().all(|c| {
+                    c.is_alphanumeric()
+                        || matches!(
+                            c,
+                            '-' | '_' | '.' | '/' | ':' | '@' | '+' | ',')
+                }) {
                     arg.to_string()
+                } else {
+                    format!("'{}'", arg.replace('\'', "'\\''"))
                 }
             };
 
