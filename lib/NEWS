@@ -6,6 +6,10 @@
 ** New features
    - `dane-client`.  Enable this to get support for fetching
      certificates using DANE.
+   - `signer::Signer`
+   - `sign::Builder::add_signer`, and `sign::Builder::add_signers` now
+     take a `Signer` instead of a `Cert`.  This can be used to set the
+     signer's user ID subpacket.
 
 ** Notable fixes
    - Upgrade sequoia-openpgp to fix:

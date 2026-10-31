@@ -170,7 +170,7 @@ use openpgp::serialize::Serialize;
 use openpgp::serialize::stream::Armorer;
 use openpgp::serialize::stream::LiteralWriter;
 use openpgp::serialize::stream::Message;
-use openpgp::serialize::stream::Signer;
+use openpgp::serialize::stream;
 use openpgp::types::SignatureType;
 
 use crate::Result;
@@ -437,6 +437,70 @@ impl Outcome {
     }
 }
 
+/// A signer.
+///
+/// Normally you'll just specify a certificate to use for signing and
+/// Sequoia will choose the best signing-capable key to use.
+///
+/// You can also specify a user ID.  If you do, the user ID will be
+/// stored in the signature's [Signer's User ID] subpacket.  This can
+/// be used to distinguish whether someone is signing a message as a
+/// private role, or as a member of an organization, for example.  The
+/// signer's user ID is decorative; it does not change how the signer
+/// is authenticated.
+///
+/// [Signer's User ID]: https://www.rfc-editor.org/rfc/rfc9580.html#name-signers-user-id
+#[derive(Clone, Debug)]
+pub struct Signer {
+    cert: Cert,
+    userid: Option<UserID>,
+}
+
+impl Signer {
+    /// Returns a signer for a certificate.
+    pub fn new(cert: Cert) -> Self {
+        Self {
+            cert,
+            userid: None,
+        }
+    }
+
+    /// Returns a signer for a certificate and a user ID.
+    ///
+    /// Note: the user ID does not have to be self signed.
+    pub fn with_userid<U>(cert: Cert, userid: U) -> Self
+    where
+        U: Into<Option<UserID>>
+    {
+        Self {
+            cert,
+            userid: userid.into(),
+        }
+    }
+
+    /// Returns the signer's certificate.
+    pub fn cert(&self) -> &Cert {
+        &self.cert
+    }
+
+    /// Returns the signer's user ID, if any.
+    pub fn userid(&self) -> Option<&UserID> {
+        self.userid.as_ref()
+    }
+}
+
+impl From<Cert> for Signer {
+    fn from(cert: Cert) -> Self {
+        Signer::new(cert)
+    }
+}
+
+impl From<&Cert> for Signer {
+    fn from(cert: &Cert) -> Self {
+        Signer::new(cert.clone())
+    }
+}
+
 /// The signing parameters.
 ///
 /// These parameters are used by [`sign`](Builder::sign) and
@@ -445,7 +509,7 @@ impl Outcome {
 pub struct Params<'sequoia> {
     sequoia: &'sequoia Sequoia,
 
-    signers: Vec<Cert>,
+    signers: Vec<Signer>,
     hash_mode: HashMode,
     /// Creating notarizations is currently unsupported.
     ///
@@ -466,7 +530,7 @@ impl<'sequoia> Params<'sequoia> {
     }
 
     /// Returns the configured signers.
-    pub fn signers(&self) -> impl Iterator<Item=&Cert> {
+    pub fn signers(&self) -> impl Iterator<Item=&Signer> {
         self.signers.iter()
     }
 
@@ -692,18 +756,23 @@ where
     /// the secret key material is available.  If the certificate has
     /// no valid signing-capable keys with secret key material, then
     /// the signing operation will return an error.
-    pub fn add_signer(mut self, signer: Cert) -> Self {
-        self.params.signers.push(signer);
+    pub fn add_signer<S>(mut self, signer: S) -> Self
+    where
+        S: Into<Signer>
+    {
+        self.params.signers.push(signer.into());
         self
     }
 
     /// Signs the message with the specified certificates.
     ///
     /// See [`Builder::add_signer`] for details.
-    pub fn add_signers(mut self, signers: impl IntoIterator<Item=Cert>)
+    pub fn add_signers<S>(mut self, signers: impl IntoIterator<Item=S>)
         -> Self
+    where
+        S: Into<Signer>
     {
-        self.params.signers.extend(signers.into_iter());
+        self.params.signers.extend(signers.into_iter().map(|s| s.into()));
         self
     }
 
@@ -829,13 +898,13 @@ where
 
         let mut signers = match sequoia.signer()
             .prompt_(prompt.clone())
-            .get_signing_keys(signers)
+            .get_signing_keys(signers.iter().map(|signer| signer.cert()))
         {
-            Ok(signers) => {
+            Ok(s) => {
                 stream.output(
                     params,
                     Output::Signing(output::Signing {
-                        signers: signers.iter()
+                        signers: s.iter()
                             .map(|(cert, signer)| {
                                 (cert.clone(), signer.public().fingerprint())
                             })
@@ -843,7 +912,15 @@ where
                     }))
                     .map_err(|err| Error::StreamOutputError(err))?;
 
-                signers
+                // Pair up the signers with their corresponding spec.
+                assert_eq!(s.len(), signers.len());
+                s.into_iter().zip(signers.iter())
+                    .map(|((cert, signer), spec)| {
+                        assert_eq!(cert.fingerprint(),
+                                   spec.cert().fingerprint());
+                        (spec, signer)
+                    })
+                    .collect::<Vec<_>>()
             }
             Err(err) => {
                 return Err(Error::OperationalError(
@@ -890,14 +967,18 @@ where
                 .map_err(op!())?;
         }
 
-        let mut signer = Signer::with_template(
+        let first_signer = signers.pop().unwrap();
+        let mut signer = stream::Signer::with_template_and_userid(
             message,
-            signers.pop().unwrap().1,
-            builder)
+            first_signer.1,
+            builder,
+            first_signer.0.userid().map(|u| u.clone()))
             .map_err(op!())?;
         signer = signer.creation_time(sequoia.time());
-        for s in signers {
-            signer = signer.add_signer(s.1).map_err(op!())?;
+        for (spec, s) in signers {
+            signer = signer.add_signer_with_userid(
+                s, spec.userid().map(|u| u.clone()))
+                .map_err(op!())?;
         }
         if detached_signature {
             signer = signer.detached();
@@ -1281,10 +1362,10 @@ impl<'sequoia, 'stream, 'prompt>
         let mut signers = match sequoia
             .signer()
             .prompt_(prompt.clone())
-            .get_signing_keys(signers)
+            .get_signing_keys(signers.iter().map(|signer| signer.cert()))
         {
-            Ok(signers) => {
-                let (output, signers) = signers.into_iter()
+            Ok(s) => {
+                let (output, s) = s.into_iter()
                     .fold((Vec::new(), Vec::new()),
                           |(mut output, mut signers), (cert, signer)| {
                               output.push((cert, signer.public().fingerprint()));
@@ -1300,7 +1381,10 @@ impl<'sequoia, 'stream, 'prompt>
                     }))
                     .map_err(|err| Error::StreamOutputError(err))?;
 
-                signers
+                // Pair up the signers with their corresponding spec.
+                assert_eq!(s.len(), signers.len());
+                signers.iter().zip(s.into_iter())
+                    .collect::<Vec<_>>()
             }
             Err(err) => {
                 return Err(Error::OperationalError(
@@ -1402,12 +1486,15 @@ impl<'sequoia, 'stream, 'prompt>
                             .map_err(op!())?;
                     }
 
-                    let mut signer = Signer::with_template(
-                        message, signers.pop().unwrap(), builder)
+                    let first_signer = signers.pop().unwrap();
+                    let mut signer = stream::Signer::with_template_and_userid(
+                        message, first_signer.1, builder,
+                        first_signer.0.userid().map(|u| u.clone()))
                         .map_err(op!())?;
                     signer = signer.creation_time(sequoia.time());
-                    for s in signers.drain(..) {
-                        signer = signer.add_signer(s)
+                    for (spec, s) in signers.drain(..) {
+                        signer = signer.add_signer_with_userid(
+                            s, spec.userid().map(|u| u.clone()))
                             .map_err(op!())?;
                     }
                     message = signer.build().context("Failed to create signer")
@@ -1642,10 +1729,10 @@ impl<'sequoia, 'stream, 'prompt>
         let mut signers = match sequoia
             .signer()
             .prompt_(prompt.clone())
-            .get_signing_keys(signers)
+            .get_signing_keys(signers.iter().map(|signer| signer.cert()))
         {
-            Ok(signers) => {
-                let (output, signers) = signers
+            Ok(s) => {
+                let (output, s) = s
                     .into_iter()
                     .fold((Vec::new(), Vec::new()),
                           |(mut output, mut signers), (cert, signer)| {
@@ -1663,7 +1750,9 @@ impl<'sequoia, 'stream, 'prompt>
                     }))
                     .map_err(|err| Error::StreamOutputError(err))?;
 
-                signers
+                assert_eq!(s.len(), signers.len());
+                signers.iter().zip(s.into_iter())
+                    .collect::<Vec<_>>()
             }
             Err(err) => {
                 return Err(Error::OperationalError(
@@ -1686,13 +1775,16 @@ impl<'sequoia, 'stream, 'prompt>
         }
 
         let message = Message::new(&mut output);
-        let mut signer = Signer::with_template(
-            message, signers.pop().unwrap(), builder)
+        let first_signer = signers.pop().unwrap();
+        let mut signer = stream::Signer::with_template_and_userid(
+            message, first_signer.1, builder,
+            first_signer.0.userid().map(|u| u.clone()))
             .map_err(op!())?
             .cleartext();
         signer = signer.creation_time(sequoia.time());
-        for s in signers {
-            signer = signer.add_signer(s)
+        for (spec, s) in signers {
+            signer = signer.add_signer_with_userid(
+                s, spec.userid().map(|u| u.clone()))
                 .map_err(op!())?
         }
         let mut message = signer.build().context("Failed to create signer")
@@ -2177,5 +2269,386 @@ mod tests {
 
         assert!(result.is_err());
         check(output, result, 0);
+    }
+
+    #[test]
+    fn signers_userid() {
+        // Check that when setting a signer's user ID, it is actually
+        // set.  Further, make sure that it does not influence the
+        // signature's authentication status.
+
+        use openpgp::packet::UserID;
+
+        use crate::sign::Signer;
+
+        let sq = Sequoia::builder().ephemeral().unwrap().build().unwrap();
+
+        const MESSAGE: &[u8] = b"message";
+
+        // Alice's certificate and all self-signed user IDs are
+        // considered authenticated.
+        let alice = sq.key_generate()
+            .email("alice@example.org")
+            .without_password()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        let alice_none = Signer::new(alice.clone());
+        let alice_self_signed = Signer::with_userid(
+            alice.clone(), UserID::from("<alice@example.org>"));
+        let alice_not_self_signed = Signer::with_userid(
+            alice.clone(), UserID::from("not alice"));
+
+        // Bob's certificate and all self-signed user IDs are
+        // considered authenticated.
+        let bob = sq.key_generate()
+            .email("bob@example.org")
+            .without_password()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        let bob_none = Signer::new(bob.clone());
+        let bob_self_signed = Signer::with_userid(
+            bob.clone(), UserID::from("<bob@example.org>"));
+        let bob_not_self_signed = Signer::with_userid(
+            bob.clone(), UserID::from("not bob"));
+
+        // Carol's certificate is NOT considered authenticated.
+        let carol = sq.key_generate()
+            .email("carol@example.org")
+            .without_password()
+            .ephemeral()
+            .generate()
+            .expect("can generate a key")
+            .into_cert();
+
+        let carol_none = Signer::new(carol.clone());
+        let carol_self_signed = Signer::with_userid(
+            carol.clone(), UserID::from("<carol@example.org>"));
+        let carol_not_self_signed = Signer::with_userid(
+            carol.clone(), UserID::from("not carol"));
+
+        #[derive(Copy, Clone, Debug)]
+        enum Type {
+            Inline,
+            Detached,
+            Cleartext,
+        }
+
+        // Sign `MESSAGE` using the specified signature type.
+        let sign = |typ: Type, specs: &[Signer]| {
+            let mut signed = Vec::new();
+            match typ {
+                Type::Inline => {
+                    sq.sign()
+                        .inline()
+                        .add_signers(specs.iter().map(|s| s.clone()))
+                        .sign(
+                            std::io::Cursor::new(MESSAGE),
+                            &mut signed)
+                        .expect("can sign");
+                }
+                Type::Detached => {
+                    sq.sign()
+                        .detached()
+                        .add_signers(specs.iter().map(|s| s.clone()))
+                        .sign(
+                            std::io::Cursor::new(MESSAGE),
+                            &mut signed)
+                        .expect("can sign");
+                }
+                Type::Cleartext => {
+                    sq.sign()
+                        .clear()
+                        .add_signers(specs.iter().map(|s| s.clone()))
+                        .sign(
+                            std::io::Cursor::new(MESSAGE),
+                            &mut signed)
+                        .expect("can sign");
+                }
+            }
+
+            signed
+        };
+
+        // Verify `signed` according to the specified signature type.
+        //
+        // We only consider certificates in the certificate store.
+        let verify = |typ: Type, signed: &[u8]| {
+            match typ {
+                Type::Inline => {
+                    sq.verify()
+                        .inline_signature(
+                            std::io::Cursor::new(&signed),
+                            std::io::empty())
+                }
+                Type::Detached => {
+                    sq.verify()
+                        .detached_signature(
+                            std::io::Cursor::new(MESSAGE),
+                            std::io::Cursor::new(&signed),
+                            std::io::empty())
+                }
+                Type::Cleartext => {
+                    sq.verify()
+                        .cleartext_signature(
+                            std::io::Cursor::new(&signed),
+                            std::io::empty())
+                }
+            }
+        };
+
+        // Check that the signatures have the signer's user ID packet
+        // (or not) as per `first` and `specs`.
+        //
+        // `first` is the pre-existing signer, if any.  This is used
+        // when testing append.
+        let check_signatures = |typ: Type,
+                                signed: &[u8],
+                                first: Option<Signer>,
+                                specs: &[Signer]|
+        {
+            let specs = if let Some(first) = first {
+                // The order of the signatures is an implementation
+                // detail and subject to change.  We adapt to the
+                // current implementation.
+                let mut s = specs.to_vec();
+                match typ {
+                    Type::Inline => s.push(first),
+                    Type::Detached => s.insert(0, first),
+                    Type::Cleartext => unimplemented!(),
+                }
+                s
+            } else {
+                specs.to_vec()
+            };
+
+            let pp = PacketPile::from_bytes(signed)
+                .expect("valid output");
+            let mut saw_sig = 0;
+            for p in pp.children() {
+                if let Packet::Signature(sig) = p {
+                    saw_sig += 1;
+
+                    let issuers = sig.get_issuers();
+                    let signers_userid
+                        = sig.signers_user_id().map(|u| UserID::from(u));
+
+                    eprintln!("Signature #{} of {}:\n\
+                               issuers: {:?}\n\
+                               signer user ID: {:?}",
+                              saw_sig, specs.len(), issuers, signers_userid);
+
+                    let expect_cert = specs[saw_sig - 1].cert();
+                    let expected_signers_userid
+                        = specs[saw_sig - 1].userid();
+
+                    for issuer in issuers.iter() {
+                        assert!(
+                            expect_cert.keys()
+                                .any(|ka| {
+                                    ka.key().key_handle().aliases(issuer)
+                                }));
+                    }
+
+                    assert_eq!(
+                        expected_signers_userid,
+                        signers_userid.as_ref());
+                }
+            }
+            assert_eq!(saw_sig, specs.len());
+        };
+
+        // Sign `MESSAGE` and append the new signatures to the
+        // existing signatures.
+        let append = |typ: Type, signed: &[u8], specs: &[Signer]| -> Vec<u8> {
+            let mut signed2 = Vec::new();
+
+            match typ {
+                Type::Inline => {
+                    sq.sign()
+                        .inline()
+                        .add_signers(specs.iter().map(|s| s.clone()))
+                        .append(
+                            std::io::Cursor::new(&signed),
+                            &mut signed2)
+                        .expect("can append a signature");
+                }
+                Type::Detached => {
+                    sq.sign()
+                        .detached()
+                        .add_signers(specs.iter().map(|s| s.clone()))
+                        .append(
+                            std::io::Cursor::new(MESSAGE),
+                            std::io::Cursor::new(&signed),
+                            &mut signed2)
+                        .expect("can append a signature");
+                }
+                Type::Cleartext => {
+                    unimplemented!();
+                }
+            }
+
+            signed2
+        };
+
+        // Sign the message according to `specs` and verify
+        // everything.
+        //
+        // `can_verify` is whether we should be able to verify the
+        // message.
+        let sign_verify = |typ: Type, specs: &[Signer], can_verify: bool| {
+            eprintln!("-------------------------");
+            eprintln!("{:?} signature, signers:\n  {}",
+                      typ,
+                      specs.iter()
+                          .map(|spec| {
+                              format!(
+                                  "{}, {:?}",
+                                  spec.cert().fingerprint(),
+                                  spec.userid().as_ref().map(|u| u.display()))
+                          })
+                          .collect::<Vec<String>>()
+                          .join("\n  "));
+            eprintln!("Normal signature:");
+
+            let signed = sign(typ, specs);
+            let result = verify(typ, &signed);
+
+            eprintln!("Expected: {}, Got: {}",
+                      if can_verify { "Ok" } else { "Err" },
+                      if let Err(err) = result.as_ref() {
+                          format!("Err({})", err)
+                      } else {
+                          "Ok".into()
+                      });
+            if can_verify {
+                assert!(result.is_ok(),
+                        "Expected valid signature, got: {}",
+                        result.as_ref().unwrap_err());
+            } else {
+                assert!(result.is_err(),
+                        "Expected invalid signature, got: {}",
+                        result.as_ref().unwrap_err());
+            }
+
+            check_signatures(typ, &signed, None, specs);
+
+            if let Type::Cleartext = typ {
+                // We don't (currently) support appending signatures
+                // to a clear text signed message.
+                return;
+            }
+
+            // Sign a message using a signer, which can't be
+            // authenticated.
+            eprintln!("\nUnauthenticated signature:");
+
+            let unauthenticated = Signer::with_userid(
+                carol.clone(), UserID::from("unauthenticated user ID"));
+
+            let signed = sign(typ, &[unauthenticated.clone()]);
+            verify(typ, &signed)
+                .expect_err("Should reject as certificate is \
+                             not authenticated");
+            check_signatures(
+                typ, &signed, Some(unauthenticated.clone()), &[]);
+
+
+            eprintln!("\nAppending to unauthenticated signature:");
+
+            // Append some (potentially valid) signatures.
+            let signed2 = append(typ, &signed, specs);
+            let result = verify(typ, &signed2);
+
+            eprintln!("verify result: expected: {}, got: {}",
+                      if can_verify { "Ok" } else { "Err" },
+                      if let Err(err) = result.as_ref() {
+                          format!("Err({})", err)
+                      } else {
+                          "Ok".into()
+                      });
+            if can_verify {
+                assert!(result.is_ok(),
+                        "Expected valid signature, got: {}",
+                        result.as_ref().unwrap_err());
+            } else {
+                assert!(result.is_err(),
+                        "Expected invalid signature, got: {}",
+                        result.as_ref().unwrap_err());
+            }
+
+            check_signatures(
+                typ, &signed2, Some(unauthenticated.clone()), specs);
+        };
+
+        for t in [ Type::Inline, Type::Detached, Type::Cleartext ] {
+            // Alice signs a message and doesn't set the signer's user ID.
+            sign_verify(
+                t,
+                &[alice_none.clone()],
+                true);
+
+            // Alice and Bob sign a message and neither set the
+            // signer's user ID.
+            sign_verify(
+                t,
+                &[alice_none.clone(), bob_none.clone()],
+                true);
+
+            // Set the signer's user ID to an authenticated user ID.
+            sign_verify(
+                t,
+                &[alice_self_signed.clone()],
+                true);
+
+            // One authenticated signer's user ID, one not.
+            sign_verify(
+                t,
+                &[alice_not_self_signed.clone(), bob_self_signed.clone()],
+                true);
+            sign_verify(
+                t,
+                &[alice_self_signed.clone(), bob_not_self_signed.clone()],
+                true);
+
+            // Set the signer's user ID to an UNauthenticated user ID.
+            sign_verify(
+                t,
+                &[alice_not_self_signed.clone()],
+                true);
+
+            sign_verify(
+                t,
+                &[alice_not_self_signed.clone(), bob_not_self_signed.clone()],
+                true);
+
+            // Carol's certificate is not authenticated at all.
+            sign_verify(
+                t,
+                &[carol_none.clone()],
+                false);
+            sign_verify(
+                t,
+                &[carol_self_signed.clone()],
+                false);
+            sign_verify(
+                t,
+                &[carol_not_self_signed.clone()],
+                false);
+
+            // The first signature can't be authenticated.  Check that
+            // we really rely on the second certificate.
+            sign_verify(
+                t,
+                &[carol_none.clone(), bob_self_signed.clone()],
+                true);
+            sign_verify(
+                t,
+                &[carol_none.clone(), bob_not_self_signed.clone()],
+                true);
+        }
     }
 }
