@@ -98,4 +98,11 @@
 
      This was fixed by improving the argument quoting.
 
+   - CVE-2026-115837: Argon2 string-to-key parameters are not limited
+     by StandardPolicy
+
+     An attacker can trigger a denial of service using Argon2.  This
+     is fixed in sequoia-openpgp, but requires users to switch to use
+     SKESK::decrypt_with_policy instead of SKESK::decrypt.
+
 * Started the NEWS file.

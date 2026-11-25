@@ -1575,7 +1575,10 @@ impl DecryptionHelper for Helper<'_, '_, '_> {
         // prompting, try all passwords supplied on the cli.
         for password in self.sequoia.cached_passwords() {
             for skesk in skesks {
-                if let Some(sk) = skesk.decrypt(&password).ok()
+                if let Some(sk) = skesk.decrypt_with_policy(
+                    &password,
+                    self.vhelper.sequoia().policy())
+                    .ok()
                     .and_then(|(algo, sk)| { if decrypt(algo, &sk) { Some(sk) } else { None }})
                 {
                     self.output(Output::Decrypted(output::Decrypted {
@@ -1588,7 +1591,8 @@ impl DecryptionHelper for Helper<'_, '_, '_> {
         }
 
         // Now prompt for passwords.
-        let mut checker = CheckSkesks::new(skesks, decrypt);
+        let mut checker = CheckSkesks::new(
+            self.sequoia.policy(), skesks, decrypt);
 
         let mut context
             = prompt::ContextBuilder::password(

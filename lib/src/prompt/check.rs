@@ -4,6 +4,7 @@ use sequoia_openpgp as openpgp;
 use openpgp::packet::SKESK;
 use openpgp::types::SymmetricAlgorithm;
 use openpgp::crypto;
+use openpgp::policy::StandardPolicy;
 
 use sequoia_keystore as keystore;
 
@@ -106,6 +107,7 @@ impl<'a> prompt::Check<'a> for CheckRemoteKey<'_> {
 }
 
 pub(crate) struct CheckSkesks<'a> {
+    policy: &'a StandardPolicy<'a>,
     skesks: &'a [SKESK],
     decrypt: &'a mut dyn FnMut(Option<SymmetricAlgorithm>, &crypto::SessionKey) -> bool,
     // The session key.  The usize is the index of the decrypted
@@ -114,11 +116,13 @@ pub(crate) struct CheckSkesks<'a> {
 }
 
 impl<'a> CheckSkesks<'a> {
-    pub fn new(skesks: &'a [SKESK],
+    pub fn new(policy: &'a StandardPolicy,
+               skesks: &'a [SKESK],
                decrypt: &'a mut dyn FnMut(Option<SymmetricAlgorithm>, &crypto::SessionKey) -> bool)
         -> Self
     {
         Self {
+            policy,
             skesks,
             decrypt,
             sk: None,
@@ -141,7 +145,7 @@ impl<'a> prompt::Check<'a> for CheckSkesks<'_> {
             prompt::Response::Password(password) => {
                 let mut err = None;
                 for (i, skesk) in self.skesks.into_iter().enumerate() {
-                    match skesk.decrypt(password) {
+                    match skesk.decrypt_with_policy(password, self.policy) {
                         Ok((algo, sk)) => {
                             if (self.decrypt)(algo, &sk) {
                                 self.sk = Some((i, sk));
