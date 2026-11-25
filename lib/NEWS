@@ -1,0 +1,41 @@
+                                                              -*- org -*-
+#+TITLE: sqz NEWS – history of user-visible changes
+#+STARTUP: content hidestars
+
+* Changes in 0.2.0
+** Notable fixes
+   - Upgrade sequoia-openpgp to fix:
+
+     CVE-2026-115841: Degenerate DSA keys are accepted on the Nettle
+     and OpenSSL backends
+
+     CVE-2026-115839: RSA public keys with exponent 1 are accepted on
+     the Nettle and OpenSSL backends
+
+     CVE-2026-115838: Ed25519 identity and other low-order public keys
+     are accepted for signature verification
+
+     CVE-2026-115837: Argon2 string-to-key parameters are not limited
+     by StandardPolicy
+
+     CVE-2026-115836: Tolerant ASCII armor parsing can select a
+     different block than a strict parser
+
+     CVE-2026-115835: ASCII armor parsing buffers a line without a
+     length limit
+
+     CVE-2026-115834: User IDs and notation data are displayed without
+     escaping control characters
+
+   - Upgrade openpgp-cert-d to fix:
+
+     CVE-2026-121475: Following a symbolic-linked write lock file
+     enables arbitrary file truncation
+
+     CVE-2026-121476: Following symbolic links when updating
+     certificates enables arbitrary file modification
+
+     CVE-2026-121477: Following symbolic links when reading
+     certificates enables information disclosure
+
+* Started the NEWS file.
